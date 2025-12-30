@@ -1,0 +1,15 @@
+{
+  "name": "Agentic DevOps Starter",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": {
+      "installBicep": true,
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "latest"
+    }
+  },
+  "postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && echo 'export PATH=\"$HOME/.cargo/bin:$PATH\"' >> ~/.bashrc",
+  "forwardPorts": [8000, 8080]
+}
