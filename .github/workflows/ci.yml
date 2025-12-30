@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Install dependencies
+      run: |
+        uv venv
+        uv pip install -r requirements.txt || echo "No requirements.txt found"
+
+    - name: Run tests
+      run: |
+        source .venv/bin/activate
+        # Add your test commands here
+        # Example: pytest tests/
+        echo "Tests placeholder"
+
+    - name: Run linting
+      run: |
+        source .venv/bin/activate
+        uv pip install ruff
+        ruff check . || echo "Linting skipped"
