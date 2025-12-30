@@ -10,6 +10,6 @@
       "version": "latest"
     }
   },
-  "postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && echo 'export PATH=\"$HOME/.cargo/bin:$PATH\"' >> ~/.bashrc",
+  "postCreateCommand": "bash init.sh",
   "forwardPorts": [8000, 8080]
 }
