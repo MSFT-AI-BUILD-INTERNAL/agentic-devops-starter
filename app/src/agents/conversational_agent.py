@@ -1,9 +1,11 @@
 """Conversational agent implementation using microsoft-agent-framework."""
 
 import re
+import uuid
 from typing import Any
 
 from ..config import LLMConfig
+from ..logging_utils import set_correlation_id
 from .base_agent import BaseAgent
 
 
@@ -213,10 +215,6 @@ class ConversationalAgent(BaseAgent):
     def reset_conversation(self) -> None:
         """Reset the conversation state with a new conversation ID."""
         # Generate a new correlation ID for the new conversation
-        import uuid
-
-        from ..logging_utils import set_correlation_id
-
         new_correlation_id = str(uuid.uuid4())
         set_correlation_id(new_correlation_id)
         self.initialize_state()
