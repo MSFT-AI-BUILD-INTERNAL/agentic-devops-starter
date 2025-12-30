@@ -15,6 +15,11 @@ echo "🐍 Creating virtual environment..."
 uv venv --clear
 
 # Activate virtual environment
+if [ ! -f ".venv/bin/activate" ]; then
+    echo "❌ Failed to locate virtual environment activation script at .venv/bin/activate"
+    echo "   Ensure that 'uv venv' created the environment successfully."
+    exit 1
+fi
 source .venv/bin/activate
 
 # Install Python packages from pyproject.toml
