@@ -24,7 +24,7 @@ source .venv/bin/activate
 
 # Install Python packages from pyproject.toml
 echo "📚 Installing Python packages..."
-uv pip install -e .
+uv pip install -e ./app
 
 # Install specify-cli
 echo "🔧 Installing specify-cli..."
