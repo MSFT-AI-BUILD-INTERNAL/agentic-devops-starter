@@ -1,0 +1,335 @@
+# Tool Function Signatures for AG-UI Integration
+
+tools:
+  # Server-side tools (execute on the server)
+  server_tools:
+    - name: get_time_zone
+      description: Get the time zone for a given city location
+      execution_location: server
+      timeout_seconds: 5
+      parameters:
+        - name: city
+          type: string
+          description: Name of the city (e.g., "New York", "London", "Tokyo")
+          required: true
+          examples:
+            - "New York"
+            - "London"
+            - "Tokyo"
+            - "San Francisco"
+      returns:
+        type: string
+        description: Time zone identifier (e.g., "America/New_York", "Europe/London")
+        examples:
+          - "America/New_York"
+          - "Europe/London"
+          - "Asia/Tokyo"
+      implementation_notes: |
+        Uses a time zone lookup library (e.g., timezonefinder, pytz) to determine
+        the time zone for a given city. May use geocoding to convert city names
+        to coordinates if necessary.
+      error_cases:
+        - condition: City not found
+          error_message: "Could not determine time zone for city: {city}"
+        - condition: Geocoding service unavailable
+          error_message: "Unable to look up city location"
+
+  # Client-side tools (execute on the client)
+  client_tools:
+    - name: get_weather
+      description: Get current weather information for a city (simulated for demo)
+      execution_location: client
+      timeout_seconds: 10
+      parameters:
+        - name: city
+          type: string
+          description: Name of the city to get weather for
+          required: true
+          examples:
+            - "New York"
+            - "San Francisco"
+            - "Seattle"
+      returns:
+        type: object
+        description: Weather information object
+        properties:
+          city:
+            type: string
+            description: City name
+          temperature:
+            type: number
+            description: Temperature in Fahrenheit
+          conditions:
+            type: string
+            description: Weather conditions (e.g., "Sunny", "Cloudy", "Rainy")
+          humidity:
+            type: number
+            description: Humidity percentage
+        example:
+          city: "New York"
+          temperature: 72
+          conditions: "Sunny"
+          humidity: 65
+      implementation_notes: |
+        For demonstration purposes, this returns simulated weather data.
+        In production, would call a weather API (OpenWeatherMap, WeatherAPI, etc.)
+        from the client side.
+        
+        Executes on client to demonstrate hybrid tool architecture where some
+        operations are better performed client-side (e.g., accessing local resources,
+        browser APIs, user-specific data).
+      error_cases:
+        - condition: Invalid city name
+          error_message: "Invalid city name provided"
+        - condition: Network error (if calling real API)
+          error_message: "Unable to fetch weather data"
+
+# Tool Registration Patterns
+
+registration_examples:
+  server_registration: |
+    # In server.py
+    from src.agui.tools.server_tools import get_time_zone
+    
+    app = create_agui_app(
+        agent=agent,
+        server_tools=[get_time_zone],
+        config=config
+    )
+  
+  client_registration: |
+    # In hybrid client
+    from src.agui.tools.client_tools import get_weather
+    from src.agui.clients.hybrid_client import HybridToolsClient
+    
+    client = HybridToolsClient(
+        server_url="http://localhost:8000",
+        client_tools=[get_weather]
+    )
+
+# Tool Execution Flow
+
+execution_flows:
+  server_tool_flow:
+    description: Server-side tool execution (get_time_zone)
+    steps:
+      - step: 1
+        actor: Agent
+        action: Decides to call get_time_zone("New York")
+      - step: 2
+        actor: Server
+        action: Executes get_time_zone function in server process
+      - step: 3
+        actor: Server
+        action: Streams ToolStartEvent to client
+      - step: 4
+        actor: Server
+        action: Tool completes, gets result "America/New_York"
+      - step: 5
+        actor: Server
+        action: Streams ToolEndEvent with result to client
+      - step: 6
+        actor: Agent
+        action: Incorporates result into response
+    timing:
+      typical_duration_ms: 50-200
+      timeout_ms: 5000
+  
+  client_tool_flow:
+    description: Client-side tool execution (get_weather)
+    steps:
+      - step: 1
+        actor: Agent
+        action: Decides to call get_weather("New York")
+      - step: 2
+        actor: Server
+        action: Streams ToolExecutionRequestEvent to client with execution_id
+      - step: 3
+        actor: Client
+        action: Receives event, looks up get_weather in registered tools
+      - step: 4
+        actor: Client
+        action: Executes get_weather("New York") locally
+      - step: 5
+        actor: Client
+        action: POSTs ToolExecutionResult to server with execution_id and result
+      - step: 6
+        actor: Server
+        action: Receives result, streams ToolExecutionCompleteEvent
+      - step: 7
+        actor: Agent
+        action: Incorporates result into response
+    timing:
+      typical_duration_ms: 100-1000
+      timeout_ms: 10000
+
+# Tool Definition Schema
+
+tool_definition_schema:
+  description: Schema for defining tools programmatically
+  python_type: ToolDefinition
+  fields:
+    name:
+      type: string
+      pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
+      description: Valid Python identifier
+    description:
+      type: string
+      min_length: 10
+      description: Human-readable description
+    parameters:
+      type: array
+      items:
+        type: ToolParameter
+      description: List of parameters
+    return_type:
+      type: string
+      description: JSON Schema type (string, number, object, array, boolean)
+    execution_location:
+      type: string
+      enum: [server, client]
+    timeout_seconds:
+      type: integer
+      minimum: 1
+      default: 30
+
+# Tool Creation Guide
+
+tool_creation_guide:
+  server_tool_example: |
+    # File: src/agui/tools/server_tools.py
+    
+    from agent_framework import tool
+    
+    @tool(description="Get time zone for a city")
+    def get_time_zone(city: str) -> str:
+        """Get the time zone identifier for a given city.
+        
+        Args:
+            city: Name of the city
+            
+        Returns:
+            Time zone identifier (e.g., 'America/New_York')
+            
+        Raises:
+            ValueError: If city cannot be found
+        """
+        # Implementation here
+        from timezonefinder import TimezoneFinder
+        
+        # Simplified - would need geocoding in real implementation
+        city_coords = {
+            "New York": (40.7128, -74.0060),
+            "London": (51.5074, -0.1278),
+            "Tokyo": (35.6762, 139.6503),
+        }
+        
+        if city not in city_coords:
+            raise ValueError(f"City not found: {city}")
+        
+        lat, lng = city_coords[city]
+        tf = TimezoneFinder()
+        tz = tf.timezone_at(lng=lng, lat=lat)
+        
+        return tz or "UTC"
+  
+  client_tool_example: |
+    # File: src/agui/tools/client_tools.py
+    
+    def get_weather(city: str) -> dict:
+        """Get current weather for a city (simulated).
+        
+        Args:
+            city: Name of the city
+            
+        Returns:
+            Dictionary with weather information
+        """
+        import random
+        
+        # Simulated weather data for demo
+        conditions = ["Sunny", "Cloudy", "Rainy", "Partly Cloudy", "Clear"]
+        
+        return {
+            "city": city,
+            "temperature": random.randint(50, 85),
+            "conditions": random.choice(conditions),
+            "humidity": random.randint(40, 90)
+        }
+
+# Testing Tools
+
+testing_guidance:
+  unit_tests: |
+    # Test individual tools in isolation
+    
+    def test_get_time_zone():
+        result = get_time_zone("New York")
+        assert result == "America/New_York"
+    
+    def test_get_weather():
+        result = get_weather("Seattle")
+        assert "city" in result
+        assert "temperature" in result
+        assert result["city"] == "Seattle"
+  
+  integration_tests: |
+    # Test tools through agent interaction
+    
+    async def test_server_tool_execution():
+        # Send message that triggers get_time_zone
+        response = await client.post("/chat", json={
+            "message": "What's the time zone in Tokyo?",
+            "thread_id": None
+        })
+        
+        # Verify tool was called and result used
+        events = list(parse_sse_stream(response))
+        assert any(e["event"] == "tool_start" and e["tool_name"] == "get_time_zone" for e in events)
+        assert any(e["event"] == "tool_end" and "Asia/Tokyo" in str(e["result"]) for e in events)
+  
+  hybrid_client_tests: |
+    # Test client tool execution through hybrid client
+    
+    async def test_client_tool_execution():
+        client = HybridToolsClient(
+            server_url="http://localhost:8000",
+            client_tools=[get_weather]
+        )
+        
+        # Send message that triggers get_weather
+        async for event in client.stream_chat("What's the weather in Seattle?"):
+            if event["event"] == "tool_execution_request":
+                assert event["tool_name"] == "get_weather"
+            if event["event"] == "tool_execution_complete":
+                # Verify client executed tool and sent result
+                assert event["execution_id"] is not None
+
+# Future Tool Extensions
+
+future_tools:
+  examples:
+    - name: search_web
+      description: Search the web for information
+      execution_location: server
+      use_case: Knowledge retrieval beyond training data
+    
+    - name: read_local_file
+      description: Read a file from client's local filesystem
+      execution_location: client
+      use_case: Access user's local documents
+    
+    - name: query_database
+      description: Query a database for information
+      execution_location: server
+      use_case: Access structured data
+    
+    - name: generate_image
+      description: Generate an image using AI
+      execution_location: server
+      use_case: Visual content creation
+    
+    - name: get_browser_location
+      description: Get user's geographic location from browser
+      execution_location: client
+      use_case: Location-aware responses

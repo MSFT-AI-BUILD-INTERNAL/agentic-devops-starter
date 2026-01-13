@@ -1,0 +1,454 @@
+openapi: 3.0.3
+info:
+  title: AG-UI Agent Server API
+  description: |
+    Web-based conversational agent interface with Server-Sent Events (SSE) streaming,
+    tool execution (server-side and client-side), and conversation thread management.
+    
+    Built with FastAPI and microsoft-agent-framework.
+  version: 0.1.0
+  contact:
+    name: Agentic DevOps Team
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: http://0.0.0.0:8000
+    description: Docker container server
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns server health status, version, and basic statistics
+      operationId: health_check
+      tags:
+        - System
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: healthy
+                version: "0.1.0"
+                thread_count: 5
+                uptime_seconds: 3600.5
+
+  /chat:
+    post:
+      summary: Send a message to the agent
+      description: |
+        Send a user message to the conversational agent. The agent processes the message,
+        executes any required tools (server-side or client-side), and streams the response
+        back via Server-Sent Events (SSE).
+        
+        If `thread_id` is provided, continues existing conversation. If null, creates new thread.
+      operationId: chat
+      tags:
+        - Chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              new_conversation:
+                summary: Start new conversation
+                value:
+                  message: "Hello, what's the current time in New York?"
+                  thread_id: null
+                  stream: true
+              continue_conversation:
+                summary: Continue existing conversation
+                value:
+                  message: "What about Los Angeles?"
+                  thread_id: "550e8400-e29b-41d4-a716-446655440000"
+                  stream: true
+      responses:
+        '200':
+          description: SSE stream of agent response events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Stream of Server-Sent Events. Each event is formatted as:
+                  
+                  data: {json_object}\n\n
+                  
+                  Event types: token, tool_start, tool_end, tool_execution_request,
+                  tool_execution_complete, message_complete, error
+              examples:
+                streaming_response:
+                  summary: Example SSE stream
+                  value: |
+                    data: {"event":"token","thread_id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2026-01-13T22:00:00","token":"The"}
+
+                    data: {"event":"token","thread_id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2026-01-13T22:00:00","token":" current"}
+
+                    data: {"event":"tool_start","thread_id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2026-01-13T22:00:01","tool_name":"get_time_zone","arguments":{"city":"New York"}}
+
+                    data: {"event":"tool_end","thread_id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2026-01-13T22:00:02","tool_name":"get_time_zone","result":"America/New_York","execution_time_ms":150.5}
+
+                    data: {"event":"message_complete","thread_id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2026-01-13T22:00:05","message":{"role":"assistant","content":"The current time in New York is..."}}
+
+        '400':
+          description: Invalid request (empty message, malformed data)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Thread not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /threads:
+    get:
+      summary: List all conversation threads
+      description: Returns a list of all active conversation threads with basic metadata
+      operationId: list_threads
+      tags:
+        - Threads
+      responses:
+        '200':
+          description: List of threads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ThreadSummary'
+              example:
+                threads:
+                  - thread_id: "550e8400-e29b-41d4-a716-446655440000"
+                    message_count: 10
+                    created_at: "2026-01-13T20:00:00Z"
+                    updated_at: "2026-01-13T21:30:00Z"
+                  - thread_id: "660e8400-e29b-41d4-a716-446655440001"
+                    message_count: 5
+                    created_at: "2026-01-13T21:00:00Z"
+                    updated_at: "2026-01-13T21:45:00Z"
+
+  /threads/{thread_id}:
+    get:
+      summary: Get conversation thread details
+      description: Returns full details of a specific conversation thread including message history
+      operationId: get_thread
+      tags:
+        - Threads
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          description: UUID of the conversation thread
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thread details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationThread'
+        '404':
+          description: Thread not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tool_result:
+    post:
+      summary: Submit client tool execution result
+      description: |
+        Client sends the result of a client-side tool execution back to the server.
+        This endpoint is called by hybrid clients in response to a tool_execution_request event.
+      operationId: submit_tool_result
+      tags:
+        - Tools
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolExecutionResult'
+      responses:
+        '200':
+          description: Result received successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: received
+        '400':
+          description: Invalid result data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Execution ID not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /docs:
+    get:
+      summary: OpenAPI documentation
+      description: Auto-generated interactive API documentation (Swagger UI)
+      tags:
+        - System
+      responses:
+        '200':
+          description: HTML page with interactive API documentation
+
+  /openapi.json:
+    get:
+      summary: OpenAPI specification
+      description: OpenAPI 3.0 specification in JSON format
+      tags:
+        - System
+      responses:
+        '200':
+          description: OpenAPI specification
+          content:
+            application/json:
+              schema:
+                type: object
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - version
+        - thread_count
+        - uptime_seconds
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Health status of the server
+        version:
+          type: string
+          description: Server version
+          example: "0.1.0"
+        thread_count:
+          type: integer
+          minimum: 0
+          description: Number of active conversation threads
+        uptime_seconds:
+          type: number
+          minimum: 0
+          description: Server uptime in seconds
+
+    ChatRequest:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: User message to send to the agent
+        thread_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Thread ID to continue conversation (null for new thread)
+        stream:
+          type: boolean
+          default: true
+          description: Whether to stream the response
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional metadata for the request
+
+    ConversationThread:
+      type: object
+      required:
+        - thread_id
+        - created_at
+        - updated_at
+        - message_history
+      properties:
+        thread_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the thread
+        created_at:
+          type: string
+          format: date-time
+          description: When the thread was created
+        updated_at:
+          type: string
+          format: date-time
+          description: When the thread was last updated
+        message_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          description: Ordered list of messages in this thread
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional metadata
+
+    ThreadSummary:
+      type: object
+      required:
+        - thread_id
+        - message_count
+        - created_at
+        - updated_at
+      properties:
+        thread_id:
+          type: string
+          format: uuid
+        message_count:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ChatMessage:
+      type: object
+      required:
+        - role
+        - content
+        - timestamp
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system, tool]
+          description: Role of the message sender
+        content:
+          type: string
+          minLength: 1
+          description: Content of the message
+        timestamp:
+          type: string
+          format: date-time
+          description: When the message was created
+        tool_calls:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/ToolCall'
+          description: Tool calls made in this message (if any)
+        metadata:
+          type: object
+          additionalProperties: true
+
+    ToolCall:
+      type: object
+      required:
+        - tool_name
+        - arguments
+      properties:
+        tool_name:
+          type: string
+          description: Name of the tool that was called
+        arguments:
+          type: object
+          additionalProperties: true
+          description: Arguments passed to the tool
+        result:
+          nullable: true
+          description: Result returned by the tool
+        error:
+          type: string
+          nullable: true
+          description: Error message if tool execution failed
+        execution_time_ms:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Time taken to execute the tool in milliseconds
+
+    ToolExecutionResult:
+      type: object
+      required:
+        - execution_id
+        - execution_time_ms
+      properties:
+        execution_id:
+          type: string
+          format: uuid
+          description: ID from the tool execution request
+        result:
+          nullable: true
+          description: Result from the tool (null if error)
+        error:
+          type: string
+          nullable: true
+          description: Error message if execution failed
+        execution_time_ms:
+          type: number
+          minimum: 0
+          description: Time taken to execute on client
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error type or code
+        message:
+          type: string
+          description: Human-readable error message
+        correlation_id:
+          type: string
+          description: Correlation ID for tracing
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error details
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key authentication (future enhancement)
+
+tags:
+  - name: System
+    description: System endpoints (health, documentation)
+  - name: Chat
+    description: Chat and messaging endpoints
+  - name: Threads
+    description: Conversation thread management
+  - name: Tools
+    description: Tool execution endpoints
