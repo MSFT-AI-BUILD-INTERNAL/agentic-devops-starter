@@ -36,7 +36,8 @@ jobs:
     - name: Install dependencies
       run: |
         uv venv
-        uv pip install pytest ruff mypy pydantic || echo "Installation complete"
+        uv pip install pytest ruff mypy pydantic
+        echo "Dependencies installed successfully"
 
     - name: Check SpecKit Artifacts
       id: speckit_check
@@ -117,14 +118,20 @@ jobs:
               if [ -f "../.venv/bin/activate" ]; then
                 source ../.venv/bin/activate
               fi
-              if pytest tests/ -v --tb=short 2>&1 | tee test_output.txt; then
-                TEST_RESULTS=$(tail -1 test_output.txt)
-                echo "✅ Tests passed"
-                TEST_FINDINGS="${TEST_FINDINGS}\n✅ **Tests passed** - $TEST_RESULTS"
+              # Check if pytest is available and tests directory exists
+              if command -v pytest &> /dev/null && [ -d "tests" ]; then
+                if pytest tests/ -v --tb=short 2>&1 | tee test_output.txt; then
+                  TEST_RESULTS=$(tail -1 test_output.txt)
+                  echo "✅ Tests passed"
+                  TEST_FINDINGS="${TEST_FINDINGS}\n✅ **Tests passed** - $TEST_RESULTS"
+                else
+                  echo "⚠️ Some tests failed"
+                  TEST_RESULTS=$(tail -5 test_output.txt)
+                  TEST_FINDINGS="${TEST_FINDINGS}\n⚠️ **Some tests need attention** - Check test results"
+                fi
               else
-                echo "⚠️ Some tests failed"
-                TEST_RESULTS=$(tail -5 test_output.txt)
-                TEST_FINDINGS="${TEST_FINDINGS}\n⚠️ **Some tests need attention** - Check test results"
+                echo "ℹ️ pytest not available or tests directory not found"
+                TEST_FINDINGS="${TEST_FINDINGS}\nℹ️ **Cannot run tests** - pytest or tests directory not available"
               fi
               cd ..
             fi

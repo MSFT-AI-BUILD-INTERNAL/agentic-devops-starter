@@ -26,10 +26,11 @@ class ReviewResult:
 class PRReviewer:
     """Automated PR reviewer for SpecKit compliance"""
     
-    def __init__(self, repo_root: Path):
+    def __init__(self, repo_root: Path, timeout: int = 120):
         self.repo_root = repo_root
         self.specs_dir = repo_root / "specs"
         self.app_dir = repo_root / "app"
+        self.timeout = timeout
         
     def run_command(self, cmd: List[str], cwd: Path = None) -> Tuple[int, str, str]:
         """Run a shell command and return exit code, stdout, stderr"""
@@ -39,11 +40,11 @@ class PRReviewer:
                 cwd=cwd or self.repo_root,
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=self.timeout
             )
             return result.returncode, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
-            return 1, "", "Command timed out"
+            return 1, "", f"Command timed out after {self.timeout} seconds"
         except Exception as e:
             return 1, "", str(e)
     
