@@ -114,7 +114,9 @@ jobs:
             # Try to run tests
             if [ -f "app/pyproject.toml" ]; then
               cd app
-              source ../.venv/bin/activate || true
+              if [ -f "../.venv/bin/activate" ]; then
+                source ../.venv/bin/activate
+              fi
               if pytest tests/ -v --tb=short 2>&1 | tee test_output.txt; then
                 TEST_RESULTS=$(tail -1 test_output.txt)
                 echo "✅ Tests passed"
@@ -150,7 +152,9 @@ jobs:
         QUALITY_FINDINGS=""
         
         # Run Ruff linting
-        source .venv/bin/activate || true
+        if [ -f ".venv/bin/activate" ]; then
+          source .venv/bin/activate
+        fi
         if [ -d "app/src" ]; then
           echo "Running Ruff on app/src..."
           if ruff check app/src --output-format=concise > ruff_output.txt 2>&1; then
@@ -281,6 +285,19 @@ jobs:
 
     - name: Generate Review Summary
       id: summary
+      env:
+        SPECKIT_FINDINGS: ${{ steps.speckit_check.outputs.findings }}
+        TEST_FINDINGS: ${{ steps.test_check.outputs.test_findings }}
+        QUALITY_FINDINGS: ${{ steps.quality_check.outputs.quality_findings }}
+        DOCS_FINDINGS: ${{ steps.docs_check.outputs.docs_findings }}
+        CONSTITUTION_FINDINGS: ${{ steps.constitution_check.outputs.constitution_findings }}
+        SPEC_FOUND: ${{ steps.speckit_check.outputs.spec_found }}
+        PLAN_FOUND: ${{ steps.speckit_check.outputs.plan_found }}
+        TASKS_FOUND: ${{ steps.speckit_check.outputs.tasks_found }}
+        TESTS_FOUND: ${{ steps.test_check.outputs.tests_found }}
+        QUALITY_PASSED: ${{ steps.quality_check.outputs.quality_passed }}
+        DOCS_FOUND: ${{ steps.docs_check.outputs.docs_found }}
+        CONSTITUTION_PASSED: ${{ steps.constitution_check.outputs.constitution_passed }}
       run: |
         echo "Generating review summary..."
         
@@ -291,37 +308,54 @@ jobs:
           OVERALL_STATUS="⚠️ CHANGES REQUESTED"
         fi
         
-        cat > review_summary.md << 'EOL'
+        # Create checkbox function
+        checkbox() {
+          if [ "$1" = "true" ]; then
+            echo "x"
+          else
+            echo " "
+          fi
+        }
+        
+        SPEC_CHECK=$(checkbox "$SPEC_FOUND")
+        PLAN_CHECK=$(checkbox "$PLAN_FOUND")
+        TASKS_CHECK=$(checkbox "$TASKS_FOUND")
+        TESTS_CHECK=$(checkbox "$TESTS_FOUND")
+        QUALITY_CHECK=$(checkbox "$QUALITY_PASSED")
+        DOCS_CHECK=$(checkbox "$DOCS_FOUND")
+        CONST_CHECK=$(checkbox "$CONSTITUTION_PASSED")
+        
+        cat > review_summary.md << EOL
         ## 🤖 Automated PR Review - SpecKit Compliance
         
-        **Overall Status:** ${{ env.OVERALL_STATUS }}
+        **Overall Status:** ${OVERALL_STATUS}
         
         ### 📋 SpecKit-Driven Development
-        ${{ steps.speckit_check.outputs.findings }}
+        ${SPECKIT_FINDINGS}
         
         ### 🧪 Test Coverage
-        ${{ steps.test_check.outputs.test_findings }}
+        ${TEST_FINDINGS}
         
         ### 🔍 Code Quality
-        ${{ steps.quality_check.outputs.quality_findings }}
+        ${QUALITY_FINDINGS}
         
         ### 📚 Documentation
-        ${{ steps.docs_check.outputs.docs_findings }}
+        ${DOCS_FINDINGS}
         
         ### 📜 Constitution Compliance
-        ${{ steps.constitution_check.outputs.constitution_findings }}
+        ${CONSTITUTION_FINDINGS}
         
         ---
         
         ### ✅ Review Checklist
         
-        - [${{ steps.speckit_check.outputs.spec_found == 'true' && 'x' || ' ' }}] **spec.md** - Feature specification exists
-        - [${{ steps.speckit_check.outputs.plan_found == 'true' && 'x' || ' ' }}] **plan.md** - Implementation plan documented
-        - [${{ steps.speckit_check.outputs.tasks_found == 'true' && 'x' || ' ' }}] **tasks.md** - Tasks breakdown available
-        - [${{ steps.test_check.outputs.tests_found == 'true' && 'x' || ' ' }}] **Tests** - Test coverage present (if applicable)
-        - [${{ steps.quality_check.outputs.quality_passed == 'true' && 'x' || ' ' }}] **Code Quality** - Linting and type checks pass
-        - [${{ steps.docs_check.outputs.docs_found == 'true' && 'x' || ' ' }}] **Documentation** - README and inline docs present
-        - [${{ steps.constitution_check.outputs.constitution_passed == 'true' && 'x' || ' ' }}] **Constitution** - Constitutional requirements met
+        - [${SPEC_CHECK}] **spec.md** - Feature specification exists
+        - [${PLAN_CHECK}] **plan.md** - Implementation plan documented
+        - [${TASKS_CHECK}] **tasks.md** - Tasks breakdown available
+        - [${TESTS_CHECK}] **Tests** - Test coverage present (if applicable)
+        - [${QUALITY_CHECK}] **Code Quality** - Linting and type checks pass
+        - [${DOCS_CHECK}] **Documentation** - README and inline docs present
+        - [${CONST_CHECK}] **Constitution** - Constitutional requirements met
         
         ---
         
