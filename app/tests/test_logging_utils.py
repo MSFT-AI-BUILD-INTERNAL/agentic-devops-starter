@@ -3,8 +3,6 @@
 import logging
 import uuid
 
-import pytest
-
 from src.logging_utils import (
     CorrelationIdFilter,
     get_correlation_id,
@@ -112,7 +110,7 @@ def test_setup_logging_has_correlation_id_filter() -> None:
 def test_log_llm_interaction() -> None:
     """Test log_llm_interaction logs with structured data."""
     logger = setup_logging()
-    
+
     # Set a known correlation ID
     test_id = "test-interaction-123"
     set_correlation_id(test_id)
@@ -130,7 +128,7 @@ def test_log_llm_interaction() -> None:
 def test_log_llm_interaction_includes_correlation_id() -> None:
     """Test log_llm_interaction includes correlation ID in log data."""
     logger = setup_logging()
-    
+
     # Set a known correlation ID
     test_id = "test-correlation-456"
     set_correlation_id(test_id)
