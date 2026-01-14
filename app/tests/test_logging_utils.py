@@ -178,5 +178,5 @@ def test_logging_format_includes_correlation_id() -> None:
 
     assert formatter is not None
     # Check format string contains correlation_id
-    if hasattr(formatter, "_fmt"):
+    if hasattr(formatter, "_fmt") and formatter._fmt is not None:
         assert "correlation_id" in formatter._fmt

@@ -195,6 +195,7 @@ def test_agent_state_tracks_message_count() -> None:
     agent = ConcreteTestAgent(name="ConcreteTestAgent", llm_config=config)
     agent.initialize_state()
 
+    assert agent.state is not None
     initial_count = agent.state.message_count
 
     agent.add_to_history("user", "Message 1")
@@ -212,6 +213,7 @@ def test_agent_state_history_structure() -> None:
 
     agent.add_to_history("user", "Test message")
 
+    assert agent.state is not None
     message = agent.state.history[0]
     assert "role" in message
     assert "content" in message
@@ -232,6 +234,8 @@ def test_multiple_agents_have_separate_state() -> None:
     agent2.add_to_history("user", "Message to agent 2")
 
     # Each agent should have its own state
+    assert agent1.state is not None
+    assert agent2.state is not None
     assert agent1.state.conversation_id != agent2.state.conversation_id
     assert len(agent1.state.history) == 1
     assert len(agent2.state.history) == 1
