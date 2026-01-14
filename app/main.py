@@ -25,7 +25,7 @@ def create_agent_config(provider: str = "openai") -> LLMConfig:
         return LLMConfig(
             provider=LLMProvider.AZURE_OPENAI,
             api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+            azure_endpoint=os.getenv("AZURE_AI_PROJECT_ENDPOINT"),
             azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
             model="gpt-4",
             temperature=0.7,

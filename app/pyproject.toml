@@ -5,8 +5,10 @@ description = "Agentic DevOps Starter Project"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "agent-framework",
-    "agent-framework-ag-ui",
+    "agent-framework-ag-ui>=1.0.0b260107",
+    "agent-framework-core>=1.0.0b260107",
+    "agent-framework-azure-ai",
+    "azure-identity>=1.19.0",
     "pydantic>=2.0.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
@@ -45,3 +47,6 @@ python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+[tool.uv]
+prerelease = "allow"
