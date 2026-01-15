@@ -32,7 +32,6 @@ logger = setup_logging()
 endpoint = os.environ.get("AZURE_AI_PROJECT_ENDPOINT")
 deployment_name = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
 api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-08-07")
-api_key = os.environ.get("AZURE_OPENAI_API_KEY")
 openai_api_key = os.environ.get("OPENAI_API_KEY")
 
 
