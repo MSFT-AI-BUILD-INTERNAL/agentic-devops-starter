@@ -1,0 +1,432 @@
+name: PR Review - SpecKit Compliance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  speckit-review:
+    name: SpecKit Compliance Review
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Install dependencies
+      run: |
+        uv venv
+        uv pip install pytest ruff mypy pydantic
+        echo "Dependencies installed successfully"
+
+    - name: Check SpecKit Artifacts
+      id: speckit_check
+      run: |
+        echo "Checking for SpecKit-driven development artifacts..."
+        
+        # Find associated issue number from PR
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+        PR_BODY="${{ github.event.pull_request.body }}"
+        
+        # Initialize results
+        SPEC_FOUND=false
+        PLAN_FOUND=false
+        TASKS_FOUND=false
+        SPECKIT_PASSED=true
+        FINDINGS=""
+        
+        # Check for spec.md, plan.md, tasks.md in specs directory
+        if find specs -name "spec.md" -type f | grep -q .; then
+          SPEC_FOUND=true
+          echo "✅ Found spec.md"
+          FINDINGS="${FINDINGS}\n✅ **spec.md found** - Feature specification exists"
+        else
+          echo "❌ No spec.md found"
+          FINDINGS="${FINDINGS}\n❌ **spec.md missing** - No feature specification found in specs/ directory"
+          SPECKIT_PASSED=false
+        fi
+        
+        if find specs -name "plan.md" -type f | grep -q .; then
+          PLAN_FOUND=true
+          echo "✅ Found plan.md"
+          FINDINGS="${FINDINGS}\n✅ **plan.md found** - Implementation plan exists"
+        else
+          echo "⚠️ No plan.md found"
+          FINDINGS="${FINDINGS}\n⚠️ **plan.md missing** - Implementation plan is recommended"
+        fi
+        
+        if find specs -name "tasks.md" -type f | grep -q .; then
+          TASKS_FOUND=true
+          echo "✅ Found tasks.md"
+          FINDINGS="${FINDINGS}\n✅ **tasks.md found** - Task breakdown exists"
+        else
+          echo "⚠️ No tasks.md found"
+          FINDINGS="${FINDINGS}\n⚠️ **tasks.md missing** - Task breakdown is recommended"
+        fi
+        
+        # Save results for next steps
+        echo "speckit_passed=${SPECKIT_PASSED}" >> $GITHUB_OUTPUT
+        echo "spec_found=${SPEC_FOUND}" >> $GITHUB_OUTPUT
+        echo "plan_found=${PLAN_FOUND}" >> $GITHUB_OUTPUT
+        echo "tasks_found=${TASKS_FOUND}" >> $GITHUB_OUTPUT
+        
+        # Save findings (escape newlines for GitHub Actions)
+        echo "findings<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$FINDINGS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Check Test Coverage
+      id: test_check
+      run: |
+        echo "Checking for test files..."
+        
+        TESTS_FOUND=false
+        TEST_PASSED=true
+        TEST_FINDINGS=""
+        
+        # Check if there are test files in the PR
+        if [ -d "app/tests" ]; then
+          TEST_COUNT=$(find app/tests -name "test_*.py" -type f | wc -l)
+          if [ $TEST_COUNT -gt 0 ]; then
+            TESTS_FOUND=true
+            echo "✅ Found $TEST_COUNT test files"
+            TEST_FINDINGS="${TEST_FINDINGS}\n✅ **Tests found** - $TEST_COUNT test files present in app/tests/"
+            
+            # Try to run tests
+            if [ -f "app/pyproject.toml" ]; then
+              cd app
+              if [ -f "../.venv/bin/activate" ]; then
+                source ../.venv/bin/activate
+              fi
+              # Check if pytest is available and tests directory exists
+              if command -v pytest &> /dev/null && [ -d "tests" ]; then
+                if pytest tests/ -v --tb=short 2>&1 | tee test_output.txt; then
+                  TEST_RESULTS=$(tail -1 test_output.txt)
+                  echo "✅ Tests passed"
+                  TEST_FINDINGS="${TEST_FINDINGS}\n✅ **Tests passed** - $TEST_RESULTS"
+                else
+                  echo "⚠️ Some tests failed"
+                  TEST_RESULTS=$(tail -5 test_output.txt)
+                  TEST_FINDINGS="${TEST_FINDINGS}\n⚠️ **Some tests need attention** - Check test results"
+                fi
+              else
+                echo "ℹ️ pytest not available or tests directory not found"
+                TEST_FINDINGS="${TEST_FINDINGS}\nℹ️ **Cannot run tests** - pytest or tests directory not available"
+              fi
+              cd ..
+            fi
+          else
+            echo "⚠️ No test files found"
+            TEST_FINDINGS="${TEST_FINDINGS}\n⚠️ **No tests found** - Consider adding tests if applicable"
+          fi
+        else
+          echo "ℹ️ No tests directory found"
+          TEST_FINDINGS="${TEST_FINDINGS}\nℹ️ **No test directory** - Tests may not be applicable for this change"
+        fi
+        
+        echo "tests_found=${TESTS_FOUND}" >> $GITHUB_OUTPUT
+        echo "test_passed=${TEST_PASSED}" >> $GITHUB_OUTPUT
+        echo "test_findings<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$TEST_FINDINGS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Check Code Quality
+      id: quality_check
+      run: |
+        echo "Running code quality checks..."
+        
+        QUALITY_PASSED=true
+        QUALITY_FINDINGS=""
+        
+        # Run Ruff linting
+        if [ -f ".venv/bin/activate" ]; then
+          source .venv/bin/activate
+        fi
+        if [ -d "app/src" ]; then
+          echo "Running Ruff on app/src..."
+          if ruff check app/src --output-format=concise > ruff_output.txt 2>&1; then
+            echo "✅ Ruff linting passed"
+            QUALITY_FINDINGS="${QUALITY_FINDINGS}\n✅ **Ruff linting passed** - No style violations found"
+          else
+            echo "❌ Ruff linting failed"
+            RUFF_ERRORS=$(head -20 ruff_output.txt)
+            QUALITY_FINDINGS="${QUALITY_FINDINGS}\n❌ **Ruff linting issues** - Please fix linting errors"
+            QUALITY_PASSED=false
+          fi
+          
+          # Run mypy type checking
+          echo "Running mypy on app/src..."
+          if mypy app/src --no-error-summary 2>&1 | tee mypy_output.txt; then
+            echo "✅ Mypy type checking passed"
+            QUALITY_FINDINGS="${QUALITY_FINDINGS}\n✅ **Type checking passed** - No type errors found"
+          else
+            echo "⚠️ Mypy found type issues"
+            MYPY_ERRORS=$(head -20 mypy_output.txt)
+            QUALITY_FINDINGS="${QUALITY_FINDINGS}\n⚠️ **Type checking issues** - Consider fixing type hints"
+          fi
+        else
+          echo "ℹ️ No app/src directory found"
+          QUALITY_FINDINGS="${QUALITY_FINDINGS}\nℹ️ **No source code** - Code quality checks not applicable"
+        fi
+        
+        echo "quality_passed=${QUALITY_PASSED}" >> $GITHUB_OUTPUT
+        echo "quality_findings<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$QUALITY_FINDINGS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Check Documentation
+      id: docs_check
+      run: |
+        echo "Checking for documentation..."
+        
+        DOCS_FOUND=false
+        DOCS_FINDINGS=""
+        
+        # Check for README updates
+        if [ -f "app/README.md" ]; then
+          DOCS_FOUND=true
+          README_LINES=$(wc -l < app/README.md)
+          if [ $README_LINES -gt 50 ]; then
+            echo "✅ README.md found and substantial"
+            DOCS_FINDINGS="${DOCS_FINDINGS}\n✅ **README.md present** - Documentation exists ($README_LINES lines)"
+          else
+            echo "⚠️ README.md found but may need more content"
+            DOCS_FINDINGS="${DOCS_FINDINGS}\n⚠️ **README.md minimal** - Consider adding more documentation"
+          fi
+        else
+          echo "⚠️ No README.md found in app/"
+          DOCS_FINDINGS="${DOCS_FINDINGS}\n⚠️ **README.md missing** - Consider adding documentation"
+        fi
+        
+        # Check for inline documentation (docstrings)
+        if [ -d "app/src" ]; then
+          DOCSTRING_COUNT=$(grep -r "\"\"\"" app/src --include="*.py" | wc -l)
+          if [ $DOCSTRING_COUNT -gt 10 ]; then
+            echo "✅ Good inline documentation"
+            DOCS_FINDINGS="${DOCS_FINDINGS}\n✅ **Inline documentation** - Found $DOCSTRING_COUNT docstrings"
+          else
+            echo "ℹ️ Limited inline documentation"
+            DOCS_FINDINGS="${DOCS_FINDINGS}\nℹ️ **Inline documentation** - Consider adding more docstrings"
+          fi
+        fi
+        
+        # Check for comments in changed files
+        echo "ℹ️ Documentation check complete"
+        
+        echo "docs_found=${DOCS_FOUND}" >> $GITHUB_OUTPUT
+        echo "docs_findings<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$DOCS_FINDINGS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Check Constitution Compliance
+      id: constitution_check
+      run: |
+        echo "Checking Constitution compliance..."
+        
+        CONSTITUTION_PASSED=true
+        CONSTITUTION_FINDINGS=""
+        
+        # Check Python version requirement
+        if [ -f "app/pyproject.toml" ]; then
+          if grep -q "requires-python.*3\.12" app/pyproject.toml; then
+            echo "✅ Python >=3.12 requirement found"
+            CONSTITUTION_FINDINGS="${CONSTITUTION_FINDINGS}\n✅ **Python version** - Requires Python >=3.12"
+          else
+            echo "⚠️ Python version requirement unclear"
+            CONSTITUTION_FINDINGS="${CONSTITUTION_FINDINGS}\n⚠️ **Python version** - Verify Python >=3.12 requirement"
+          fi
+          
+          # Check for Pydantic
+          if grep -q "pydantic" app/pyproject.toml; then
+            echo "✅ Pydantic dependency found"
+            CONSTITUTION_FINDINGS="${CONSTITUTION_FINDINGS}\n✅ **Type safety** - Pydantic is used for validation"
+          fi
+          
+          # Check for agent-framework
+          if grep -q "agent-framework\|microsoft-agent-framework" app/pyproject.toml; then
+            echo "✅ Agent framework dependency found"
+            CONSTITUTION_FINDINGS="${CONSTITUTION_FINDINGS}\n✅ **Agent framework** - microsoft-agent-framework is used"
+          fi
+        fi
+        
+        # Check for structured logging
+        if [ -f "app/src/logging_utils.py" ]; then
+          echo "✅ Logging utilities found"
+          CONSTITUTION_FINDINGS="${CONSTITUTION_FINDINGS}\n✅ **Observability** - Structured logging utilities present"
+        fi
+        
+        # Check project structure (app/ directory)
+        if [ -d "app" ]; then
+          echo "✅ Code in app/ directory"
+          CONSTITUTION_FINDINGS="${CONSTITUTION_FINDINGS}\n✅ **Project structure** - Application code in app/ directory"
+        else
+          echo "⚠️ No app/ directory"
+          CONSTITUTION_FINDINGS="${CONSTITUTION_FINDINGS}\n⚠️ **Project structure** - Application code should be in app/ directory"
+          CONSTITUTION_PASSED=false
+        fi
+        
+        echo "constitution_passed=${CONSTITUTION_PASSED}" >> $GITHUB_OUTPUT
+        echo "constitution_findings<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$CONSTITUTION_FINDINGS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Generate Review Summary
+      id: summary
+      env:
+        SPECKIT_FINDINGS: ${{ steps.speckit_check.outputs.findings }}
+        TEST_FINDINGS: ${{ steps.test_check.outputs.test_findings }}
+        QUALITY_FINDINGS: ${{ steps.quality_check.outputs.quality_findings }}
+        DOCS_FINDINGS: ${{ steps.docs_check.outputs.docs_findings }}
+        CONSTITUTION_FINDINGS: ${{ steps.constitution_check.outputs.constitution_findings }}
+        SPEC_FOUND: ${{ steps.speckit_check.outputs.spec_found }}
+        PLAN_FOUND: ${{ steps.speckit_check.outputs.plan_found }}
+        TASKS_FOUND: ${{ steps.speckit_check.outputs.tasks_found }}
+        TESTS_FOUND: ${{ steps.test_check.outputs.tests_found }}
+        QUALITY_PASSED: ${{ steps.quality_check.outputs.quality_passed }}
+        DOCS_FOUND: ${{ steps.docs_check.outputs.docs_found }}
+        CONSTITUTION_PASSED: ${{ steps.constitution_check.outputs.constitution_passed }}
+      run: |
+        echo "Generating review summary..."
+        
+        OVERALL_STATUS="✅ APPROVED"
+        if [ "${{ steps.speckit_check.outputs.speckit_passed }}" != "true" ] || \
+           [ "${{ steps.quality_check.outputs.quality_passed }}" != "true" ] || \
+           [ "${{ steps.constitution_check.outputs.constitution_passed }}" != "true" ]; then
+          OVERALL_STATUS="⚠️ CHANGES REQUESTED"
+        fi
+        
+        # Create checkbox function
+        checkbox() {
+          if [ "$1" = "true" ]; then
+            echo "x"
+          else
+            echo " "
+          fi
+        }
+        
+        SPEC_CHECK=$(checkbox "$SPEC_FOUND")
+        PLAN_CHECK=$(checkbox "$PLAN_FOUND")
+        TASKS_CHECK=$(checkbox "$TASKS_FOUND")
+        TESTS_CHECK=$(checkbox "$TESTS_FOUND")
+        QUALITY_CHECK=$(checkbox "$QUALITY_PASSED")
+        DOCS_CHECK=$(checkbox "$DOCS_FOUND")
+        CONST_CHECK=$(checkbox "$CONSTITUTION_PASSED")
+        
+        cat > review_summary.md << EOL
+        ## 🤖 Automated PR Review - SpecKit Compliance
+        
+        **Overall Status:** ${OVERALL_STATUS}
+        
+        ### 📋 SpecKit-Driven Development
+        ${SPECKIT_FINDINGS}
+        
+        ### 🧪 Test Coverage
+        ${TEST_FINDINGS}
+        
+        ### 🔍 Code Quality
+        ${QUALITY_FINDINGS}
+        
+        ### 📚 Documentation
+        ${DOCS_FINDINGS}
+        
+        ### 📜 Constitution Compliance
+        ${CONSTITUTION_FINDINGS}
+        
+        ---
+        
+        ### ✅ Review Checklist
+        
+        - [${SPEC_CHECK}] **spec.md** - Feature specification exists
+        - [${PLAN_CHECK}] **plan.md** - Implementation plan documented
+        - [${TASKS_CHECK}] **tasks.md** - Tasks breakdown available
+        - [${TESTS_CHECK}] **Tests** - Test coverage present (if applicable)
+        - [${QUALITY_CHECK}] **Code Quality** - Linting and type checks pass
+        - [${DOCS_CHECK}] **Documentation** - README and inline docs present
+        - [${CONST_CHECK}] **Constitution** - Constitutional requirements met
+        
+        ---
+        
+        ### 📖 Guidance
+        
+        This automated review checks for:
+        
+        1. **SpecKit-Driven Development**: PRs should include spec.md (required), plan.md, and tasks.md
+        2. **Test Coverage**: Appropriate tests should be included for code changes
+        3. **Code Quality**: Code should pass ruff linting and mypy type checking
+        4. **Documentation**: Changes should include proper documentation and comments
+        5. **Constitution Compliance**: Code should follow the project constitution requirements
+        
+        If this review requests changes, please address the issues marked with ❌ or ⚠️ and update your PR.
+        
+        *This is an automated review. Human review is still required.*
+        EOL
+        
+        cat review_summary.md
+
+    - name: Comment on PR
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const fs = require('fs');
+          const summary = fs.readFileSync('review_summary.md', 'utf8');
+          
+          // Find existing bot comments
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const botComment = comments.find(comment => 
+            comment.user.type === 'Bot' && 
+            comment.body.includes('🤖 Automated PR Review')
+          );
+          
+          if (botComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: summary
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: summary
+            });
+          }
+
+    - name: Set PR Status
+      if: always()
+      run: |
+        if [ "${{ steps.speckit_check.outputs.speckit_passed }}" != "true" ] || \
+           [ "${{ steps.quality_check.outputs.quality_passed }}" != "true" ]; then
+          echo "PR review found issues that need to be addressed"
+          exit 1
+        fi
+        echo "PR review passed"
