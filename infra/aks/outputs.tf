@@ -27,12 +27,12 @@ output "aks_node_resource_group" {
 output "aks_kubelet_identity" {
   description = "The kubelet identity of the AKS cluster"
   value = {
-    object_id = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
-    client_id = azurerm_kubernetes_cluster.aks.kubelet_identity[0].client_id
+    object_id = try(azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id, null)
+    client_id = try(azurerm_kubernetes_cluster.aks.kubelet_identity[0].client_id, null)
   }
 }
 
 output "aks_identity_principal_id" {
   description = "The principal ID of the system assigned identity"
-  value       = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+  value       = try(azurerm_kubernetes_cluster.aks.identity[0].principal_id, null)
 }

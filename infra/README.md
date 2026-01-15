@@ -236,7 +236,7 @@ ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server)
 az acr login --name $ACR_NAME
 
 # List repositories (should be empty initially)
-az acr repository list --name $ACR_NAME
+az acr repository list --name $(terraform output -raw acr_name)
 ```
 
 ### Push a Test Image to ACR
