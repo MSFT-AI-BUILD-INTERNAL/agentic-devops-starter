@@ -17,6 +17,8 @@ spec:
     spec:
       containers:
         - name: app
+          # Image tag will be substituted by envsubst in the GitHub Actions workflow
+          # ${ACR_NAME} and ${IMAGE_TAG} are replaced at deployment time
           image: ${ACR_NAME}.azurecr.io/agentic-devops-starter:${IMAGE_TAG}
           ports:
             - containerPort: 5100
