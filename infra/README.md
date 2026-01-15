@@ -419,7 +419,7 @@ az aks show --resource-group rg-agentic-devops \
   --name aks-agentic-devops
 
 # ACR logs
-az acr show --name acragenticdevops
+az acr show --name $(terraform output -raw acr_name)
 ```
 
 ## Cost Estimation
