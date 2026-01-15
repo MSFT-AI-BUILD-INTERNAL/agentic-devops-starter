@@ -99,7 +99,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "agent-framework-ag-ui", specifier = ">=1.0.0b260107" },
-    { name = "agent-framework-azure-ai" },
+    { name = "agent-framework-azure-ai", specifier = ">=1.0.0b260107" },
     { name = "agent-framework-core", specifier = ">=1.0.0b260107" },
     { name = "azure-identity", specifier = ">=1.19.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
