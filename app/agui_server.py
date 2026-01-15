@@ -14,8 +14,9 @@ import os
 from typing import Annotated
 
 from agent_framework import ChatAgent, ai_function
-from agent_framework.ag_ui import add_agent_framework_fastapi_endpoint
-from agent_framework.azure import AzureOpenAIChatClient
+from agent_framework_ag_ui import add_agent_framework_fastapi_endpoint
+from agent_framework.azure import AzureAIAgentClient
+from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
@@ -28,9 +29,9 @@ load_dotenv()
 logger = setup_logging()
 
 # Read configuration from environment
-endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-deployment_name = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME")
-api_key = os.environ.get("AZURE_OPENAI_API_KEY")
+endpoint = os.environ.get("AZURE_AI_PROJECT_ENDPOINT")
+deployment_name = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-08-07")
 openai_api_key = os.environ.get("OPENAI_API_KEY")
 
 
@@ -78,17 +79,20 @@ def create_agent() -> ChatAgent:
 
     logger.info("Creating ChatAgent for AG-UI server")
 
-    # Try Azure OpenAI first, fall back to OpenAI
-    chat_client: Union[AzureOpenAIChatClient, OpenAIChatClient]
+    # Try Azure AI Foundry first, fall back to OpenAI
+    chat_client: Union[AzureAIAgentClient, OpenAIChatClient]
     if endpoint and deployment_name:
-        logger.info("Using Azure OpenAI client")
-        if not api_key:
-            logger.warning("AZURE_OPENAI_API_KEY not set, using DefaultAzureCredential")
-
-        chat_client = AzureOpenAIChatClient(
+        logger.info(f"Using Azure AI Foundry client with DefaultAzureCredential (API version: {api_version})")
+        
+        # Use DefaultAzureCredential for Azure AI Foundry authentication
+        # Azure AI Foundry requires the https://ai.azure.com/.default scope
+        credential = DefaultAzureCredential()
+        
+        chat_client = AzureAIAgentClient(
             endpoint=endpoint,
-            deployment_name=deployment_name,
-            api_key=api_key,
+            model=deployment_name,
+            credential=credential,
+            api_version=api_version,
         )
     elif openai_api_key:
         logger.info("Using OpenAI client")
@@ -99,7 +103,7 @@ def create_agent() -> ChatAgent:
         )
     else:
         raise ValueError(
-            "Either AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_CHAT_DEPLOYMENT_NAME, "
+            "Either AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_MODEL_DEPLOYMENT_NAME, "
             "or OPENAI_API_KEY must be set"
         )
 

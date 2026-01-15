@@ -77,8 +77,8 @@ def test_agent_has_time_zone_tool(test_env: None) -> None:
 def test_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that appropriate error is raised when API keys are missing."""
     # Clear all API keys
-    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
-    monkeypatch.delenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", raising=False)
+    monkeypatch.delenv("AZURE_AI_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     

@@ -74,7 +74,7 @@ OPENAI_API_KEY=sk-your-api-key-here
 LLM_MODEL=gpt-4
 
 # Azure OpenAI Configuration (if using Azure)
-# AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+# AZURE_AI_PROJECT_ENDPOINT=https://your-resource.openai.azure.com/
 # AZURE_OPENAI_API_KEY=your-azure-key
 # AZURE_OPENAI_DEPLOYMENT=your-deployment-name
 # AZURE_OPENAI_API_VERSION=2024-02-15-preview
@@ -94,7 +94,7 @@ TOOL_TIMEOUT_SECONDS=30
 
 At minimum, you must set:
 - `OPENAI_API_KEY` (for OpenAI) OR
-- `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` (for Azure)
+- `AZURE_AI_PROJECT_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` (for Azure)
 
 ---
 

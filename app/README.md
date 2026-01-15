@@ -296,8 +296,8 @@ Configure LLM providers using environment variables (see `.env.example`):
 
 ```bash
 # Azure OpenAI (Preferred)
-export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-export AZURE_OPENAI_CHAT_DEPLOYMENT_NAME="gpt-4o-mini"
+export AZURE_AI_PROJECT_ENDPOINT="https://your-resource.openai.azure.com/"
+export AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-4o-mini"
 export AZURE_OPENAI_API_KEY="your-key"  # Optional if using DefaultAzureCredential
 
 # OpenAI (Fallback)

@@ -14,8 +14,8 @@ Edit `.env` and add your API keys:
 
 ```env
 # For Azure OpenAI
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=gpt-4o-mini
+AZURE_AI_PROJECT_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-4o-mini
 AZURE_OPENAI_API_KEY=your-api-key
 
 # OR for OpenAI
