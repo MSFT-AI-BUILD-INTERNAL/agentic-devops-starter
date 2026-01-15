@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentic-devops-app
+  labels:
+    app: agentic-devops
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agentic-devops
+  template:
+    metadata:
+      labels:
+        app: agentic-devops
+    spec:
+      containers:
+      - name: app
+        image: ${ACR_NAME}.azurecr.io/agentic-devops-starter:${IMAGE_TAG}
+        ports:
+        - containerPort: 5100
+          name: http
+        env:
+        - name: AZURE_AI_PROJECT_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: azure-config
+              key: endpoint
+              optional: true
+        - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+          valueFrom:
+            secretKeyRef:
+              name: azure-config
+              key: deployment-name
+              optional: true
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-config
+              key: openai-api-key
+              optional: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 5100
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 5100
+          initialDelaySeconds: 10
+          periodSeconds: 5
