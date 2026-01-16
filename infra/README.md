@@ -16,6 +16,10 @@ infra/
 │   ├── main.tf            # AKS resource definition
 │   ├── variables.tf       # AKS input variables
 │   └── outputs.tf         # AKS outputs
+├── log-analytics/          # Azure Log Analytics module
+│   ├── main.tf            # Log Analytics Workspace and Container Insights
+│   ├── variables.tf       # Log Analytics input variables
+│   └── outputs.tf         # Log Analytics outputs
 ├── main.tf                # Root configuration orchestrating modules
 ├── variables.tf           # Root input variables
 ├── outputs.tf             # Root outputs
@@ -29,15 +33,19 @@ The infrastructure provisions the following resources:
 1. **Resource Group**: Container for all Azure resources
 2. **Azure Container Registry (ACR)**: Private container registry for storing Docker images
 3. **Azure Kubernetes Service (AKS)**: Managed Kubernetes cluster for running containerized applications
-4. **Role Assignment**: Configures AKS to pull images from ACR using managed identity
+4. **Azure Log Analytics Workspace**: Centralized logging and monitoring solution for AKS
+5. **Container Insights**: Azure Monitor solution for collecting logs and metrics from AKS clusters
+6. **Role Assignment**: Configures AKS to pull images from ACR using managed identity
 
 ### Key Features
 
-- **Modular Design**: Separate modules for ACR and AKS for reusability
+- **Modular Design**: Separate modules for ACR, AKS, and Log Analytics for reusability
 - **Managed Identity**: Uses system-assigned managed identities for secure authentication
 - **ACR Integration**: AKS is automatically configured with AcrPull role to pull images from ACR
 - **Auto-scaling**: Node pool configured with auto-scaling (1-5 nodes by default)
 - **Network Configuration**: Uses Azure CNI for advanced networking capabilities
+- **Centralized Logging**: Log Analytics Workspace collects logs and metrics from AKS
+- **Container Insights**: Pre-configured monitoring solution for containerized workloads
 - **Tagging**: Comprehensive tagging for resource organization and cost tracking
 
 ## Prerequisites
@@ -136,6 +144,11 @@ vm_size             = "Standard_D2s_v3"
 enable_auto_scaling = true
 min_node_count      = 1
 max_node_count      = 5
+
+# Log Analytics Configuration
+log_analytics_workspace_name = "log-agentic-devops"
+log_analytics_sku            = "PerGB2018"
+log_analytics_retention_days = 30
 ```
 
 **Important**: The `acr_name` must be globally unique across all of Azure and contain only alphanumeric characters.
@@ -157,6 +170,9 @@ max_node_count      = 5
 | `enable_auto_scaling` | Enable auto-scaling | `true` | No |
 | `min_node_count` | Min nodes (auto-scaling) | `1` | No |
 | `max_node_count` | Max nodes (auto-scaling) | `5` | No |
+| `log_analytics_workspace_name` | Log Analytics Workspace name | `log-agentic-devops` | No |
+| `log_analytics_sku` | Log Analytics SKU | `PerGB2018` | No |
+| `log_analytics_retention_days` | Log retention period (days) | `30` | No |
 
 \* Must be customized to ensure global uniqueness
 
@@ -188,9 +204,11 @@ You'll be prompted to confirm. Type `yes` to proceed.
 
 The deployment typically takes 10-15 minutes. Terraform will create:
 1. Resource Group (1-2 minutes)
-2. Azure Container Registry (2-3 minutes)
-3. Azure Kubernetes Service (8-12 minutes)
-4. Role Assignment (< 1 minute)
+2. Log Analytics Workspace (2-3 minutes)
+3. Container Insights Solution (1-2 minutes)
+4. Azure Container Registry (2-3 minutes)
+5. Azure Kubernetes Service with monitoring enabled (8-12 minutes)
+6. Role Assignment (< 1 minute)
 
 ### Step 3: Retrieve Outputs
 
@@ -304,6 +322,169 @@ kubectl get services
 # Get external IP (may take a few minutes)
 kubectl get service nginx-test -w
 ```
+
+## Azure Log Analytics and Container Insights
+
+The infrastructure includes Azure Log Analytics Workspace with Container Insights, which automatically collects logs and metrics from your AKS cluster.
+
+### What Gets Monitored
+
+Container Insights provides comprehensive monitoring for:
+
+1. **Container Performance**: CPU and memory usage for containers and nodes
+2. **Container Logs**: stdout/stderr logs from all containers
+3. **Kubernetes Events**: Deployment, pod, and service events
+4. **Node Metrics**: Node-level CPU, memory, disk, and network metrics
+5. **Cluster Health**: Overall cluster status and health metrics
+
+### Accessing Logs and Metrics
+
+#### Option 1: Azure Portal
+
+1. Navigate to [Azure Portal](https://portal.azure.com)
+2. Go to your AKS cluster resource (e.g., `aks-agentic-devops`)
+3. In the left menu, under **Monitoring**, select:
+   - **Insights**: Pre-built dashboards showing cluster health, node performance, and container metrics
+   - **Logs**: Query logs using Kusto Query Language (KQL)
+   - **Workbooks**: Advanced visualization and reporting
+
+#### Option 2: Azure CLI
+
+Query logs directly from the command line:
+
+```bash
+# Get the Log Analytics Workspace ID
+WORKSPACE_ID=$(terraform output -raw log_analytics_workspace_id)
+
+# Query container logs (last 1 hour)
+az monitor log-analytics query \
+  --workspace $WORKSPACE_ID \
+  --analytics-query "ContainerLog | where TimeGenerated > ago(1h) | limit 100" \
+  --output table
+
+# Query performance metrics
+az monitor log-analytics query \
+  --workspace $WORKSPACE_ID \
+  --analytics-query "Perf | where TimeGenerated > ago(1h) | limit 100" \
+  --output table
+```
+
+### Common Log Analytics Queries
+
+Here are some useful KQL queries you can run in the Azure Portal Logs section:
+
+#### View Container Logs
+```kql
+ContainerLog
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, Computer, ContainerID, LogEntry
+| order by TimeGenerated desc
+| limit 100
+```
+
+#### Monitor Container CPU Usage
+```kql
+Perf
+| where ObjectName == "K8SContainer" and CounterName == "cpuUsageNanoCores"
+| where TimeGenerated > ago(1h)
+| summarize AvgCPU = avg(CounterValue) by bin(TimeGenerated, 5m), InstanceName
+| render timechart
+```
+
+#### Monitor Container Memory Usage
+```kql
+Perf
+| where ObjectName == "K8SContainer" and CounterName == "memoryRssBytes"
+| where TimeGenerated > ago(1h)
+| summarize AvgMemory = avg(CounterValue) by bin(TimeGenerated, 5m), InstanceName
+| render timechart
+```
+
+#### View Kubernetes Events
+```kql
+KubeEvents
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, Namespace, Name, Reason, Message
+| order by TimeGenerated desc
+```
+
+#### Find Error Logs
+```kql
+ContainerLog
+| where TimeGenerated > ago(24h)
+| where LogEntry contains "error" or LogEntry contains "Error" or LogEntry contains "ERROR"
+| project TimeGenerated, Computer, ContainerID, LogEntry
+| order by TimeGenerated desc
+```
+
+#### Pod Restart Analysis
+```kql
+KubePodInventory
+| where TimeGenerated > ago(24h)
+| where PodStatus == "Failed" or RestartCount > 0
+| summarize TotalRestarts = sum(RestartCount) by Name, Namespace
+| order by TotalRestarts desc
+```
+
+### Setting Up Alerts
+
+Create alerts to be notified of issues:
+
+```bash
+# Example: Create alert for high CPU usage
+az monitor metrics alert create \
+  --name "AKS-High-CPU" \
+  --resource-group rg-agentic-devops \
+  --scopes $(terraform output -raw aks_id) \
+  --condition "avg Percentage CPU > 80" \
+  --window-size 5m \
+  --evaluation-frequency 1m \
+  --description "Alert when AKS CPU usage is over 80%"
+```
+
+### Log Retention and Costs
+
+- **Default Retention**: 30 days (configurable via `log_analytics_retention_days` variable)
+- **Cost**: Pay-per-GB ingestion model (PerGB2018 SKU)
+- **Estimated Cost**: Approximately $2-3/GB/month for data ingestion and retention
+
+To optimize costs:
+- Adjust retention period based on compliance requirements
+- Use data collection rules to filter unnecessary logs
+- Archive older logs to Azure Storage for long-term retention
+
+### Troubleshooting Log Analytics
+
+#### Check if Container Insights is enabled:
+```bash
+# Verify OMS agent is running
+kubectl get pods -n kube-system | grep omsagent
+
+# Check OMS agent logs if having issues
+kubectl logs -n kube-system -l component=oms-agent --tail=50
+```
+
+#### Verify Log Analytics connection:
+```bash
+# Check addon profile
+az aks show \
+  --resource-group rg-agentic-devops \
+  --name aks-agentic-devops \
+  --query "addonProfiles.omsagent" \
+  --output table
+```
+
+#### Common Issues:
+
+1. **No data appearing in Log Analytics**
+   - Wait 5-10 minutes after cluster creation for initial data ingestion
+   - Verify OMS agent pods are running: `kubectl get pods -n kube-system | grep omsagent`
+   - Check that the workspace ID is correctly configured
+
+2. **High costs**
+   - Review data ingestion volume in the Log Analytics Workspace
+   - Consider reducing log verbosity for applications
+   - Adjust retention period if long-term storage isn't needed
 
 ## GitHub Actions Integration
 
@@ -429,12 +610,16 @@ Approximate monthly costs (US East region):
 | AKS Management | Free | $0 |
 | ACR | Standard tier | ~$20/month |
 | Load Balancer | Standard | ~$20/month |
-| **Total** | | **~$180/month** |
+| Log Analytics | ~5 GB/month data ingestion | ~$10-15/month |
+| Container Insights | Included with Log Analytics | $0 |
+| **Total** | | **~$190-195/month** |
 
 To reduce costs:
 - Use `Basic` ACR SKU (~$5/month)
 - Use smaller VM sizes (e.g., `Standard_B2s`)
 - Reduce minimum node count to 1
+- Reduce Log Analytics retention period (minimum 7 days)
+- Use free tier Log Analytics for development (500 MB/day limit)
 - Delete resources when not in use
 
 ## Troubleshooting
@@ -466,6 +651,16 @@ To reduce costs:
    Solution: Verify role assignment exists:
    ```bash
    az role assignment list --scope $(terraform output -raw acr_id)
+   ```
+
+5. **Log Analytics not receiving data**
+   ```
+   No data in Container Insights
+   ```
+   Solution: Wait 5-10 minutes for initial data ingestion, then verify OMS agent is running:
+   ```bash
+   kubectl get pods -n kube-system | grep omsagent
+   kubectl logs -n kube-system -l component=oms-agent --tail=50
    ```
 
 ### Debug Mode
@@ -501,9 +696,11 @@ Type `yes` when prompted. This will:
 1. Remove role assignments
 2. Delete AKS cluster (5-10 minutes)
 3. Delete ACR
-4. Delete resource group
+4. Delete Container Insights solution
+5. Delete Log Analytics Workspace
+6. Delete resource group
 
-**Warning**: This action is irreversible. All data, including container images and configurations, will be permanently deleted.
+**Warning**: This action is irreversible. All data, including container images, logs, and configurations, will be permanently deleted.
 
 ### Selective Cleanup
 
@@ -515,6 +712,9 @@ terraform destroy -target=module.aks
 
 # Destroy only ACR
 terraform destroy -target=module.acr
+
+# Destroy only Log Analytics
+terraform destroy -target=module.log_analytics
 ```
 
 ### Verify Cleanup
