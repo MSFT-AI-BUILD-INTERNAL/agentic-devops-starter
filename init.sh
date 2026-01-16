@@ -24,7 +24,7 @@ source .venv/bin/activate
 
 # Install Python packages from pyproject.toml
 echo "📚 Installing Python packages..."
-uv pip install -e ./app
+uv pip install -e ./app --prerelease=allow
 
 # Install specify-cli
 echo "🔧 Installing specify-cli..."
@@ -38,12 +38,58 @@ specify check
 
 echo "✓ Speckit environment initialized successfully."
 
+# Install Terraform
+if ! command -v terraform &> /dev/null; then
+    echo "🏗️  Installing Terraform..."
+    
+    # Detect architecture
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "x86_64" ]; then
+        TF_ARCH="amd64"
+    elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+        TF_ARCH="arm64"
+    else
+        echo "❌ Unsupported architecture: $ARCH"
+        exit 1
+    fi
+    
+    # Download and install latest Terraform
+    TF_VERSION=$(curl -s https://checkpoint-api.hashicorp.com/v1/check/terraform | grep -o '"current_version":"[^"]*"' | cut -d'"' -f4)
+    wget -q https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_${TF_ARCH}.zip
+    unzip -q terraform_${TF_VERSION}_linux_${TF_ARCH}.zip
+    sudo mv terraform /usr/local/bin/
+    rm terraform_${TF_VERSION}_linux_${TF_ARCH}.zip
+    
+    echo "✅ Terraform ${TF_VERSION} installed"
+else
+    echo "✅ Terraform already installed: $(terraform version | head -n1 | cut -d'v' -f2)"
+fi
+
+# Install kubectl
+if ! command -v kubectl &> /dev/null; then
+    echo "☸️  Installing kubectl..."
+    
+    # Download the latest stable version
+    KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+    curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+    
+    # Install kubectl
+    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+    rm kubectl
+    
+    echo "✅ kubectl ${KUBECTL_VERSION} installed"
+else
+    echo "✅ kubectl already installed: $(kubectl version --client --short 2>/dev/null | cut -d' ' -f3 || kubectl version --client 2>/dev/null | grep 'Client Version' | cut -d':' -f2 | tr -d ' ')"
+fi
+
 echo ""
 echo "✨ Installation complete!"
 echo ""
 echo "📝 Installed packages:"
 echo "   - agent-framework"
 echo "   - specify-cli"
+echo "   - terraform $(terraform version 2>/dev/null | head -n1 | cut -d'v' -f2 || echo '')"
+echo "   - kubectl $(kubectl version --client --short 2>/dev/null | cut -d' ' -f3 || echo '')"
 echo ""
 echo "🤖 AI Environment:"
 echo "   - Initialized with GitHub Copilot"
