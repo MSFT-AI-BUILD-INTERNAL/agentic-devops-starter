@@ -13,7 +13,7 @@ acr_admin_enabled = false              # Set to true if you need admin credentia
 # Azure Kubernetes Service Configuration
 aks_cluster_name   = "aks-agentic-devops"
 aks_dns_prefix     = "aks-agentic-devops"
-kubernetes_version = "1.28"
+kubernetes_version = "1.32"
 
 # Node Pool Configuration
 node_count          = 2

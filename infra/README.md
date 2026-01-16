@@ -54,13 +54,23 @@ Before deploying this infrastructure, ensure you have:
    ```
 
 2. **Terraform** (version 1.5.0 or later)
+   
+   You can install Terraform automatically by running the project initialization script from the repository root:
    ```bash
-   # Install Terraform
+   # Run from repository root directory
+   ./init.sh
+   ```
+   
+   Alternatively, install Terraform manually:
+   ```bash
+   # Install Terraform manually
    wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
    sudo apt update && sudo apt install terraform
+   ```
    
-   # Verify installation
+   Verify installation:
+   ```bash
    terraform --version
    ```
 
@@ -166,20 +176,7 @@ This will:
 - Initialize the backend
 - Set up the working directory
 
-### Step 2: Plan the Deployment
-
-Review the changes that will be made:
-
-```bash
-terraform plan
-```
-
-This command shows you:
-- Resources that will be created
-- Configuration details
-- Any potential issues
-
-### Step 3: Apply the Configuration
+### Step 2: Apply the Configuration
 
 Deploy the infrastructure:
 
@@ -195,7 +192,7 @@ The deployment typically takes 10-15 minutes. Terraform will create:
 3. Azure Kubernetes Service (8-12 minutes)
 4. Role Assignment (< 1 minute)
 
-### Step 4: Retrieve Outputs
+### Step 3: Retrieve Outputs
 
 After successful deployment, Terraform displays important outputs:
 
