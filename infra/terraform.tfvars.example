@@ -22,6 +22,11 @@ enable_auto_scaling = true
 min_node_count      = 1
 max_node_count      = 5
 
+# Log Analytics Configuration
+log_analytics_workspace_name = "log-agentic-devops"
+log_analytics_sku            = "PerGB2018"          # Options: Free, PerNode, Premium, Standard, Standalone, Unlimited, CapacityReservation, PerGB2018
+log_analytics_retention_days = 30                   # Retention period in days (7-730 for paid tier, 7 for free tier)
+
 # Tags
 tags = {
   Environment = "Development"
