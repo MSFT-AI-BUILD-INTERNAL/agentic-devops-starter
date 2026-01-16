@@ -8,11 +8,6 @@ output "workspace_name" {
   value       = azurerm_log_analytics_workspace.aks.name
 }
 
-output "workspace_resource_id" {
-  description = "The resource ID of the Log Analytics Workspace"
-  value       = azurerm_log_analytics_workspace.aks.id
-}
-
 output "workspace_primary_shared_key" {
   description = "The primary shared key for the Log Analytics Workspace"
   value       = azurerm_log_analytics_workspace.aks.primary_shared_key

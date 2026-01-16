@@ -25,13 +25,13 @@ variable "sku" {
 }
 
 variable "retention_in_days" {
-  description = "The workspace data retention in days. Possible values are 30-730 days for paid tier, 7 days for free tier."
+  description = "The workspace data retention in days. Possible values are 30-730 days for paid tiers (PerGB2018, Standard, Premium, etc.). The Free tier is fixed at 7 days and cannot be configured."
   type        = number
   default     = 30
 
   validation {
     condition     = var.retention_in_days >= 7 && var.retention_in_days <= 730
-    error_message = "Retention in days must be between 7 and 730."
+    error_message = "Retention in days must be between 7 and 730. Note: Free tier only supports 7 days."
   }
 }
 
