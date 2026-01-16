@@ -1,48 +1,103 @@
+---
 name: Deploy to Azure
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
 
+env:
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+  AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
+  AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
+  IMAGE_NAME: agentic-devops-starter
+
 jobs:
-  deploy:
+  build-and-push:
     runs-on: ubuntu-latest
     environment: production
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
+      - name: Login to Azure Container Registry
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
 
-    - name: Install dependencies
-      run: |
-        uv venv
-        uv pip install -r requirements.txt || echo "No requirements.txt found"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Azure Login
-      uses: azure/login@v2
-      with:
-        client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-    - name: Deploy to Azure
-      run: |
-        # Add your Azure deployment commands here
-        # Example: az webapp deploy --name <app-name> --resource-group <rg-name> --src-path .
-        echo "Deployment placeholder"
-        az account show
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set AKS context
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Create Kubernetes secret for Azure configuration
+        run: |
+          kubectl create secret generic azure-config \
+            --from-literal=AZURE_AI_PROJECT_ENDPOINT="${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" \
+            --from-literal=AZURE_AI_MODEL_DEPLOYMENT_NAME="${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" \
+            --from-literal=AZURE_OPENAI_API_VERSION="${{ secrets.AZURE_OPENAI_API_VERSION }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy to AKS
+        run: |
+          # Replace placeholders in deployment manifest
+          export ACR_NAME=${{ env.ACR_NAME }}
+          export IMAGE_TAG=${{ github.sha }}
+
+          # Apply Kubernetes manifests with variable substitution
+          envsubst < k8s/deployment.yaml | kubectl apply -f -
+          kubectl apply -f k8s/service.yaml
+
+      - name: Wait for deployment rollout
+        run: |
+          kubectl rollout status deployment/agentic-devops-app --timeout=5m
+
+      - name: Get service external IP
+        run: |
+          echo "Waiting for LoadBalancer IP assignment..."
+          kubectl wait --for=condition=ready service/agentic-devops-service --timeout=120s || true
+          kubectl get service agentic-devops-service
