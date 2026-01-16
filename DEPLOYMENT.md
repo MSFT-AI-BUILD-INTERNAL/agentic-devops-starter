@@ -106,7 +106,39 @@ The deployment uses the SHA tag for immutability and reproducibility.
 
 Before running the workflow:
 
-1. **Create Azure Resources**:
+1. **Create Azure Resources with Terraform**:
+   
+   The repository includes Terraform infrastructure code in the `/infra` directory that automates the creation of all required Azure resources.
+   
+   ```bash
+   # Navigate to infrastructure directory
+   cd infra
+   
+   # Copy and configure variables
+   cp terraform.tfvars.example terraform.tfvars
+   # Edit terraform.tfvars with your desired values
+   
+   # Initialize Terraform
+   terraform init
+   
+   # Preview changes
+   terraform plan
+   
+   # Create resources
+   terraform apply
+   ```
+   
+   The Terraform configuration creates:
+   - Resource Group
+   - Azure Container Registry (ACR)
+   - Azure Kubernetes Service (AKS) with managed identity
+   - Role assignment for AKS to pull from ACR
+   
+   After applying, Terraform will output the resource names needed for GitHub Secrets.
+   
+   **Note**: For detailed Terraform documentation, see `/infra/README.md`
+
+   Alternatively, you can create resources manually:
    ```bash
    # Create resource group
    az group create --name <resource-group> --location <location>
@@ -123,7 +155,21 @@ Before running the workflow:
    - Configure federated credentials for GitHub Actions
    - Grant necessary permissions (AcrPush, AKS Contributor)
 
-3. **Configure GitHub Secrets**: Add all required secrets in repository settings
+3. **Configure GitHub Secrets**: 
+   
+   After creating resources with Terraform, use the output values:
+   ```bash
+   # Get resource names from Terraform
+   terraform output acr_name
+   terraform output aks_name
+   terraform output resource_group_name
+   ```
+   
+   Add these as secrets in your GitHub repository settings (Settings → Secrets and variables → Actions):
+   - `ACR_NAME`: From `terraform output acr_name`
+   - `AKS_CLUSTER_NAME`: From `terraform output aks_name`
+   - `AKS_RESOURCE_GROUP`: From `terraform output resource_group_name`
+   - Plus Azure authentication secrets (CLIENT_ID, TENANT_ID, SUBSCRIPTION_ID)
 
 ## Deployment Flow
 

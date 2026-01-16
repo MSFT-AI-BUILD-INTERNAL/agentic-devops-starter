@@ -13,10 +13,19 @@ Before deploying, ensure you have:
 
 1. **Azure Container Registry (ACR)** - To store Docker images
 2. **Azure Kubernetes Service (AKS)** - Target deployment cluster
+
+   **Recommended**: Use the Terraform infrastructure code in the `/infra` directory to create these resources:
+   ```bash
+   cd infra
+   terraform init
+   terraform apply
+   ```
+   See `/infra/README.md` for detailed instructions.
+
 3. **GitHub Secrets** configured in your repository:
-   - `ACR_NAME`: Name of your Azure Container Registry
-   - `AKS_CLUSTER_NAME`: Name of your AKS cluster
-   - `AKS_RESOURCE_GROUP`: Azure resource group containing the AKS cluster
+   - `ACR_NAME`: Name of your Azure Container Registry (from Terraform output)
+   - `AKS_CLUSTER_NAME`: Name of your AKS cluster (from Terraform output)
+   - `AKS_RESOURCE_GROUP`: Azure resource group containing the AKS cluster (from Terraform output)
    - `AZURE_CLIENT_ID`: Azure service principal client ID
    - `AZURE_TENANT_ID`: Azure tenant ID
    - `AZURE_SUBSCRIPTION_ID`: Azure subscription ID
