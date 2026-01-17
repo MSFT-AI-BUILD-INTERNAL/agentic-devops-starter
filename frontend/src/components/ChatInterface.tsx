@@ -4,13 +4,11 @@ import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { useChat } from '../hooks/useChat';
 import { useStreaming } from '../hooks/useStreaming';
-import { useConnection } from '../hooks/useConnection';
 import { logger } from '../utils/logger';
 
 export function ChatInterface() {
   const { messages, sendMessage, newConversation, isInputDisabled, currentThreadId } = useChat();
   const { isStreaming, streamingText } = useStreaming();
-  const { status: connectionStatus, errorMessage: connectionError } = useConnection();
 
   /**
    * Handle sending a message
@@ -44,36 +42,10 @@ export function ChatInterface() {
         <div>
           <h2 className="text-xl font-bold">AI Assistant</h2>
           <div className="text-sm opacity-90 mt-1">
-            {connectionStatus === 'connected' && (
-              <span className="flex items-center">
-                <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
-                Connected
-              </span>
-            )}
-            {connectionStatus === 'connecting' && (
-              <span className="flex items-center">
-                <span className="w-2 h-2 bg-yellow-400 rounded-full mr-2 animate-pulse"></span>
-                Connecting...
-              </span>
-            )}
-            {connectionStatus === 'reconnecting' && (
-              <span className="flex items-center">
-                <span className="w-2 h-2 bg-yellow-400 rounded-full mr-2 animate-pulse"></span>
-                Reconnecting...
-              </span>
-            )}
-            {connectionStatus === 'disconnected' && (
-              <span className="flex items-center">
-                <span className="w-2 h-2 bg-red-400 rounded-full mr-2"></span>
-                Disconnected
-              </span>
-            )}
-            {connectionStatus === 'error' && (
-              <span className="flex items-center">
-                <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
-                {connectionError || 'Connection error'}
-              </span>
-            )}
+            <span className="flex items-center">
+              <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
+              Ready
+            </span>
           </div>
         </div>
 
@@ -112,42 +84,14 @@ export function ChatInterface() {
         </div>
       </div>
 
-      {/* Connection error banner */}
-      {connectionStatus === 'error' && connectionError && (
-        <div className="bg-red-50 border-b border-red-200 px-6 py-3">
-          <div className="flex items-center">
-            <svg
-              className="h-5 w-5 text-red-500 mr-2"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <div className="flex-1">
-              <p className="text-sm text-red-800">{connectionError}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Message list */}
       <MessageList messages={messages} isStreaming={isStreaming} streamingText={streamingText} />
 
       {/* Input */}
       <MessageInput
         onSendMessage={handleSendMessage}
-        disabled={isInputDisabled || connectionStatus !== 'connected'}
-        placeholder={
-          connectionStatus !== 'connected'
-            ? 'Connect to start chatting...'
-            : 'Type your message...'
-        }
+        disabled={isInputDisabled}
+        placeholder="Type your message..."
       />
     </div>
   );

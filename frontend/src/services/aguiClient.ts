@@ -2,7 +2,7 @@
 import { logger } from '../utils/logger';
 
 export interface ChatRequest {
-  message: string;
+  messages: Array<{ role: string; content: string }>;
   thread_id?: string | null;
   stream: boolean;
 }
@@ -41,7 +41,11 @@ class AGUIClient {
   /**
    * Send a chat message to the backend
    */
-  async sendMessage(message: string, threadId?: string | null): Promise<ChatResponse> {
+  async sendMessage(
+    message: string,
+    threadId?: string | null,
+    onEvent?: (event: any) => void
+  ): Promise<ChatResponse> {
     const correlationId = logger.generateCorrelationId();
     logger.setCorrelationId(correlationId);
 
@@ -51,7 +55,7 @@ class AGUIClient {
     });
 
     const request: ChatRequest = {
-      message,
+      messages: [{ role: 'user', content: message }],
       thread_id: threadId,
       stream: true,
     };
@@ -74,8 +78,51 @@ class AGUIClient {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      // For streaming, we don't parse response body
-      // The SSE connection will handle the stream
+      // Handle SSE stream from response body
+      if (response.body && onEvent) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let threadIdFromStream: string | undefined;
+
+        // Process stream in background
+        (async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  if (data.trim()) {
+                    try {
+                      const event = JSON.parse(data);
+                      if (event.threadId && !threadIdFromStream) {
+                        threadIdFromStream = event.threadId;
+                      }
+                      onEvent(event);
+                    } catch (e) {
+                      logger.error('Failed to parse SSE event', e);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            logger.error('Stream reading error', error);
+          }
+        })();
+
+        // Return immediately with thread_id (will be updated from stream)
+        return { thread_id: threadId || threadIdFromStream || crypto.randomUUID() };
+      }
+
+      // Fallback for non-streaming
       const data = await response.json();
       logger.info('Chat message sent successfully', { threadId: data.thread_id });
 

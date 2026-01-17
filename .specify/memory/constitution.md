@@ -1,63 +1,50 @@
-# LLM-Based Chatbot Constitution
+# [PROJECT_NAME] Constitution
+<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
 
 ## Core Principles
 
-### I. Python-First Backend
-All backend services must be implemented in Python (≥3.12). The microsoft-agent-framework is the mandatory foundation for building conversational agents and handling LLM interactions.
+### [PRINCIPLE_1_NAME]
+<!-- Example: I. Library-First -->
+[PRINCIPLE_1_DESCRIPTION]
+<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
 
-### II. Agent-Centric Architecture
-Use microsoft-agent-framework as the core orchestration layer. All conversational logic, state management, and tool integrations must leverage the framework's agent primitives.
+### [PRINCIPLE_2_NAME]
+<!-- Example: II. CLI Interface -->
+[PRINCIPLE_2_DESCRIPTION]
+<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
 
-### III. Type Safety
-All code must include type hints. Use Pydantic for data validation and serialization. Run mypy checks to ensure type correctness.
+### [PRINCIPLE_3_NAME]
+<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
+[PRINCIPLE_3_DESCRIPTION]
+<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
 
-### IV. Response Quality
-LLM responses must be validated before delivery to users. Implement guardrails for harmful content, hallucinations, and off-topic responses. Log all LLM interactions for audit and improvement.
+### [PRINCIPLE_4_NAME]
+<!-- Example: IV. Integration Testing -->
+[PRINCIPLE_4_DESCRIPTION]
+<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
 
-### V. Observability
-Structured logging is mandatory. All agent actions, LLM calls, and errors must be traceable. Use correlation IDs to track conversation flows across services.
+### [PRINCIPLE_5_NAME]
+<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
+[PRINCIPLE_5_DESCRIPTION]
+<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
 
-### VI. Project Structure
-All application code must reside in the `app/` directory. All Infrastructure as Code (IaC) must reside in the `infra/` directory. No application logic in infra, no infrastructure code in app.
+## [SECTION_2_NAME]
+<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
 
-## Technical Stack Requirements
+[SECTION_2_CONTENT]
+<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
 
-### Required Technologies
-- **Backend**: Python ≥3.12
-- **Agent Framework**: microsoft-agent-framework (mandatory)
-- **Package Manager**: uv
-- **Linting/Formatting**: Ruff
-- **Type Checking**: mypy
+## [SECTION_3_NAME]
+<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
 
-### LLM Integration
-- Support for multiple LLM providers (OpenAI, Azure OpenAI, etc.)
-- Graceful fallback mechanisms when primary LLM is unavailable
-- Token usage tracking and cost monitoring
-
-## Development Workflow
-
-### Speckit-Driven Development
-Use Speckit to define and manage development workflows. All work must be broken down into Plans and Tasks:
-- Define Plans for high-level features or epics
-- Break down Plans into actionable Tasks
-- Execute Tasks using `specify run`
-- Track progress and maintain task history
-- All Plans and Tasks must be version-controlled in the `.specify/` directory
-
-### Test-First Development
-- Write tests before implementation
-- Minimum 80% code coverage for agent logic
-- Integration tests for end-to-end conversation flows
-
-### Code Quality Gates
-- All code must pass Ruff linting
-- Type checks must pass (mypy)
-- No security vulnerabilities (dependency scanning)
-- PR reviews required before merge
+[SECTION_3_CONTENT]
+<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
 
 ## Governance
+<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-This constitution defines the minimal principles for building LLM-based chatbots. All implementations must comply with these standards. Deviations require explicit justification and approval.
+[GOVERNANCE_RULES]
+<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
 
-**Version**: 1.0.0 | **Ratified**: 2025-12-30 | **Last Amended**: 2025-12-30
-
+**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
+<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
