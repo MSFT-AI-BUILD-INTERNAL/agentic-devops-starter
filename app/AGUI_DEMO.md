@@ -25,7 +25,7 @@ OPENAI_API_KEY=your-api-key
 ### 2. Start the AG-UI Server
 
 ```bash
-python agui_server.py
+uv run agui_server.py
 ```
 
 Expected output:

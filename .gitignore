@@ -54,3 +54,25 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Node.js / Frontend
+node_modules/
+frontend/dist/
+frontend/build/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+frontend/.env.local
+frontend/.env.*.local
+
+# Testing
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Build artifacts
+*.tsbuildinfo
