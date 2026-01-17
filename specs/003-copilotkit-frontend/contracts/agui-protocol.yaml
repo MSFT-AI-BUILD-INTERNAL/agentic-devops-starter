@@ -1,0 +1,693 @@
+openapi: 3.1.0
+info:
+  title: AG-UI (Agent User Interface) Protocol
+  version: 1.0.0
+  description: |
+    OpenAPI specification for the AG-UI protocol exposed by the FastAPI backend
+    at http://127.0.0.1:5100. This protocol enables web-based chat interfaces
+    to interact with conversational AI agents powered by microsoft-agent-framework.
+    
+    ## Features
+    - Server-Sent Events (SSE) for real-time streaming responses
+    - Thread-based conversation management
+    - Hybrid tool execution (server-side and client-side)
+    - Structured error handling with recovery support
+    
+  contact:
+    name: Agentic DevOps Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://127.0.0.1:5100
+    description: Local development server
+
+tags:
+  - name: Chat
+    description: Main conversational interface endpoints
+  - name: Threads
+    description: Conversation thread management
+  - name: Tools
+    description: Tool execution and results
+  - name: Health
+    description: Server health and status
+
+paths:
+  /:
+    post:
+      tags:
+        - Chat
+      summary: Send chat message and receive streaming response
+      description: |
+        Main chat endpoint. Sends a user message and receives a streaming
+        response via Server-Sent Events (SSE). Supports both new thread
+        creation and continuing existing conversations.
+        
+        ## Streaming Format
+        Response uses SSE protocol with `data: {JSON}\n\n` format.
+        Multiple event types are emitted during response generation.
+        
+        ## Thread Management
+        - If `thread_id` is null, a new thread is created
+        - If `thread_id` is provided, the conversation continues in that thread
+        - The thread_id is included in all SSE events
+        
+      operationId: sendChatMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              newConversation:
+                summary: Start new conversation
+                value:
+                  message: "What's 15 times 7?"
+                  thread_id: null
+                  stream: true
+              continueConversation:
+                summary: Continue existing conversation
+                value:
+                  message: "What about 20 times 8?"
+                  thread_id: "550e8400-e29b-41d4-a716-446655440000"
+                  stream: true
+                  
+      responses:
+        '200':
+          description: Streaming response (SSE)
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Server-Sent Events stream. Each event is formatted as:
+                  data: {JSON}\n\n
+                  
+                  Events are emitted in sequence as the agent processes the request.
+              examples:
+                streamingResponse:
+                  summary: Example SSE stream
+                  value: |
+                    data: {"event":"token","thread_id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2025-01-17T10:00:00Z","token":"The"}
+                    
+                    data: {"event":"token","thread_id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2025-01-17T10:00:00Z","token":" result"}
+                    
+                    data: {"event":"token","thread_id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2025-01-17T10:00:00Z","token":" is"}
+                    
+                    data: {"event":"token","thread_id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2025-01-17T10:00:00Z","token":" 105"}
+                    
+                    data: {"event":"message_complete","thread_id":"550e8400-e29b-41d4-a716-446655440000","timestamp":"2025-01-17T10:00:01Z"}
+                    
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check endpoint
+      description: Returns server health status and basic metrics
+      operationId: getHealth
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                version: "1.0.0"
+                thread_count: 5
+                uptime_seconds: 3600.5
+
+  /threads:
+    get:
+      tags:
+        - Threads
+      summary: List all conversation threads
+      description: Returns metadata for all active conversation threads
+      operationId: listThreads
+      responses:
+        '200':
+          description: List of threads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ThreadSummary'
+              example:
+                - thread_id: "550e8400-e29b-41d4-a716-446655440000"
+                  created_at: "2025-01-17T09:00:00Z"
+                  updated_at: "2025-01-17T09:15:00Z"
+                  message_count: 8
+                - thread_id: "660e8400-e29b-41d4-a716-446655440001"
+                  created_at: "2025-01-17T10:00:00Z"
+                  updated_at: "2025-01-17T10:05:00Z"
+                  message_count: 3
+
+  /threads/{thread_id}:
+    get:
+      tags:
+        - Threads
+      summary: Retrieve conversation thread
+      description: Returns full conversation history for a specific thread
+      operationId: getThread
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the conversation thread
+      responses:
+        '200':
+          description: Thread details with full message history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thread'
+        '404':
+          description: Thread not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Thread not found"
+                thread_id: "550e8400-e29b-41d4-a716-446655440000"
+
+  /tool_result:
+    post:
+      tags:
+        - Tools
+      summary: Submit client-side tool execution result
+      description: |
+        Called by the frontend to submit results from client-side tool execution.
+        The backend agent will continue processing with the provided result.
+        
+        ## Flow
+        1. Backend emits `tool_execution_request` event with execution_id
+        2. Frontend executes tool locally
+        3. Frontend POSTs result to this endpoint
+        4. Backend continues agent processing
+        
+      operationId: submitToolResult
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolResultRequest'
+            examples:
+              successResult:
+                summary: Successful tool execution
+                value:
+                  execution_id: "770e8400-e29b-41d4-a716-446655440002"
+                  result:
+                    temperature: 72
+                    conditions: "Partly cloudy"
+                    location: "Seattle"
+                  error: null
+                  execution_time_ms: 145.5
+              errorResult:
+                summary: Tool execution failed
+                value:
+                  execution_id: "770e8400-e29b-41d4-a716-446655440002"
+                  result: null
+                  error: "API request timeout"
+                  execution_time_ms: 30000
+                  
+      responses:
+        '200':
+          description: Tool result accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolResultResponse'
+              example:
+                success: true
+                execution_id: "770e8400-e29b-41d4-a716-446655440002"
+        '404':
+          description: Execution ID not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: User message content
+          example: "What's the weather in Seattle?"
+        thread_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            UUID of existing conversation thread, or null to start new thread
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        stream:
+          type: boolean
+          default: true
+          description: Enable streaming response via SSE
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional metadata for request tracking
+          
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - version
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Server health status
+        version:
+          type: string
+          description: Server version
+        thread_count:
+          type: integer
+          minimum: 0
+          description: Number of active conversation threads
+        uptime_seconds:
+          type: number
+          format: float
+          minimum: 0
+          description: Server uptime in seconds
+          
+    ThreadSummary:
+      type: object
+      required:
+        - thread_id
+        - created_at
+        - updated_at
+        - message_count
+      properties:
+        thread_id:
+          type: string
+          format: uuid
+          description: Unique thread identifier
+        created_at:
+          type: string
+          format: date-time
+          description: Thread creation timestamp (ISO 8601)
+        updated_at:
+          type: string
+          format: date-time
+          description: Last message timestamp (ISO 8601)
+        message_count:
+          type: integer
+          minimum: 0
+          description: Number of messages in thread
+          
+    Thread:
+      type: object
+      required:
+        - thread_id
+        - created_at
+        - updated_at
+        - messages
+      properties:
+        thread_id:
+          type: string
+          format: uuid
+          description: Unique thread identifier
+        created_at:
+          type: string
+          format: date-time
+          description: Thread creation timestamp (ISO 8601)
+        updated_at:
+          type: string
+          format: date-time
+          description: Last message timestamp (ISO 8601)
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+          description: Ordered conversation history
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional thread metadata
+          
+    Message:
+      type: object
+      required:
+        - id
+        - role
+        - content
+        - timestamp
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique message identifier
+        role:
+          type: string
+          enum: [user, assistant, system, tool]
+          description: Message sender type
+        content:
+          type: string
+          description: Message text content
+        timestamp:
+          type: string
+          format: date-time
+          description: Message creation time (ISO 8601)
+        tool_calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCall'
+          description: Tools invoked in this message (if any)
+          
+    ToolCall:
+      type: object
+      required:
+        - id
+        - tool_name
+        - arguments
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique tool call identifier
+        tool_name:
+          type: string
+          description: Tool function name
+          example: "get_time_zone"
+        arguments:
+          type: object
+          additionalProperties: true
+          description: Tool input parameters
+          example:
+            location: "Seattle"
+        result:
+          description: Tool execution result (any valid JSON)
+          example:
+            timezone: "Pacific Time (UTC-8)"
+        status:
+          type: string
+          enum: [pending, executing, completed, failed]
+          description: Tool execution status
+        execution_time_ms:
+          type: number
+          format: float
+          minimum: 0
+          description: Time taken to execute tool (milliseconds)
+        error:
+          type: string
+          description: Error message if tool execution failed
+          
+    ToolResultRequest:
+      type: object
+      required:
+        - execution_id
+        - execution_time_ms
+      properties:
+        execution_id:
+          type: string
+          format: uuid
+          description: Execution ID from tool_execution_request event
+        result:
+          description: Tool execution result (any valid JSON, null if error)
+        error:
+          type: string
+          nullable: true
+          description: Error message if tool execution failed
+        execution_time_ms:
+          type: number
+          format: float
+          minimum: 0
+          description: Time taken to execute tool (milliseconds)
+          
+    ToolResultResponse:
+      type: object
+      required:
+        - success
+        - execution_id
+      properties:
+        success:
+          type: boolean
+          description: Whether result was accepted
+        execution_id:
+          type: string
+          format: uuid
+          description: Execution ID that was processed
+          
+    # SSE Event Schemas
+    AGUIEvent:
+      oneOf:
+        - $ref: '#/components/schemas/TokenEvent'
+        - $ref: '#/components/schemas/ToolStartEvent'
+        - $ref: '#/components/schemas/ToolEndEvent'
+        - $ref: '#/components/schemas/ToolExecutionRequestEvent'
+        - $ref: '#/components/schemas/ToolExecutionCompleteEvent'
+        - $ref: '#/components/schemas/MessageCompleteEvent'
+        - $ref: '#/components/schemas/ErrorEvent'
+      discriminator:
+        propertyName: event
+        mapping:
+          token: '#/components/schemas/TokenEvent'
+          tool_start: '#/components/schemas/ToolStartEvent'
+          tool_end: '#/components/schemas/ToolEndEvent'
+          tool_execution_request: '#/components/schemas/ToolExecutionRequestEvent'
+          tool_execution_complete: '#/components/schemas/ToolExecutionCompleteEvent'
+          message_complete: '#/components/schemas/MessageCompleteEvent'
+          error: '#/components/schemas/ErrorEvent'
+          
+    TokenEvent:
+      type: object
+      required:
+        - event
+        - thread_id
+        - timestamp
+        - token
+      properties:
+        event:
+          type: string
+          enum: [token]
+        thread_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        token:
+          type: string
+          description: Single text chunk from LLM response
+          
+    ToolStartEvent:
+      type: object
+      required:
+        - event
+        - thread_id
+        - timestamp
+        - tool_name
+        - arguments
+      properties:
+        event:
+          type: string
+          enum: [tool_start]
+        thread_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        tool_name:
+          type: string
+          description: Name of tool being executed
+        arguments:
+          type: object
+          additionalProperties: true
+          description: Tool input parameters
+          
+    ToolEndEvent:
+      type: object
+      required:
+        - event
+        - thread_id
+        - timestamp
+        - tool_name
+        - result
+        - execution_time_ms
+      properties:
+        event:
+          type: string
+          enum: [tool_end]
+        thread_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        tool_name:
+          type: string
+          description: Name of tool that executed
+        result:
+          description: Tool execution result (any valid JSON)
+        execution_time_ms:
+          type: number
+          format: float
+          minimum: 0
+          description: Tool execution duration
+          
+    ToolExecutionRequestEvent:
+      type: object
+      required:
+        - event
+        - thread_id
+        - timestamp
+        - execution_id
+        - tool_name
+        - arguments
+      properties:
+        event:
+          type: string
+          enum: [tool_execution_request]
+        thread_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        execution_id:
+          type: string
+          format: uuid
+          description: Unique ID for tracking this tool execution
+        tool_name:
+          type: string
+          description: Name of client-side tool to execute
+        arguments:
+          type: object
+          additionalProperties: true
+          description: Tool input parameters
+          
+    ToolExecutionCompleteEvent:
+      type: object
+      required:
+        - event
+        - thread_id
+        - timestamp
+        - execution_id
+      properties:
+        event:
+          type: string
+          enum: [tool_execution_complete]
+        thread_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        execution_id:
+          type: string
+          format: uuid
+          description: ID of completed tool execution
+          
+    MessageCompleteEvent:
+      type: object
+      required:
+        - event
+        - thread_id
+        - timestamp
+      properties:
+        event:
+          type: string
+          enum: [message_complete]
+        thread_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+          
+    ErrorEvent:
+      type: object
+      required:
+        - event
+        - thread_id
+        - timestamp
+        - error_type
+        - error_message
+        - recoverable
+      properties:
+        event:
+          type: string
+          enum: [error]
+        thread_id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        error_type:
+          type: string
+          enum: [validation, timeout, llm, tool_error, connection]
+          description: Category of error
+        error_message:
+          type: string
+          description: Human-readable error description
+        recoverable:
+          type: boolean
+          description: Whether the client can retry the operation
+          
+    ValidationError:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  type: string
+                description: Location of validation error
+              msg:
+                type: string
+                description: Error message
+              type:
+                type: string
+                description: Error type
+                
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error context
