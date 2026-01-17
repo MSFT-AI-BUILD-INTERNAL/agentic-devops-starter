@@ -82,6 +82,53 @@ else
     echo "✅ kubectl already installed: $(kubectl version --client --short 2>/dev/null | cut -d' ' -f3 || kubectl version --client 2>/dev/null | grep 'Client Version' | cut -d':' -f2 | tr -d ' ')"
 fi
 
+# Install Node.js and npm using nvm
+export NVM_DIR="$HOME/.nvm"
+
+if ! command -v node &> /dev/null; then
+    echo "📦 Installing Node.js and npm via nvm..."
+    
+    # Install nvm
+    if [ ! -d "$NVM_DIR" ]; then
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    fi
+    
+    # Load nvm
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+    
+    # Install latest LTS version of Node.js
+    nvm install --lts
+    nvm use --lts
+    nvm alias default lts/*
+    
+    NODE_VERSION=$(node --version)
+    NPM_VERSION=$(npm --version)
+    echo "✅ Node.js ${NODE_VERSION} and npm ${NPM_VERSION} installed"
+else
+    # Load nvm even if node is already installed
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    
+    NODE_VERSION=$(node --version)
+    NPM_VERSION=$(npm --version)
+    echo "✅ Node.js ${NODE_VERSION} and npm ${NPM_VERSION} already installed"
+fi
+
+# Add npm global bin to PATH
+NPM_GLOBAL_BIN=$(npm config get prefix 2>/dev/null)/bin
+if [ -d "$NPM_GLOBAL_BIN" ]; then
+    export PATH="$NPM_GLOBAL_BIN:$PATH"
+fi
+
+# Install frontend dependencies if frontend directory exists
+if [ -d "frontend" ]; then
+    echo "📦 Installing frontend dependencies..."
+    cd frontend
+    npm install
+    cd ..
+    echo "✅ Frontend dependencies installed"
+fi
+
 echo ""
 echo "✨ Installation complete!"
 echo ""
@@ -90,9 +137,15 @@ echo "   - agent-framework"
 echo "   - specify-cli"
 echo "   - terraform $(terraform version 2>/dev/null | head -n1 | cut -d'v' -f2 || echo '')"
 echo "   - kubectl $(kubectl version --client --short 2>/dev/null | cut -d' ' -f3 || echo '')"
+echo "   - node $(node --version 2>/dev/null || echo '')"
+echo "   - npm $(npm --version 2>/dev/null || echo '')"
 echo ""
 echo "🤖 AI Environment:"
 echo "   - Initialized with GitHub Copilot"
 echo ""
 echo "🎯 To activate the virtual environment, run:"
 echo "   source .venv/bin/activate"
+echo ""
+echo "💡 To load Node.js environment, run:"
+echo "   export NVM_DIR=\"\$HOME/.nvm\""
+echo "   [ -s \"\$NVM_DIR/nvm.sh\" ] && \\. \"\$NVM_DIR/nvm.sh\""

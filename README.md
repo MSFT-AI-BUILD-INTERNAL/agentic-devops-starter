@@ -84,10 +84,16 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 
 ```
 .
-├── app/                    # Python application
+├── app/                    # Python backend application
 │   ├── src/               # Application source code
 │   ├── Dockerfile         # Container image definition
+│   ├── agui_server.py     # FastAPI server with AG-UI protocol
 │   └── pyproject.toml     # Python dependencies (managed by uv)
+├── frontend/              # Web-based chatbot UI (NEW)
+│   ├── src/              # TypeScript/React source code
+│   ├── public/           # Static assets
+│   ├── package.json      # Node.js dependencies
+│   └── README.md         # Frontend documentation
 ├── infra/                 # Terraform infrastructure
 │   ├── acr/              # Azure Container Registry module
 │   ├── aks/              # Azure Kubernetes Service module
@@ -135,6 +141,7 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 
 - ✅ **Infrastructure as Code**: Terraform for reproducible Azure infrastructure
 - ✅ **Modern Python**: Uses `uv` for fast, reliable dependency management
+- ✅ **Web-Based Chat UI**: React + TypeScript frontend with real-time streaming (NEW)
 - ✅ **Containerization**: Optimized Docker images with multi-stage builds
 - ✅ **CI/CD Automation**: GitHub Actions for automated build and deployment
 - ✅ **Kubernetes Orchestration**: High-availability deployment with health checks
@@ -146,22 +153,90 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 - **[Infrastructure Setup](./infra/README.md)**: Terraform configuration and Azure resources
 - **[Deployment Guide](./DEPLOYMENT.md)**: Complete deployment workflow and troubleshooting
 - **[Kubernetes Config](./k8s/README.md)**: Kubernetes manifests and operations
-- **[Application Docs](./app/README.md)**: Python application architecture and usage
+- **[Backend API Docs](./app/README.md)**: Python application architecture and usage
+- **[Frontend Chatbot UI](./app/frontend/README.md)**: Web interface setup and development (NEW)
+- **[Feature Specification](./specs/003-copilotkit-frontend/spec.md)**: Chatbot frontend requirements
+- **[Quickstart Guide](./specs/003-copilotkit-frontend/quickstart.md)**: 5-minute setup for chat UI
 
 ## Development
 
-### Running Locally
+### Running Locally with Frontend
+
+The application now includes a web-based chatbot interface for interacting with the AI agent.
+
+#### Backend Setup
 
 ```bash
+# Initialize environment (installs uv, Terraform, kubectl)
+./init.sh
+
 # Activate virtual environment
 source .venv/bin/activate
 
-# Run the application
+# Configure environment variables
 cd app
-python agui_server.py
+cp .env.example .env
+# Edit .env with your Azure OpenAI or OpenAI API keys
+
+# Run the backend server with uv
+uv run agui_server.py
 ```
 
-The server will start at `http://127.0.0.1:5100`
+The backend server will start at `http://127.0.0.1:5100`
+
+#### Frontend Setup (in a new terminal)
+
+```bash
+# Navigate to frontend directory
+cd app/frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Start development server
+npm run dev
+```
+
+The frontend will be available at `http://localhost:5173`
+
+**Quick Test**: Open http://localhost:5173 in your browser and start chatting with the AI assistant!
+
+### Frontend Development
+
+```bash
+cd app/frontend
+
+# Development server with hot reload
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+
+# Run type checking
+npm run type-check
+
+# Run linting
+npm run lint
+
+# Run tests
+npm run test
+```
+
+For detailed frontend documentation, see [`/app/frontend/README.md`](./app/frontend/README.md).
+
+### Backend Development
+
+```bash
+cd app
+
+# Run with auto-reload (development)
+uv run uvicorn agui_server:get_app --reload --host 127.0.0.1 --port 5100 --factory
+
+# Run tests
+uv run pytest tests/
 
 ### Testing Changes
 

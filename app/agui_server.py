@@ -19,6 +19,7 @@ from agent_framework.azure import AzureAIAgentClient
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.logging_utils import setup_logging
 
@@ -132,6 +133,20 @@ def create_app() -> FastAPI:
         title="Agentic DevOps Starter AG-UI Server",
         description="AG-UI server for conversational AI agent",
         version="0.1.0",
+    )
+
+    # Configure CORS to allow frontend access
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173",  # Vite default dev server
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",  # Alternative port
+            "http://127.0.0.1:3000",
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # Create the agent
