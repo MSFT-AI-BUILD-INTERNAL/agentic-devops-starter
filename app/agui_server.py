@@ -179,10 +179,10 @@ def get_app() -> FastAPI:
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info("Starting AG-UI server on http://127.0.0.1:5100")
+    logger.info("Starting AG-UI server on http://0.0.0.0:5100")
     uvicorn.run(
         "agui_server:get_app",
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=5100,
         log_level="info",
         factory=True,

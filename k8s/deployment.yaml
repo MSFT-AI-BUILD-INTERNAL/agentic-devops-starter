@@ -16,13 +16,13 @@ spec:
         app: agentic-devops
     spec:
       containers:
-        - name: app
+        - name: backend
           # Image tag will be substituted by envsubst in the GitHub Actions workflow
           # ${ACR_NAME} and ${IMAGE_TAG} are replaced at deployment time
-          image: ${ACR_NAME}.azurecr.io/agentic-devops-starter:${IMAGE_TAG}
+          image: ${ACR_NAME}.azurecr.io/agentic-devops-starter-backend:${IMAGE_TAG}
           ports:
             - containerPort: 5100
-              name: http
+              name: backend
           env:
             - name: AZURE_AI_PROJECT_ENDPOINT
               valueFrom:
@@ -60,4 +60,29 @@ spec:
               path: /
               port: 5100
             initialDelaySeconds: 10
+            periodSeconds: 5
+        - name: frontend
+          # Frontend image with same tag
+          image: ${ACR_NAME}.azurecr.io/agentic-devops-starter-frontend:${IMAGE_TAG}
+          ports:
+            - containerPort: 80
+              name: frontend
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
             periodSeconds: 5
