@@ -85,3 +85,21 @@ variable "tags" {
     ManagedBy   = "Terraform"
   }
 }
+
+variable "log_analytics_workspace_name" {
+  description = "Name of the Log Analytics Workspace for AKS monitoring"
+  type        = string
+  default     = "log-agentic-devops"
+}
+
+variable "log_analytics_sku" {
+  description = "SKU tier for Log Analytics Workspace"
+  type        = string
+  default     = "PerGB2018"
+}
+
+variable "log_analytics_retention_days" {
+  description = "Retention period in days for Log Analytics logs"
+  type        = number
+  default     = 30
+}

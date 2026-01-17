@@ -7,9 +7,10 @@ MVP for Agentic DevOps Starter (Compass) - A complete CI/CD solution for deployi
 This repository provides a full-stack DevOps solution for deploying a Python-based conversational AI application to Azure:
 
 - **Application**: FastAPI server with AG-UI protocol support (`/app`)
-- **Infrastructure**: Terraform code for ACR and AKS (`/infra`)
+- **Infrastructure**: Terraform code for ACR, AKS, and Log Analytics (`/infra`)
 - **CI/CD**: GitHub Actions workflow for automated deployment (`.github/workflows/deploy.yml`)
 - **Kubernetes**: Manifests for container orchestration (`/k8s`)
+- **Monitoring**: Azure Log Analytics with Container Insights for comprehensive logging and metrics
 
 ## Quick Start
 
@@ -97,6 +98,7 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 ├── infra/                 # Terraform infrastructure
 │   ├── acr/              # Azure Container Registry module
 │   ├── aks/              # Azure Kubernetes Service module
+│   ├── log-analytics/    # Azure Log Analytics Workspace module
 │   └── README.md         # Infrastructure documentation
 ├── k8s/                   # Kubernetes manifests
 │   ├── deployment.yaml   # Application deployment
@@ -135,6 +137,14 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
          │  └─────────────┘  └─────────────┘   │
          │          LoadBalancer :80             │
          └─────────────────────────────────────┘
+                           │
+                           ▼
+         ┌─────────────────────────────────────┐
+         │   Azure Log Analytics Workspace      │
+         │   - Container logs & metrics         │
+         │   - Performance monitoring           │
+         │   - Kubernetes events                │
+         └─────────────────────────────────────┘
 ```
 
 ## Key Features
@@ -146,6 +156,7 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 - ✅ **CI/CD Automation**: GitHub Actions for automated build and deployment
 - ✅ **Kubernetes Orchestration**: High-availability deployment with health checks
 - ✅ **Secure Authentication**: OIDC-based Azure authentication (no stored credentials)
+- ✅ **Monitoring & Logging**: Azure Log Analytics with Container Insights for comprehensive observability
 - ✅ **Comprehensive Docs**: Detailed guides for infrastructure, deployment, and operations
 
 ## Documentation
@@ -255,7 +266,8 @@ Approximate monthly costs for Azure resources (US East region):
 - **AKS**: ~$140/month (2 x Standard_D2s_v3 nodes)
 - **ACR**: ~$20/month (Standard tier)
 - **Load Balancer**: ~$20/month
-- **Total**: ~$180/month
+- **Log Analytics**: ~$10-15/month (~5 GB data ingestion)
+- **Total**: ~$190-195/month
 
 See [infra/README.md](./infra/README.md) for cost optimization tips.
 

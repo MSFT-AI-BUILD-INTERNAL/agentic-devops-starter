@@ -24,6 +24,20 @@ resource "azurerm_resource_group" "main" {
   tags     = var.tags
 }
 
+# Log Analytics Module
+module "log_analytics" {
+  source = "./log-analytics"
+
+  log_analytics_workspace_name = var.log_analytics_workspace_name
+  resource_group_name          = azurerm_resource_group.main.name
+  location                     = azurerm_resource_group.main.location
+  sku                          = var.log_analytics_sku
+  retention_in_days            = var.log_analytics_retention_days
+  tags                         = var.tags
+
+  depends_on = [azurerm_resource_group.main]
+}
+
 # Azure Container Registry Module
 module "acr" {
   source = "./acr"
@@ -42,18 +56,19 @@ module "acr" {
 module "aks" {
   source = "./aks"
 
-  aks_cluster_name    = var.aks_cluster_name
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  dns_prefix          = var.aks_dns_prefix
-  kubernetes_version  = var.kubernetes_version
-  node_count          = var.node_count
-  vm_size             = var.vm_size
-  enable_auto_scaling = var.enable_auto_scaling
-  min_node_count      = var.min_node_count
-  max_node_count      = var.max_node_count
-  acr_id              = module.acr.acr_id
-  tags                = var.tags
+  aks_cluster_name           = var.aks_cluster_name
+  resource_group_name        = azurerm_resource_group.main.name
+  location                   = azurerm_resource_group.main.location
+  dns_prefix                 = var.aks_dns_prefix
+  kubernetes_version         = var.kubernetes_version
+  node_count                 = var.node_count
+  vm_size                    = var.vm_size
+  enable_auto_scaling        = var.enable_auto_scaling
+  min_node_count             = var.min_node_count
+  max_node_count             = var.max_node_count
+  acr_id                     = module.acr.acr_id
+  log_analytics_workspace_id = module.log_analytics.workspace_id
+  tags                       = var.tags
 
-  depends_on = [azurerm_resource_group.main, module.acr]
+  depends_on = [azurerm_resource_group.main, module.acr, module.log_analytics]
 }

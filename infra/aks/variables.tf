@@ -138,3 +138,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "log_analytics_workspace_id" {
+  description = "ID of the Log Analytics Workspace for monitoring and logging"
+  type        = string
+  default     = null
+}

@@ -38,7 +38,7 @@ variable "admin_enabled" {
 variable "public_network_access_enabled" {
   description = "Enable public network access to ACR. Set to false for production environments and use private endpoints instead."
   type        = bool
-  default     = true  # Set to true for easier initial setup; consider false for production
+  default     = true # Set to true for easier initial setup; consider false for production
 }
 
 variable "identity_type" {

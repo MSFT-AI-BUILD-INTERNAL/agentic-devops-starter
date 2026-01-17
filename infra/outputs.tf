@@ -47,3 +47,13 @@ output "configure_kubectl_command" {
   description = "Command to configure kubectl to connect to the AKS cluster"
   value       = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${module.aks.aks_name}"
 }
+
+output "log_analytics_workspace_id" {
+  description = "The ID of the Log Analytics Workspace"
+  value       = module.log_analytics.workspace_id
+}
+
+output "log_analytics_workspace_name" {
+  description = "The name of the Log Analytics Workspace"
+  value       = module.log_analytics.workspace_name
+}
