@@ -216,7 +216,7 @@ All functionality thoroughly tested:
 ### Starting the Server
 ```bash
 cd app
-python agui_server.py
+uv run agui_server.py
 ```
 
 Output:

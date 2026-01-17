@@ -154,7 +154,7 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 - **[Deployment Guide](./DEPLOYMENT.md)**: Complete deployment workflow and troubleshooting
 - **[Kubernetes Config](./k8s/README.md)**: Kubernetes manifests and operations
 - **[Backend API Docs](./app/README.md)**: Python application architecture and usage
-- **[Frontend Chatbot UI](./frontend/README.md)**: Web interface setup and development (NEW)
+- **[Frontend Chatbot UI](./app/frontend/README.md)**: Web interface setup and development (NEW)
 - **[Feature Specification](./specs/003-copilotkit-frontend/spec.md)**: Chatbot frontend requirements
 - **[Quickstart Guide](./specs/003-copilotkit-frontend/quickstart.md)**: 5-minute setup for chat UI
 
@@ -167,6 +167,9 @@ The application now includes a web-based chatbot interface for interacting with 
 #### Backend Setup
 
 ```bash
+# Initialize environment (installs uv, Terraform, kubectl)
+./init.sh
+
 # Activate virtual environment
 source .venv/bin/activate
 
@@ -175,8 +178,8 @@ cd app
 cp .env.example .env
 # Edit .env with your Azure OpenAI or OpenAI API keys
 
-# Run the backend server
-python agui_server.py
+# Run the backend server with uv
+uv run agui_server.py
 ```
 
 The backend server will start at `http://127.0.0.1:5100`
@@ -185,7 +188,7 @@ The backend server will start at `http://127.0.0.1:5100`
 
 ```bash
 # Navigate to frontend directory
-cd frontend
+cd app/frontend
 
 # Install dependencies (first time only)
 npm install
@@ -201,7 +204,7 @@ The frontend will be available at `http://localhost:5173`
 ### Frontend Development
 
 ```bash
-cd frontend
+cd app/frontend
 
 # Development server with hot reload
 npm run dev
@@ -222,7 +225,7 @@ npm run lint
 npm run test
 ```
 
-For detailed frontend documentation, see [`/frontend/README.md`](./frontend/README.md).
+For detailed frontend documentation, see [`/app/frontend/README.md`](./app/frontend/README.md).
 
 ### Backend Development
 
@@ -230,10 +233,10 @@ For detailed frontend documentation, see [`/frontend/README.md`](./frontend/READ
 cd app
 
 # Run with auto-reload (development)
-python -m uvicorn agui_server:get_app --reload --host 127.0.0.1 --port 5100 --factory
+uv run uvicorn agui_server:get_app --reload --host 127.0.0.1 --port 5100 --factory
 
 # Run tests
-pytest tests/
+uv run pytest tests/
 
 ### Testing Changes
 

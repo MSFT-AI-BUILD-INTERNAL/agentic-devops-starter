@@ -116,7 +116,7 @@ npm run dev -- --port 5174
 Ensure the backend server is running:
 ```bash
 cd ../app
-python agui_server.py
+uv run agui_server.py
 ```
 
 ### Dependencies not installed

@@ -140,7 +140,7 @@ uv pip install -e ".[dev]"
 
 ```bash
 cd app
-python main.py
+uv run main.py
 ```
 
 This will run three demonstrations:
@@ -213,7 +213,7 @@ cp .env.example .env
 
 ```bash
 cd app
-python agui_server.py
+uv run agui_server.py
 ```
 
 The server will start at `http://127.0.0.1:5100` with:
@@ -224,14 +224,14 @@ The server will start at `http://127.0.0.1:5100` with:
 
 ```bash
 cd app
-python agui_client.py
+uv run agui_client.py
 ```
 
 4. **Or use the hybrid tools client**:
 
 ```bash
 cd app
-python agui_client_hybrid.py
+uv run agui_client_hybrid.py
 ```
 
 ### AG-UI Features

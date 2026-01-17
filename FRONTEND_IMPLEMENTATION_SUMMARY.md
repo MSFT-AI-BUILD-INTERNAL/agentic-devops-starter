@@ -35,7 +35,7 @@ Successfully implemented a modern web-based chatbot frontend that integrates wit
 ### Frontend Application Structure
 
 ```
-frontend/
+app/frontend/
 ├── src/
 │   ├── components/           # React components
 │   │   ├── ChatInterface.tsx     # Main chat container ✅
@@ -231,10 +231,10 @@ frontend/
 ```bash
 # Terminal 1: Start backend
 cd app
-python agui_server.py
+uv run agui_server.py
 
 # Terminal 2: Start frontend
-cd frontend
+cd app/frontend
 npm install  # First time only
 npm run dev
 ```

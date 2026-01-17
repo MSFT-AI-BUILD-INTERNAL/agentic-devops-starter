@@ -108,7 +108,7 @@ curl http://127.0.0.1:5100/health
 
 ```bash
 # Open a new terminal, navigate to frontend directory
-cd ../frontend  # or from repo root: cd frontend
+cd app/frontend  # or from repo root: cd app/frontend
 
 # Install dependencies
 npm install
@@ -330,7 +330,7 @@ cd app && python agui_server.py
 **Cause**: Frontend dependencies not installed  
 **Solution**:
 ```bash
-cd frontend
+cd app/frontend
 rm -rf node_modules package-lock.json
 npm install
 ```
@@ -381,7 +381,7 @@ python agui_server.py
 
 **Terminal 2 - Frontend**:
 ```bash
-cd frontend
+cd app/frontend
 npm run dev
 ```
 
@@ -401,7 +401,7 @@ cd app && python agui_server.py
 Ctrl+b ↓
 
 # Terminal 2: Start frontend
-cd frontend && npm run dev
+cd app/frontend && npm run dev
 
 # Detach from session: Ctrl+b d
 # Re-attach: tmux attach -t chatbot
@@ -417,7 +417,7 @@ cd frontend && npm run dev
 #   "dev:frontend": "vite"
 # }
 
-cd frontend
+cd app/frontend
 npm run dev:full
 ```
 
@@ -500,10 +500,10 @@ curl -N http://127.0.0.1:5100/ \
    cd app && pytest tests/
    
    # Frontend tests
-   cd frontend && npm test
+   cd app/frontend && npm test
    
    # E2E tests
-   cd frontend && npm run test:e2e
+   cd app/frontend && npm run test:e2e
    ```
 
 4. **Read Implementation Tasks**:
