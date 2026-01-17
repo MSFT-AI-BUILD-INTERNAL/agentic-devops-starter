@@ -17,7 +17,7 @@ export function useStreaming() {
   const addMessage = useChatStore((state) => state.addMessage);
 
   // Debounce timer ref
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimer = useRef<number | null>(null);
   const localBuffer = useRef<string>('');
 
   /**
@@ -50,7 +50,7 @@ export function useStreaming() {
           clearTimeout(debounceTimer.current);
         }
 
-        debounceTimer.current = setTimeout(() => {
+        debounceTimer.current = window.setTimeout(() => {
           updateStreamingState({
             buffer: localBuffer.current,
             tokenCount: newTokenCount,

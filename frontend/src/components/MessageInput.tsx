@@ -102,8 +102,9 @@ export function MessageInput({
               maxHeight: '120px',
             }}
             aria-label="Message input"
+            aria-describedby="keyboard-shortcuts-help"
           />
-          <div className="text-xs text-gray-500 mt-1">
+          <div id="keyboard-shortcuts-help" className="text-xs text-gray-500 mt-1">
             Press Enter to send, Shift+Enter for new line
           </div>
         </div>

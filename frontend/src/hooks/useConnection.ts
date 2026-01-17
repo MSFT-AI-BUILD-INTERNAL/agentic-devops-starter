@@ -14,7 +14,7 @@ export function useConnection() {
   const setConnectionStatus = useChatStore((state) => state.setConnectionStatus);
   const currentThread = useChatStore((state) => state.currentThread);
 
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
 
   /**
@@ -66,7 +66,7 @@ export function useConnection() {
 
         setConnectionStatus('reconnecting', `Reconnecting in ${delay / 1000}s...`);
 
-        reconnectTimeoutRef.current = setTimeout(() => {
+        reconnectTimeoutRef.current = window.setTimeout(() => {
           connect();
         }, delay);
       }

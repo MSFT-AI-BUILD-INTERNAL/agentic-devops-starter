@@ -95,11 +95,17 @@ class StreamHandler {
         this.eventSource!.addEventListener(eventType, (event: MessageEvent) => {
           try {
             const data = JSON.parse(event.data);
+            // Handle both formats: { data: {...} } and direct {...}
+            // Some SSE libraries wrap the event data in a 'data' property
+            const eventData = typeof data === 'object' && 'data' in data && data.data !== undefined 
+              ? data.data 
+              : data;
+            
             const aguiEvent: AGUIEvent = {
               event: eventType as AGUIEvent['event'],
               threadId: data.thread_id || threadId || 'unknown',
               timestamp: data.timestamp || new Date().toISOString(),
-              data: data.data || data, // Use data.data if available, otherwise use data
+              data: eventData,
             };
 
             logger.debug('Received SSE event', { eventType, data: aguiEvent });
