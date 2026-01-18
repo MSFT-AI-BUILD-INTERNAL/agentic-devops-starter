@@ -6,7 +6,7 @@ metadata:
   labels:
     app: agentic-devops
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: agentic-devops
   ports:

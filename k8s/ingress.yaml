@@ -1,0 +1,45 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentic-devops-ingress
+  labels:
+    app: agentic-devops
+  annotations:
+    # Use NGINX Ingress Controller
+    kubernetes.io/ingress.class: nginx
+    # Enable cert-manager to manage certificates
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Redirect HTTP to HTTPS
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Large file upload support for AI workloads
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    # Timeout settings for long-running AI requests
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+spec:
+  tls:
+    - hosts:
+        - ${DOMAIN_NAME}
+      secretName: agentic-devops-tls
+  rules:
+    - host: ${DOMAIN_NAME}
+      http:
+        paths:
+          # Frontend routes
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentic-devops-service
+                port:
+                  number: 80
+          # Backend API routes
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: agentic-devops-service
+                port:
+                  number: 5100

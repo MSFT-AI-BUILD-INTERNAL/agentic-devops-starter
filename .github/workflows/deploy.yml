@@ -89,6 +89,35 @@ jobs:
             --name ${{ env.AKS_CLUSTER_NAME }} \
             --overwrite-existing
 
+      - name: Install NGINX Ingress Controller
+        run: |
+          # Add ingress-nginx Helm repository
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo update
+          
+          # Install or upgrade NGINX Ingress Controller
+          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+            --namespace ingress-nginx \
+            --create-namespace \
+            --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+            --wait
+
+      - name: Install cert-manager
+        run: |
+          # Install cert-manager CRDs
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.crds.yaml
+          
+          # Add cert-manager Helm repository
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          
+          # Install or upgrade cert-manager
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --create-namespace \
+            --version v1.13.3 \
+            --wait
+
       - name: Create Kubernetes secret for Azure configuration
         run: |
           kubectl create secret generic azure-config \
@@ -102,10 +131,29 @@ jobs:
           # Replace placeholders in deployment manifest
           export ACR_NAME=${{ env.ACR_NAME }}
           export IMAGE_TAG=${{ github.sha }}
+          export DOMAIN_NAME=${{ secrets.DOMAIN_NAME }}
+          export LETSENCRYPT_EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
 
           # Apply Kubernetes manifests with variable substitution
           envsubst < k8s/deployment.yaml | kubectl apply -f -
           kubectl apply -f k8s/service.yaml
+          
+          # Check if domain name is configured
+          if [ -n "$DOMAIN_NAME" ] && [ -n "$LETSENCRYPT_EMAIL" ]; then
+            echo "Deploying with HTTPS support for domain: $DOMAIN_NAME"
+            
+            # Apply cert-manager ClusterIssuer
+            envsubst < k8s/cert-issuer.yaml | kubectl apply -f -
+            
+            # Apply Ingress configuration with TLS
+            envsubst < k8s/ingress.yaml | kubectl apply -f -
+          else
+            echo "Domain name not configured. Deploying with HTTP-only Ingress."
+            echo "To enable HTTPS, set DOMAIN_NAME and LETSENCRYPT_EMAIL secrets."
+            
+            # Apply IP-based Ingress without TLS
+            kubectl apply -f k8s/ingress-ip.yaml
+          fi
 
       - name: Wait for deployment rollout
         id: wait_for_rollout
@@ -138,8 +186,40 @@ jobs:
           echo "=== Frontend Container Logs ==="
           kubectl logs -l app=agentic-devops -c frontend --tail=100 || echo "No frontend logs available"
 
-      - name: Get service external IP
+      - name: Get Ingress external IP
         run: |
-          echo "Waiting for LoadBalancer IP assignment..."
-          kubectl wait --for=condition=ready service/agentic-devops-service --timeout=120s || true
-          kubectl get service agentic-devops-service
+          echo "Waiting for Ingress Controller LoadBalancer IP assignment..."
+          sleep 30
+          
+          echo "=== Ingress Controller Service ==="
+          kubectl get service -n ingress-nginx ingress-nginx-controller
+          
+          echo ""
+          echo "=== Application Ingress ==="
+          kubectl get ingress || echo "No ingress configured yet"
+          
+          echo ""
+          INGRESS_IP=$(kubectl get service -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          
+          if [ -n "$INGRESS_IP" ]; then
+            echo "Ingress LoadBalancer IP: $INGRESS_IP"
+            
+            if [ -n "${{ secrets.DOMAIN_NAME }}" ]; then
+              echo ""
+              echo "=== Certificate Status ==="
+              kubectl get certificate agentic-devops-tls || echo "Certificate not yet created (may take a few minutes)"
+              
+              echo ""
+              echo "✅ Application will be accessible at: https://${{ secrets.DOMAIN_NAME }}"
+              echo "⚠️  Please ensure your DNS A record points ${{ secrets.DOMAIN_NAME }} to: $INGRESS_IP"
+              echo ""
+              echo "After DNS propagation (5-15 minutes), cert-manager will automatically provision"
+              echo "a TLS certificate from Let's Encrypt."
+            else
+              echo ""
+              echo "✅ Application accessible at: http://$INGRESS_IP"
+              echo "⚠️  To enable HTTPS, configure DOMAIN_NAME and LETSENCRYPT_EMAIL secrets."
+            fi
+          else
+            echo "⚠️  Waiting for LoadBalancer IP assignment..."
+          fi
