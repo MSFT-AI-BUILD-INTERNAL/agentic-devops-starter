@@ -108,15 +108,37 @@ Go to your GitHub repository → Settings → Secrets and variables → Actions 
 Add the following secrets:
 
 ```
+# ⚠️ CRITICAL: Use the correct Client ID!
+# AZURE_CLIENT_ID must be the GitHub Actions App ID (from step 1)
+# DO NOT use AKS Managed Identity, Kubelet Identity, or any other identity!
 AZURE_CLIENT_ID: <APP_ID from step 1>
 AZURE_TENANT_ID: <TENANT_ID from step 1>
 AZURE_SUBSCRIPTION_ID: <SUBSCRIPTION_ID from step 1>
+
+# Infrastructure configuration (from Terraform outputs)
 ACR_NAME: <your-acr-name>
 AKS_CLUSTER_NAME: <your-aks-cluster-name>
 AKS_RESOURCE_GROUP: <your-resource-group-name>
+
+# Application configuration (optional)
 AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-endpoint>
 AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment-name>
 AZURE_OPENAI_API_VERSION: <api-version>
+```
+
+**Common Mistake to Avoid:**
+
+❌ **WRONG**: Using AKS-related identities
+```bash
+# These are NOT the correct values for AZURE_CLIENT_ID:
+az aks show --query "identity.principalId"           # AKS System Identity
+az aks show --query "identityProfile.kubeletidentity.clientId"  # Kubelet Identity
+```
+
+✅ **CORRECT**: Using GitHub Actions App ID
+```bash
+# This is the correct value for AZURE_CLIENT_ID:
+az ad app list --display-name "gh-actions-agentic-devops" --query "[0].appId" -o tsv
 ```
 
 ### 6. Verify Setup

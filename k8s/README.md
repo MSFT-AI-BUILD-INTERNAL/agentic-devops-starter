@@ -26,7 +26,10 @@ Before deploying, ensure you have:
    - `ACR_NAME`: Name of your Azure Container Registry (from Terraform output)
    - `AKS_CLUSTER_NAME`: Name of your AKS cluster (from Terraform output)
    - `AKS_RESOURCE_GROUP`: Azure resource group containing the AKS cluster (from Terraform output)
-   - `AZURE_CLIENT_ID`: Azure service principal client ID
+   - `AZURE_CLIENT_ID`: **Application (client) ID** of the GitHub Actions service principal
+     - ⚠️ **NOT** the AKS Managed Identity or Kubelet Identity
+     - This is the App ID from the Azure AD application created for GitHub Actions OIDC
+     - See `.github/AZURE_SETUP.md` for setup instructions
    - `AZURE_TENANT_ID`: Azure tenant ID
    - `AZURE_SUBSCRIPTION_ID`: Azure subscription ID
    - `AZURE_AI_PROJECT_ENDPOINT`: (Optional) Azure AI endpoint

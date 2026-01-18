@@ -69,7 +69,10 @@ AKS_CLUSTER_NAME: <output from terraform>
 AKS_RESOURCE_GROUP: <output from terraform>
 
 # Azure Authentication (OIDC)
-AZURE_CLIENT_ID: <your-service-principal-client-id>
+# ⚠️ IMPORTANT: AZURE_CLIENT_ID must be the Application (client) ID from the
+#              GitHub Actions service principal, NOT the AKS managed identity!
+#              Run: az ad app list --display-name "gh-actions-agentic-devops" --query "[0].appId" -o tsv
+AZURE_CLIENT_ID: <github-actions-app-id>
 AZURE_TENANT_ID: <your-tenant-id>
 AZURE_SUBSCRIPTION_ID: <your-subscription-id>
 
