@@ -158,10 +158,10 @@ Then add to GitHub secrets a single `AZURE_CREDENTIALS` secret with the followin
 
 ```json
 {
-  "clientId": "<APP_ID>",
-  "clientSecret": "<SECRET>",
-  "subscriptionId": "<SUBSCRIPTION_ID>",
-  "tenantId": "<TENANT_ID>"
+  "clientId": "<APP_ID from step 1>",
+  "clientSecret": "<SECRET from above>",
+  "subscriptionId": "<SUBSCRIPTION_ID from step 1>",
+  "tenantId": "<TENANT_ID from step 1>"
 }
 ```
 
