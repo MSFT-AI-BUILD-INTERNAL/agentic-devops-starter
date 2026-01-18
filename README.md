@@ -197,9 +197,10 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 
 - **[Infrastructure Setup](./infra/README.md)**: Terraform configuration and Azure resources
 - **[Deployment Guide](./DEPLOYMENT.md)**: Complete deployment workflow and troubleshooting
+- **[HTTPS Setup Guide](./HTTPS_SETUP.md)**: Comprehensive guide for enabling HTTPS with automatic certificates (NEW)
 - **[Kubernetes Config](./k8s/README.md)**: Kubernetes manifests and operations
 - **[Backend API Docs](./app/README.md)**: Python application architecture and usage
-- **[Frontend Chatbot UI](./app/frontend/README.md)**: Web interface setup and development (NEW)
+- **[Frontend Chatbot UI](./app/frontend/README.md)**: Web interface setup and development
 - **[Feature Specification](./specs/003-copilotkit-frontend/spec.md)**: Chatbot frontend requirements
 - **[Quickstart Guide](./specs/003-copilotkit-frontend/quickstart.md)**: 5-minute setup for chat UI
 
