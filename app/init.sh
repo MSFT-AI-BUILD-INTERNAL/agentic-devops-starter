@@ -69,9 +69,20 @@ fi
 if ! command -v kubectl &> /dev/null; then
     echo "☸️  Installing kubectl..."
     
+    # Detect architecture for kubectl
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "x86_64" ]; then
+        KUBE_ARCH="amd64"
+    elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+        KUBE_ARCH="arm64"
+    else
+        echo "❌ Unsupported architecture for kubectl: $ARCH"
+        exit 1
+    fi
+    
     # Download the latest stable version
     KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
-    curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+    curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBE_ARCH}/kubectl"
     
     # Install kubectl
     sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
