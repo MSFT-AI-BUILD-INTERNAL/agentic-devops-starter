@@ -89,13 +89,6 @@ jobs:
             --name ${{ env.AKS_CLUSTER_NAME }} \
             --overwrite-existing
 
-      - name: Attach ACR to AKS (if not already attached)
-        run: |
-          az aks update \
-            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
-            --name ${{ env.AKS_CLUSTER_NAME }} \
-            --attach-acr ${{ env.ACR_NAME }}
-
       - name: Create Kubernetes secret for Azure configuration
         run: |
           kubectl create secret generic azure-config \
