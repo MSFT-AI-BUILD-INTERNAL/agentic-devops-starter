@@ -33,7 +33,6 @@ logger = setup_logging()
 endpoint = os.environ.get("AZURE_AI_PROJECT_ENDPOINT")
 deployment_name = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
 api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-08-07")
-openai_api_key = os.environ.get("OPENAI_API_KEY")
 
 
 # Server-side tool example
@@ -74,39 +73,26 @@ def create_agent() -> ChatAgent:
     Raises:
         ValueError: If required environment variables are not set
     """
-    from typing import Union
-    
-    from agent_framework.openai import OpenAIChatClient
-
     logger.info("Creating ChatAgent for AG-UI server")
 
-    # Try Azure AI Foundry first, fall back to OpenAI
-    chat_client: Union[AzureAIAgentClient, OpenAIChatClient]
-    if endpoint and deployment_name:
-        logger.info(f"Using Azure AI Foundry client with DefaultAzureCredential (API version: {api_version})")
-        
-        # Use DefaultAzureCredential for Azure AI Foundry authentication
-        # Azure AI Foundry requires the https://ai.azure.com/.default scope
-        credential = DefaultAzureCredential()
-        
-        chat_client = AzureAIAgentClient(
-            endpoint=endpoint,
-            model=deployment_name,
-            credential=credential,
-            api_version=api_version,
-        )
-    elif openai_api_key:
-        logger.info("Using OpenAI client")
-
-        chat_client = OpenAIChatClient(
-            api_key=openai_api_key,
-            model_id="gpt-4o-mini",
-        )
-    else:
+    # Validate required environment variables
+    if not endpoint or not deployment_name:
         raise ValueError(
-            "Either AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_MODEL_DEPLOYMENT_NAME, "
-            "or OPENAI_API_KEY must be set"
+            "AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_MODEL_DEPLOYMENT_NAME must be set"
         )
+
+    logger.info(f"Using Azure AI Foundry client with DefaultAzureCredential (API version: {api_version})")
+    
+    # Use DefaultAzureCredential for Azure AI Foundry authentication
+    # Azure AI Foundry requires the https://ai.azure.com/.default scope
+    credential = DefaultAzureCredential()
+    
+    chat_client = AzureAIAgentClient(
+        endpoint=endpoint,
+        model=deployment_name,
+        credential=credential,
+        api_version=api_version,
+    )
 
     agent = ChatAgent(
         name="AGUIAssistant",
