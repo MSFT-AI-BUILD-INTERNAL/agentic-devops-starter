@@ -17,17 +17,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Copy init.sh and make it executable
-COPY ../init.sh /tmp/init.sh
+COPY init.sh /tmp/init.sh
 RUN chmod +x /tmp/init.sh
 
 # Copy dependency files
-COPY pyproject.toml uv.lock ./
+COPY app/pyproject.toml app/uv.lock ./
 
 # Install dependencies using uv with system python
 RUN uv sync --frozen --no-dev
 
 # Copy application code
-COPY . .
+COPY app/ .
 
 # Run init.sh to set up environment (without virtual env creation in container)
 RUN /tmp/init.sh || true
