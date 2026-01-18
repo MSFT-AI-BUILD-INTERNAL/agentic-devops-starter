@@ -136,14 +136,28 @@ def create_app() -> FastAPI:
     )
 
     # Configure CORS to allow frontend access
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
+    # In production (K8s), requests come through nginx proxy in same pod
+    # Allow all origins since we're behind nginx
+    allowed_origins = os.environ.get("CORS_ORIGINS", "*")
+    if allowed_origins == "*":
+        allow_origins = ["*"]
+    else:
+        allow_origins = [
+            origin.strip() for origin in allowed_origins.split(",")
+        ]
+    
+    # Development origins as fallback
+    if allow_origins == ["*"] or not allow_origins:
+        allow_origins = [
             "http://localhost:5173",  # Vite default dev server
             "http://127.0.0.1:5173",
             "http://localhost:3000",  # Alternative port
             "http://127.0.0.1:3000",
-        ],
+        ]
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allow_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -179,10 +193,10 @@ def get_app() -> FastAPI:
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info("Starting AG-UI server on http://127.0.0.1:5100")
+    logger.info("Starting AG-UI server on http://0.0.0.0:5100")
     uvicorn.run(
         "agui_server:get_app",
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=5100,
         log_level="info",
         factory=True,
