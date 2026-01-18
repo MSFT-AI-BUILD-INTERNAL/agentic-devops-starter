@@ -38,7 +38,7 @@ echo "Subscription ID: $SUBSCRIPTION_ID"
 az ad sp create --id $APP_ID
 
 # Get the object ID of the service principal
-SP_OBJECT_ID=$(az ad sp list --filter "appId eq '$APP_ID'" --query "[0].id" -o tsv)
+SP_OBJECT_ID=$(az ad sp show --id "$APP_ID" --query "id" -o tsv)
 echo "Service Principal Object ID: $SP_OBJECT_ID"
 ```
 
