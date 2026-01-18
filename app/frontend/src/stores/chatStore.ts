@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { Message } from '../types/message';
 import type { Thread, ThreadStatus } from '../types/session';
 import type { Connection, ConnectionStatus, StreamingState, ToolCall } from '../types/agui';
+import { generateUUID } from '../utils/uuid';
 
 interface ChatStore {
   // Core entities
@@ -48,7 +49,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   ...initialState,
 
   createThread: () => {
-    const threadId = crypto.randomUUID();
+    const threadId = generateUUID();
     const now = new Date();
 
     set({

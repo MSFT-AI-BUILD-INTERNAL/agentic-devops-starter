@@ -1,5 +1,6 @@
 // AG-UI client service for HTTP requests
 import { logger } from '../utils/logger';
+import { generateUUID } from '../utils/uuid';
 
 export interface ChatRequest {
   messages: Array<{ role: string; content: string }>;
@@ -119,7 +120,7 @@ class AGUIClient {
         })();
 
         // Return immediately with thread_id (will be updated from stream)
-        return { thread_id: threadId || threadIdFromStream || crypto.randomUUID() };
+        return { thread_id: threadId || threadIdFromStream || generateUUID() };
       }
 
       // Fallback for non-streaming
