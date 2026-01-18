@@ -97,6 +97,33 @@ jobs:
             --from-literal=api-version="${{ secrets.AZURE_OPENAI_API_VERSION }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Setup HTTPS (if not already installed)
+        run: |
+          # Check if NGINX Ingress Controller is already installed
+          if ! kubectl get namespace ingress-nginx &> /dev/null; then
+            echo "📦 Installing NGINX Ingress Controller..."
+            kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml
+            kubectl wait --namespace ingress-nginx \
+              --for=condition=ready pod \
+              --selector=app.kubernetes.io/component=controller \
+              --timeout=300s
+          else
+            echo "✅ NGINX Ingress Controller already installed"
+          fi
+          
+          # Check if cert-manager is already installed
+          if ! kubectl get namespace cert-manager &> /dev/null; then
+            echo "📦 Installing cert-manager..."
+            kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+            kubectl wait --namespace cert-manager \
+              --for=condition=ready pod \
+              --selector=app.kubernetes.io/instance=cert-manager \
+              --timeout=300s
+          else
+            echo "✅ cert-manager already installed"
+          fi
+        continue-on-error: true
+
       - name: Deploy to AKS
         run: |
           # Replace placeholders in deployment manifest
@@ -106,6 +133,14 @@ jobs:
           # Apply Kubernetes manifests with variable substitution
           envsubst < k8s/deployment.yaml | kubectl apply -f -
           kubectl apply -f k8s/service.yaml
+          
+          # Apply Ingress and cert-issuer if they exist
+          if [ -f k8s/cert-issuer.yaml ]; then
+            kubectl apply -f k8s/cert-issuer.yaml
+          fi
+          if [ -f k8s/ingress.yaml ]; then
+            kubectl apply -f k8s/ingress.yaml
+          fi
 
       - name: Wait for deployment rollout
         id: wait_for_rollout

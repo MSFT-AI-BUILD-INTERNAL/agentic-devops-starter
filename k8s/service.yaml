@@ -6,7 +6,9 @@ metadata:
   labels:
     app: agentic-devops
 spec:
-  type: LoadBalancer
+  # Changed from LoadBalancer to ClusterIP when using Ingress
+  # Use LoadBalancer if you want direct access without Ingress
+  type: ClusterIP
   selector:
     app: agentic-devops
   ports:
@@ -18,3 +20,4 @@ spec:
       port: 5100
       targetPort: 5100
       name: backend
+

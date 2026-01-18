@@ -5,7 +5,83 @@ This directory contains Kubernetes manifests for deploying the Agentic DevOps St
 ## Files
 
 - **deployment.yaml**: Defines the Kubernetes Deployment for the application with 2 replicas
-- **service.yaml**: Defines a LoadBalancer Service to expose the application externally
+- **service.yaml**: Defines a ClusterIP Service (use with Ingress) or LoadBalancer Service for direct access
+- **ingress.yaml**: Defines HTTPS Ingress with automatic TLS certificate (requires NGINX Ingress Controller)
+- **cert-issuer.yaml**: Let's Encrypt certificate issuer for automatic TLS certificates
+- **setup-https.sh**: Automated script to install NGINX Ingress Controller and cert-manager
+
+## HTTPS Setup
+
+### Option 1: Using NGINX Ingress Controller (Recommended) ⭐
+
+This option provides:
+- ✅ Automatic HTTPS with Let's Encrypt certificates
+- ✅ HTTP to HTTPS redirect
+- ✅ Multiple domains/paths support
+- ✅ Better load balancing and caching
+
+**Steps:**
+
+1. **Install NGINX Ingress Controller and cert-manager** (one-time setup):
+   ```bash
+   cd k8s
+   ./setup-https.sh
+   ```
+
+2. **Configure your domain**:
+   - Point your domain DNS A record to the NGINX Ingress LoadBalancer IP
+   - Get the IP: `kubectl get service ingress-nginx-controller -n ingress-nginx`
+
+3. **Update configuration files**:
+   
+   Edit `k8s/ingress.yaml`:
+   ```yaml
+   spec:
+     tls:
+       - hosts:
+           - your-domain.com  # Replace with your actual domain
+   ```
+   
+   Edit `k8s/cert-issuer.yaml`:
+   ```yaml
+   spec:
+     acme:
+       email: your-email@example.com  # Replace with your email
+   ```
+
+4. **Deploy**:
+   ```bash
+   kubectl apply -f k8s/cert-issuer.yaml
+   kubectl apply -f k8s/ingress.yaml
+   ```
+
+5. **Verify certificate**:
+   ```bash
+   kubectl get certificate
+   kubectl describe certificate agentic-devops-tls
+   ```
+
+   Certificate issuance takes 1-2 minutes. Access your app at: `https://your-domain.com`
+
+### Option 2: LoadBalancer with HTTP Only
+
+If you don't need HTTPS or want to use an external proxy:
+
+1. **Change service type** in `k8s/service.yaml`:
+   ```yaml
+   spec:
+     type: LoadBalancer  # Change from ClusterIP
+   ```
+
+2. **Deploy**:
+   ```bash
+   kubectl apply -f k8s/service.yaml
+   ```
+
+3. **Get LoadBalancer IP**:
+   ```bash
+   kubectl get service agentic-devops-service
+   ```
 
 ## Prerequisites
 
