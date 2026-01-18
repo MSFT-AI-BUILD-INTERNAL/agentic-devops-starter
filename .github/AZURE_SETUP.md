@@ -154,7 +154,22 @@ SECRET=$(az ad app credential reset --id $APP_ID --query password -o tsv)
 echo "Client Secret: $SECRET"
 ```
 
-Then add to GitHub secrets:
-- `AZURE_CLIENT_SECRET`: <SECRET from above>
+Then add to GitHub secrets a single `AZURE_CREDENTIALS` secret with the following JSON object:
 
-And update the workflow to include `creds` parameter instead of individual IDs.
+```json
+{
+  "clientId": "<APP_ID>",
+  "clientSecret": "<SECRET>",
+  "subscriptionId": "<SUBSCRIPTION_ID>",
+  "tenantId": "<TENANT_ID>"
+}
+```
+
+And update the workflow to use the `creds` parameter instead of individual IDs:
+
+```yaml
+- name: Azure Login
+  uses: azure/login@v2
+  with:
+    creds: ${{ secrets.AZURE_CREDENTIALS }}
+```
