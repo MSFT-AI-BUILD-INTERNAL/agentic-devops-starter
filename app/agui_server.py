@@ -152,10 +152,20 @@ def create_app() -> FastAPI:
     # Create the agent
     agent = create_agent()
 
+    # Add health check endpoint for Kubernetes probes
+    @app.get("/health")
+    async def health_check() -> dict[str, str]:
+        """Health check endpoint for Kubernetes liveness and readiness probes.
+        
+        Returns:
+            Dictionary with status message
+        """
+        return {"status": "healthy"}
+
     # Register the AG-UI endpoint at the root path
     add_agent_framework_fastapi_endpoint(app, agent, "/")
 
-    logger.info("FastAPI app created with AG-UI endpoint")
+    logger.info("FastAPI app created with AG-UI endpoint and health check")
     return app
 
 

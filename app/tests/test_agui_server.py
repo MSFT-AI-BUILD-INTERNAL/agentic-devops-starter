@@ -35,6 +35,18 @@ def test_server_has_docs(test_env: None) -> None:
     assert response.status_code == 200
 
 
+def test_health_check_endpoint(test_env: None) -> None:
+    """Test that the health check endpoint is available."""
+    from agui_server import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy"}
+
+
 def test_get_time_zone_tool() -> None:
     """Test the get_time_zone server-side tool."""
     from agui_server import get_time_zone
