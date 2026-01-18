@@ -79,7 +79,10 @@ AZURE_SUBSCRIPTION_ID: <your-subscription-id>
 # Application Configuration (Optional)
 AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-endpoint>
 AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment>
-OPENAI_API_KEY: <your-openai-key>
+AZURE_OPENAI_API_VERSION: <api-version>
+
+# HTTPS Configuration (Optional, for Let's Encrypt)
+LETSENCRYPT_EMAIL: <your-email@example.com>
 ```
 
 ### 4. Deploy Application

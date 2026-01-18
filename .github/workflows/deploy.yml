@@ -98,15 +98,28 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Setup HTTPS (if not already installed)
+        id: setup_https
         run: |
+          set +e  # Don't exit on error, we'll handle it ourselves
+          SETUP_FAILED=false
+          
           # Check if NGINX Ingress Controller is already installed
           if ! kubectl get namespace ingress-nginx &> /dev/null; then
             echo "📦 Installing NGINX Ingress Controller..."
-            kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml
-            kubectl wait --namespace ingress-nginx \
-              --for=condition=ready pod \
-              --selector=app.kubernetes.io/component=controller \
-              --timeout=300s
+            if kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml; then
+              if kubectl wait --namespace ingress-nginx \
+                --for=condition=ready pod \
+                --selector=app.kubernetes.io/component=controller \
+                --timeout=300s; then
+                echo "✅ NGINX Ingress Controller installed successfully"
+              else
+                echo "⚠️  WARNING: NGINX Ingress Controller installation timed out"
+                SETUP_FAILED=true
+              fi
+            else
+              echo "⚠️  WARNING: Failed to apply NGINX Ingress Controller manifests"
+              SETUP_FAILED=true
+            fi
           else
             echo "✅ NGINX Ingress Controller already installed"
           fi
@@ -114,32 +127,60 @@ jobs:
           # Check if cert-manager is already installed
           if ! kubectl get namespace cert-manager &> /dev/null; then
             echo "📦 Installing cert-manager..."
-            kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
-            kubectl wait --namespace cert-manager \
-              --for=condition=ready pod \
-              --selector=app.kubernetes.io/instance=cert-manager \
-              --timeout=300s
+            if kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml; then
+              if kubectl wait --namespace cert-manager \
+                --for=condition=ready pod \
+                --selector=app.kubernetes.io/instance=cert-manager \
+                --timeout=300s; then
+                echo "✅ cert-manager installed successfully"
+              else
+                echo "⚠️  WARNING: cert-manager installation timed out"
+                SETUP_FAILED=true
+              fi
+            else
+              echo "⚠️  WARNING: Failed to apply cert-manager manifests"
+              SETUP_FAILED=true
+            fi
           else
             echo "✅ cert-manager already installed"
           fi
-        continue-on-error: true
+          
+          # Set output for conditional Ingress deployment
+          if [ "$SETUP_FAILED" = "true" ]; then
+            echo "⚠️  HTTPS setup encountered errors - Ingress/cert-issuer deployment will be skipped"
+            echo "https_ready=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ HTTPS setup complete - Ingress/cert-issuer can be deployed"
+            echo "https_ready=true" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy to AKS
         run: |
           # Replace placeholders in deployment manifest
           export ACR_NAME=${{ env.ACR_NAME }}
           export IMAGE_TAG=${{ github.sha }}
+          export LETSENCRYPT_EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
 
           # Apply Kubernetes manifests with variable substitution
           envsubst < k8s/deployment.yaml | kubectl apply -f -
           kubectl apply -f k8s/service.yaml
           
-          # Apply Ingress and cert-issuer if they exist
-          if [ -f k8s/cert-issuer.yaml ]; then
-            kubectl apply -f k8s/cert-issuer.yaml
-          fi
-          if [ -f k8s/ingress.yaml ]; then
-            kubectl apply -f k8s/ingress.yaml
+          # Apply Ingress and cert-issuer only if HTTPS setup was successful
+          if [ "${{ steps.setup_https.outputs.https_ready }}" = "true" ]; then
+            if [ -f k8s/cert-issuer.yaml ] && [ -n "$LETSENCRYPT_EMAIL" ]; then
+              echo "📦 Deploying cert-issuer..."
+              envsubst < k8s/cert-issuer.yaml | kubectl apply -f -
+            else
+              echo "⏭️  Skipping cert-issuer (LETSENCRYPT_EMAIL not set)"
+            fi
+            
+            if [ -f k8s/ingress.yaml ]; then
+              echo "📦 Deploying Ingress..."
+              kubectl apply -f k8s/ingress.yaml
+            fi
+          else
+            echo "⚠️  Skipping Ingress/cert-issuer deployment due to HTTPS setup errors"
+            echo "   Application is still accessible via LoadBalancer (if configured)"
           fi
 
       - name: Wait for deployment rollout

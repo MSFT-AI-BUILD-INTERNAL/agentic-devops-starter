@@ -42,17 +42,18 @@ This option provides:
            - your-domain.com  # Replace with your actual domain
    ```
    
-   Edit `k8s/cert-issuer.yaml`:
-   ```yaml
-   spec:
-     acme:
-       email: your-email@example.com  # Replace with your email
-   ```
+   Set `LETSENCRYPT_EMAIL` GitHub Secret:
+   - Go to: Repository Settings → Secrets and variables → Actions
+   - Add new secret: `LETSENCRYPT_EMAIL` = `your-email@example.com`
 
 4. **Deploy**:
    ```bash
-   kubectl apply -f k8s/cert-issuer.yaml
+   # For manual deployment
+   export LETSENCRYPT_EMAIL=your-email@example.com
+   envsubst < k8s/cert-issuer.yaml | kubectl apply -f -
    kubectl apply -f k8s/ingress.yaml
+   
+   # Or push to trigger GitHub Actions (will use the secret)
    ```
 
 5. **Verify certificate**:

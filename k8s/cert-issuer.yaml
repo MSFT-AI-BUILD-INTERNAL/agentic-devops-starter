@@ -8,15 +8,15 @@ spec:
   acme:
     # Let's Encrypt production server
     server: https://acme-v02.api.letsencrypt.org/directory
-    # Email for certificate expiration notifications
-    email: jinsangp@gmail.com  # TODO: Replace with actual email
+    # Email for certificate expiration notifications (from environment variable)
+    email: ${LETSENCRYPT_EMAIL}
     privateKeySecretRef:
       name: letsencrypt-prod-key
     solvers:
       # HTTP-01 challenge solver
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ---
 # Let's Encrypt staging issuer (for testing)
 apiVersion: cert-manager.io/v1
@@ -26,10 +26,10 @@ metadata:
 spec:
   acme:
     server: https://acme-staging-v02.api.letsencrypt.org/directory
-    email: jinsangp@gmail.com  # TODO: Replace with actual email
+    email: ${LETSENCRYPT_EMAIL}
     privateKeySecretRef:
       name: letsencrypt-staging-key
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
