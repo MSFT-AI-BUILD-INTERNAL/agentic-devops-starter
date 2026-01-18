@@ -36,11 +36,11 @@ spec:
                   name: azure-config
                   key: deployment-name
                   optional: true
-            - name: OPENAI_API_KEY
+            - name: AZURE_OPENAI_API_VERSION
               valueFrom:
                 secretKeyRef:
                   name: azure-config
-                  key: openai-api-key
+                  key: api-version
                   optional: true
             - name: CORS_ORIGINS
               value: "*"
@@ -55,14 +55,18 @@ spec:
             httpGet:
               path: /
               port: 5100
-            initialDelaySeconds: 30
+            initialDelaySeconds: 60
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /
               port: 5100
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
         - name: frontend
           # Frontend image with same tag
           image: ${ACR_NAME}.azurecr.io/agentic-devops-starter-frontend:${IMAGE_TAG}
