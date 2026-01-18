@@ -76,11 +76,20 @@ AZURE_CLIENT_ID: <github-actions-app-id>
 AZURE_TENANT_ID: <your-tenant-id>
 AZURE_SUBSCRIPTION_ID: <your-subscription-id>
 
+# HTTPS Configuration (Optional but Recommended)
+DOMAIN_NAME: <your-domain-name>  # e.g., app.yourdomain.com
+LETSENCRYPT_EMAIL: <your-email>  # For certificate expiration notifications
+
 # Application Configuration (Optional)
 AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-endpoint>
 AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment>
 OPENAI_API_KEY: <your-openai-key>
 ```
+
+**Note on HTTPS:**
+- If `DOMAIN_NAME` and `LETSENCRYPT_EMAIL` are provided, the application will be deployed with HTTPS using Let's Encrypt certificates
+- If not provided, the application will be accessible via HTTP using the Ingress LoadBalancer IP
+- For production deployments, HTTPS is strongly recommended
 
 ### 4. Deploy Application
 
@@ -150,9 +159,16 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
          │  Azure Kubernetes Service (AKS)      │
          │  ┌─────────────┐  ┌─────────────┐   │
          │  │   Pod 1     │  │   Pod 2     │   │
-         │  │  (app:5100) │  │  (app:5100) │   │
+         │  │  Frontend + │  │  Frontend + │   │
+         │  │   Backend   │  │   Backend   │   │
          │  └─────────────┘  └─────────────┘   │
-         │          LoadBalancer :80             │
+         │                                       │
+         │  ┌──────────────────────────────┐    │
+         │  │  NGINX Ingress Controller    │    │
+         │  │  - HTTPS/TLS termination     │    │
+         │  │  - Auto SSL (Let's Encrypt)  │    │
+         │  └──────────────────────────────┘    │
+         │         LoadBalancer :80/443          │
          └─────────────────────────────────────┘
                            │
                            ▼
@@ -168,10 +184,11 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 
 - ✅ **Infrastructure as Code**: Terraform for reproducible Azure infrastructure
 - ✅ **Modern Python**: Uses `uv` for fast, reliable dependency management
-- ✅ **Web-Based Chat UI**: React + TypeScript frontend with real-time streaming (NEW)
+- ✅ **Web-Based Chat UI**: React + TypeScript frontend with real-time streaming
+- ✅ **HTTPS Support**: Automatic TLS certificate management with Let's Encrypt via cert-manager (NEW)
 - ✅ **Containerization**: Optimized Docker images with multi-stage builds
 - ✅ **CI/CD Automation**: GitHub Actions for automated build and deployment
-- ✅ **Kubernetes Orchestration**: High-availability deployment with health checks
+- ✅ **Kubernetes Orchestration**: High-availability deployment with NGINX Ingress Controller
 - ✅ **Secure Authentication**: OIDC-based Azure authentication (no stored credentials)
 - ✅ **Monitoring & Logging**: Azure Log Analytics with Container Insights for comprehensive observability
 - ✅ **Comprehensive Docs**: Detailed guides for infrastructure, deployment, and operations
