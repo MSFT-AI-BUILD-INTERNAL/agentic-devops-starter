@@ -89,12 +89,19 @@ jobs:
             --name ${{ env.AKS_CLUSTER_NAME }} \
             --overwrite-existing
 
+      - name: Attach ACR to AKS (if not already attached)
+        run: |
+          az aks update \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --attach-acr ${{ env.ACR_NAME }}
+
       - name: Create Kubernetes secret for Azure configuration
         run: |
           kubectl create secret generic azure-config \
-            --from-literal=AZURE_AI_PROJECT_ENDPOINT="${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" \
-            --from-literal=AZURE_AI_MODEL_DEPLOYMENT_NAME="${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" \
-            --from-literal=AZURE_OPENAI_API_VERSION="${{ secrets.AZURE_OPENAI_API_VERSION }}" \
+            --from-literal=endpoint="${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" \
+            --from-literal=deployment-name="${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" \
+            --from-literal=api-version="${{ secrets.AZURE_OPENAI_API_VERSION }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy to AKS
@@ -110,6 +117,33 @@ jobs:
       - name: Wait for deployment rollout
         run: |
           kubectl rollout status deployment/agentic-devops-app --timeout=5m
+        continue-on-error: true
+
+      - name: Debug deployment status (if rollout fails)
+        if: failure() || cancelled()
+        run: |
+          echo "=== Deployment Status ==="
+          kubectl get deployment agentic-devops-app -o wide
+          
+          echo ""
+          echo "=== Pod Status ==="
+          kubectl get pods -l app=agentic-devops -o wide
+          
+          echo ""
+          echo "=== Pod Describe ==="
+          kubectl describe pods -l app=agentic-devops
+          
+          echo ""
+          echo "=== Recent Events ==="
+          kubectl get events --sort-by='.lastTimestamp' | tail -20
+          
+          echo ""
+          echo "=== Backend Container Logs ==="
+          kubectl logs -l app=agentic-devops -c backend --tail=100 || echo "No backend logs available"
+          
+          echo ""
+          echo "=== Frontend Container Logs ==="
+          kubectl logs -l app=agentic-devops -c frontend --tail=100 || echo "No frontend logs available"
 
       - name: Get service external IP
         run: |
