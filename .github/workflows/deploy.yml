@@ -115,12 +115,13 @@ jobs:
           kubectl apply -f k8s/service.yaml
 
       - name: Wait for deployment rollout
+        id: wait_for_rollout
         run: |
           kubectl rollout status deployment/agentic-devops-app --timeout=5m
         continue-on-error: true
 
       - name: Debug deployment status (if rollout fails)
-        if: failure() || cancelled()
+        if: always() && steps.wait_for_rollout.outcome == 'failure'
         run: |
           echo "=== Deployment Status ==="
           kubectl get deployment agentic-devops-app -o wide
