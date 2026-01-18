@@ -1,0 +1,35 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentic-devops-ingress
+  annotations:
+    # Enable cert-manager for automatic TLS certificate
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Redirect HTTP to HTTPS
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Increase proxy timeouts for SSE streaming
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    # WebSocket support for streaming
+    nginx.ingress.kubernetes.io/websocket-services: agentic-devops-service
+spec:
+  # Use NGINX Ingress Controller (Kubernetes 1.18+ standard)
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        # Replace with your actual domain
+        - agentic-devops.example.com
+      secretName: agentic-devops-tls
+  rules:
+    - host: agentic-devops.example.com
+      http:
+        paths:
+          # Frontend and API routes
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentic-devops-service
+                port:
+                  number: 80
