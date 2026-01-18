@@ -142,6 +142,18 @@ jobs:
           if [ -n "$DOMAIN_NAME" ] && [ -n "$LETSENCRYPT_EMAIL" ]; then
             echo "Deploying with HTTPS support for domain: $DOMAIN_NAME"
             
+            # Validate domain name format (basic RFC compliance check)
+            if ! echo "$DOMAIN_NAME" | grep -qE '^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'; then
+              echo "Error: DOMAIN_NAME is not a valid domain format"
+              exit 1
+            fi
+            
+            # Validate email format
+            if ! echo "$LETSENCRYPT_EMAIL" | grep -qE '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'; then
+              echo "Error: LETSENCRYPT_EMAIL is not a valid email format"
+              exit 1
+            fi
+            
             # Apply cert-manager ClusterIssuer
             envsubst < k8s/cert-issuer.yaml | kubectl apply -f -
             
