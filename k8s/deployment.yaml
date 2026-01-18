@@ -42,6 +42,8 @@ spec:
                   name: azure-config
                   key: openai-api-key
                   optional: true
+            - name: CORS_ORIGINS
+              value: "*"
           resources:
             requests:
               memory: "256Mi"
