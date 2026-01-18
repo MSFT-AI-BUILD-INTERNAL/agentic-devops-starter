@@ -46,6 +46,20 @@ See [`/infra/README.md`](./infra/README.md) for detailed infrastructure document
 
 ### 3. Configure GitHub Actions
 
+#### Azure Authentication Setup
+
+Before configuring GitHub Secrets, you need to set up Azure authentication for GitHub Actions using OIDC (OpenID Connect). This provides secure, keyless authentication without storing long-lived secrets.
+
+**📖 Follow the detailed setup guide: [`.github/AZURE_SETUP.md`](.github/AZURE_SETUP.md)**
+
+The guide covers:
+- Creating Azure AD Application and Service Principal
+- Configuring Federated Identity Credentials for OIDC
+- Assigning required Azure roles (Contributor, AcrPush)
+- Verifying the setup
+
+#### GitHub Secrets
+
 Add the following secrets to your GitHub repository (Settings → Secrets and variables → Actions):
 
 ```yaml
