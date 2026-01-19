@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set up test environment variables."""
+    monkeypatch.setenv("AZURE_AI_PROJECT_ENDPOINT", "https://test.azure.com")
+    monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "test-deployment")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("AGUI_SERVER_URL", "http://127.0.0.1:5100/")
 
@@ -45,6 +47,24 @@ def test_health_check_endpoint(test_env: None) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
+
+
+def test_security_headers(test_env: None) -> None:
+    """Test that security headers are present in responses."""
+    from agui_server import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    
+    response = client.get("/health")
+    assert response.status_code == 200
+    
+    # Verify security headers are present
+    assert response.headers.get("X-Content-Type-Options") == "nosniff"
+    assert response.headers.get("X-Frame-Options") == "DENY"
+    assert response.headers.get("X-XSS-Protection") == "1; mode=block"
+    assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+
 
 
 def test_get_time_zone_tool() -> None:

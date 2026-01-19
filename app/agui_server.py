@@ -18,8 +18,9 @@ from agent_framework_ag_ui import add_agent_framework_fastapi_endpoint
 from agent_framework.azure import AzureAIAgentClient
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.logging_utils import setup_logging
 
@@ -109,6 +110,27 @@ def create_agent() -> ChatAgent:
     return agent
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Middleware to add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        """Add security headers to response.
+        
+        Args:
+            request: The incoming request
+            call_next: The next middleware or route handler
+            
+        Returns:
+            Response with security headers added
+        """
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -148,6 +170,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Add security headers middleware
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # Create the agent
     agent = create_agent()
