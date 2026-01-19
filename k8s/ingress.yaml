@@ -6,8 +6,8 @@ metadata:
   annotations:
     # Enable cert-manager for automatic TLS certificate
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    # Redirect HTTP to HTTPS
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Only redirect to HTTPS when domain is configured (not for IP access)
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     # Increase proxy timeouts for SSE streaming
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
@@ -22,10 +22,22 @@ spec:
         - agentic-devops.example.com
       secretName: agentic-devops-tls
   rules:
+    # Rule for domain-based access (with HTTPS)
     - host: agentic-devops.example.com
       http:
         paths:
           # Frontend and API routes
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentic-devops-service
+                port:
+                  number: 80
+    # Default rule for IP-based access (without hostname)
+    # This allows accessing the app via LoadBalancer IP
+    - http:
+        paths:
           - path: /
             pathType: Prefix
             backend:
