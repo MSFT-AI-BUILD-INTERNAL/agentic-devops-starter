@@ -6,7 +6,7 @@ metadata:
   annotations:
     # Enable cert-manager for automatic TLS certificate
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    # Only redirect to HTTPS when domain is configured (not for IP access)
+    # SSL redirect disabled to allow HTTP access via IP (set to "true" after DNS/certificate setup)
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     # Increase proxy timeouts for SSE streaming
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"

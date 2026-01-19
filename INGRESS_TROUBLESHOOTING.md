@@ -86,7 +86,9 @@ spec:
 
 2. **Get the NGINX Ingress LoadBalancer IP:**
    ```bash
-   kubectl get service ingress-nginx-controller -n ingress-nginx
+   # Get the LoadBalancer service (name may vary by installation method)
+   kubectl get service -n ingress-nginx
+   # Look for the service with TYPE=LoadBalancer, typically named 'ingress-nginx-controller'
    ```
    
    Note the `EXTERNAL-IP` value.
@@ -254,12 +256,16 @@ Make sure `force-ssl-redirect` is set correctly:
 # Check if NGINX Ingress Controller is installed
 kubectl get pods -n ingress-nginx
 
-# If not installed, run the setup script
+# If not installed, run the setup script (recommended)
 cd k8s
 ./setup-https.sh
 
-# Or install manually
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
+# Or install manually (verify the URL and version before applying)
+# Check latest version at: https://github.com/kubernetes/ingress-nginx/releases
+# Download and inspect the manifest first:
+# curl -O https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
+# Review the file, then apply:
+# kubectl apply -f deploy.yaml
 ```
 
 ## Alternative: Use LoadBalancer Service Directly
