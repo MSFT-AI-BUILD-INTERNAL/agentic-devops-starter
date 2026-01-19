@@ -2,6 +2,21 @@
 
 This directory contains Kubernetes manifests for deploying the Agentic DevOps Starter application to Azure Kubernetes Service (AKS).
 
+## Quick Access via External IP
+
+🚀 **Want to access immediately without DNS setup?** The Ingress now supports IP-based access!
+
+After deploying, get the external IP:
+```bash
+kubectl get ingress agentic-devops-ingress
+```
+
+Access your application at: `http://<EXTERNAL-IP>`
+
+**Note:** This uses HTTP (not HTTPS). For production with HTTPS, see the setup options below.
+
+📖 **Having issues?** See [INGRESS_TROUBLESHOOTING.md](../INGRESS_TROUBLESHOOTING.md) for detailed troubleshooting.
+
 ## Files
 
 - **deployment.yaml**: Defines the Kubernetes Deployment for the application with 2 replicas
@@ -200,6 +215,8 @@ The application will be accessible at `http://<EXTERNAL-IP>/`
 
 ## Troubleshooting
 
+### Quick Diagnostics
+
 View pod logs:
 ```bash
 kubectl logs -l app=agentic-devops --tail=100 -f
@@ -219,3 +236,19 @@ Check service:
 ```bash
 kubectl describe service agentic-devops-service
 ```
+
+### Common Issues
+
+**404 Not Found Error?** See [INGRESS_TROUBLESHOOTING.md](../INGRESS_TROUBLESHOOTING.md) for:
+- Accessing via external IP (without domain)
+- DNS and HTTPS setup
+- Certificate troubleshooting
+- Backend connectivity issues
+- Complete verification checklist
+
+### Get Help
+
+For detailed troubleshooting guides:
+- **Ingress Issues**: [INGRESS_TROUBLESHOOTING.md](../INGRESS_TROUBLESHOOTING.md)
+- **Deployment Issues**: [DEPLOYMENT.md](../DEPLOYMENT.md#troubleshooting)
+- **Infrastructure**: [infra/README.md](../infra/README.md#troubleshooting)

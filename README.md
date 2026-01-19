@@ -295,15 +295,17 @@ See [infra/README.md](./infra/README.md) for cost optimization tips.
 
 Common issues and solutions:
 
-1. **Build fails**: Check Dockerfile and dependencies in `pyproject.toml`
-2. **Deploy fails**: Verify GitHub Secrets and Azure permissions
-3. **Pods not starting**: Check logs with `kubectl logs -l app=agentic-devops`
-4. **Can't access service**: Wait for LoadBalancer IP assignment
+1. **404 Not Found from Ingress**: See [INGRESS_TROUBLESHOOTING.md](./INGRESS_TROUBLESHOOTING.md) for IP-based access setup
+2. **Build fails**: Check Dockerfile and dependencies in `pyproject.toml`
+3. **Deploy fails**: Verify GitHub Secrets and Azure permissions
+4. **Pods not starting**: Check logs with `kubectl logs -l app=agentic-devops`
+5. **Can't access service**: Wait for LoadBalancer IP assignment
 
-For detailed troubleshooting, see:
-- [DEPLOYMENT.md](./DEPLOYMENT.md#troubleshooting)
-- [infra/README.md](./infra/README.md#troubleshooting)
-- [k8s/README.md](./k8s/README.md#troubleshooting)
+For detailed troubleshooting guides, see:
+- [INGRESS_TROUBLESHOOTING.md](./INGRESS_TROUBLESHOOTING.md) - Fix 404 errors and Ingress issues
+- [DEPLOYMENT.md](./DEPLOYMENT.md#troubleshooting) - Deployment workflow issues
+- [infra/README.md](./infra/README.md#troubleshooting) - Infrastructure problems
+- [k8s/README.md](./k8s/README.md#troubleshooting) - Kubernetes operations
 
 ## License
 
