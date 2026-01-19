@@ -14,12 +14,13 @@ import os
 from typing import Annotated
 
 from agent_framework import ChatAgent, ai_function
-from agent_framework_ag_ui import add_agent_framework_fastapi_endpoint
 from agent_framework.azure import AzureAIAgentClient
+from agent_framework_ag_ui import add_agent_framework_fastapi_endpoint
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.logging_utils import setup_logging
 
@@ -82,11 +83,11 @@ def create_agent() -> ChatAgent:
         )
 
     logger.info(f"Using Azure AI Foundry client with DefaultAzureCredential (API version: {api_version})")
-    
+
     # Use DefaultAzureCredential for Azure AI Foundry authentication
     # Azure AI Foundry requires the https://ai.azure.com/.default scope
     credential = DefaultAzureCredential()
-    
+
     chat_client = AzureAIAgentClient(
         endpoint=endpoint,
         model=deployment_name,
@@ -107,6 +108,27 @@ def create_agent() -> ChatAgent:
 
     logger.info("ChatAgent created successfully")
     return agent
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Middleware to add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        """Add security headers to response.
+
+        Args:
+            request: The incoming request
+            call_next: The next middleware or route handler
+
+        Returns:
+            Response with security headers added
+        """
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
 
 
 def create_app() -> FastAPI:
@@ -131,7 +153,7 @@ def create_app() -> FastAPI:
         allow_origins = [
             origin.strip() for origin in allowed_origins.split(",")
         ]
-    
+
     # Development origins as fallback
     if allow_origins == ["*"] or not allow_origins:
         allow_origins = [
@@ -140,7 +162,7 @@ def create_app() -> FastAPI:
             "http://localhost:3000",  # Alternative port
             "http://127.0.0.1:3000",
         ]
-    
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allow_origins,
@@ -149,6 +171,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Add security headers middleware
+    app.add_middleware(SecurityHeadersMiddleware)
+
     # Create the agent
     agent = create_agent()
 
@@ -156,7 +181,7 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check() -> dict[str, str]:
         """Health check endpoint for Kubernetes liveness and readiness probes.
-        
+
         Returns:
             Dictionary with status message
         """
