@@ -32,7 +32,7 @@ def test_server_has_docs(test_env: None) -> None:
 
     app = create_app()
     client = TestClient(app)
-    
+
     response = client.get("/docs")
     assert response.status_code == 200
 
@@ -43,7 +43,7 @@ def test_health_check_endpoint(test_env: None) -> None:
 
     app = create_app()
     client = TestClient(app)
-    
+
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
@@ -55,10 +55,10 @@ def test_security_headers(test_env: None) -> None:
 
     app = create_app()
     client = TestClient(app)
-    
+
     response = client.get("/health")
     assert response.status_code == 200
-    
+
     # Verify security headers are present
     assert response.headers.get("X-Content-Type-Options") == "nosniff"
     assert response.headers.get("X-Frame-Options") == "DENY"
@@ -76,11 +76,11 @@ def test_get_time_zone_tool() -> None:
     assert "Pacific Time" in get_time_zone("San Francisco")
     assert "Eastern Time" in get_time_zone("New York")
     assert "Greenwich Mean Time" in get_time_zone("London")
-    
+
     # Test case insensitivity
     assert "Pacific Time" in get_time_zone("SEATTLE")
     assert "Pacific Time" in get_time_zone("seattle")
-    
+
     # Test unknown location
     result = get_time_zone("Unknown City")
     assert "not available" in result
@@ -113,13 +113,13 @@ def test_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    
+
     # Need to reload the module to pick up the new environment
     import sys
     if 'agui_server' in sys.modules:
         del sys.modules['agui_server']
-    
+
     from agui_server import create_agent
-    
+
     with pytest.raises(ValueError, match="must be set"):
         create_agent()
