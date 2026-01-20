@@ -24,6 +24,11 @@ output "aks_node_resource_group" {
   value       = azurerm_kubernetes_cluster.aks.node_resource_group
 }
 
+output "oidc_issuer_url" {
+  description = "The OIDC issuer URL for Workload Identity"
+  value       = azurerm_kubernetes_cluster.aks.oidc_issuer_url
+}
+
 output "aks_kubelet_identity" {
   description = "The kubelet identity of the AKS cluster"
   value = {

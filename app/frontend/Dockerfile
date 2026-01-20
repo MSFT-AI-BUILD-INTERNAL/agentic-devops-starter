@@ -40,6 +40,11 @@ RUN echo 'server { \
     add_header X-XSS-Protection "1; mode=block" always; \
     add_header Referrer-Policy "strict-origin-when-cross-origin" always; \
     \
+    # Block unwanted HTTP methods (WebDAV, etc.) \
+    if ($request_method !~ ^(GET|POST|HEAD|OPTIONS)$ ) { \
+        return 405; \
+    } \
+    \
     # Proxy API requests to backend on localhost:5100 (same pod) \
     # IMPORTANT: This must come BEFORE the location / block \
     location /api/ { \

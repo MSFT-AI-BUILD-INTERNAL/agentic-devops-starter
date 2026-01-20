@@ -57,3 +57,23 @@ output "log_analytics_workspace_name" {
   description = "The name of the Log Analytics Workspace"
   value       = module.log_analytics.workspace_name
 }
+
+output "workload_identity_name" {
+  description = "Name of the workload managed identity"
+  value       = module.managed_identity.identity_name
+}
+
+output "workload_identity_client_id" {
+  description = "Client ID of the workload managed identity"
+  value       = module.managed_identity.identity_client_id
+}
+
+output "workload_identity_principal_id" {
+  description = "Principal ID of the workload managed identity"
+  value       = module.managed_identity.identity_principal_id
+}
+
+output "oidc_issuer_url" {
+  description = "OIDC issuer URL for Workload Identity"
+  value       = module.aks.oidc_issuer_url
+}
