@@ -1,3 +1,8 @@
+output "identity_name" {
+  description = "Name of the managed identity"
+  value       = azurerm_user_assigned_identity.aks_workload.name
+}
+
 output "identity_client_id" {
   description = "Client ID of the managed identity"
   value       = azurerm_user_assigned_identity.aks_workload.client_id

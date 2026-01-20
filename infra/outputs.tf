@@ -58,6 +58,11 @@ output "log_analytics_workspace_name" {
   value       = module.log_analytics.workspace_name
 }
 
+output "workload_identity_name" {
+  description = "Name of the workload managed identity"
+  value       = module.managed_identity.identity_name
+}
+
 output "workload_identity_client_id" {
   description = "Client ID of the workload managed identity"
   value       = module.managed_identity.identity_client_id

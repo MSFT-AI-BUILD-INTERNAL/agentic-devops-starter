@@ -121,7 +121,11 @@ The application uses **Azure AD Workload Identity** to securely authenticate fro
    1. Navigate to your Azure AI Foundry project
    2. Go to **Access control (IAM)** → **Add role assignment**
    3. Select role: **Cognitive Services User** or **Azure AI Developer**
-   4. In **Members**, search for: `aks-agentic-devops-workload-identity`
+   4. In **Members**, search for the managed identity name:
+      ```bash
+      terraform output -raw workload_identity_name
+      ```
+      (e.g., `aks-agentic-devops-workload-identity`)
    5. Click **Review + assign**
 
 3. **Verify the setup**:
@@ -446,10 +450,11 @@ Common issues and solutions:
 
 5. **Verify federated credential**:
    ```bash
-   IDENTITY_NAME=$(terraform output -raw workload_identity_client_id)
+   IDENTITY_NAME=$(terraform output -raw workload_identity_name)
+   RESOURCE_GROUP=$(terraform output -raw resource_group_name)
    az identity federated-credential list \
-     --identity-name aks-agentic-devops-workload-identity \
-     --resource-group rg-agentic-devops -o table
+     --identity-name $IDENTITY_NAME \
+     --resource-group $RESOURCE_GROUP -o table
    # Should show issuer matching AKS OIDC URL
    ```
 

@@ -15,6 +15,4 @@ resource "azurerm_federated_identity_credential" "aks_workload" {
   audience            = ["api://AzureADTokenExchange"]
   issuer              = var.oidc_issuer_url
   subject             = "system:serviceaccount:${var.kubernetes_namespace}:${var.service_account_name}"
-
-  depends_on = [azurerm_user_assigned_identity.aks_workload]
 }
