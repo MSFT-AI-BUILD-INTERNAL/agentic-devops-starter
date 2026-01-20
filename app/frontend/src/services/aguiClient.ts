@@ -35,8 +35,9 @@ class AGUIClient {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    // Use provided baseUrl, fallback to env var, or default to /api for production
-    this.baseUrl = baseUrl || import.meta.env.VITE_AGUI_ENDPOINT || '/api';
+    // Use provided baseUrl, fallback to env var, or default to /api/ for production
+    // IMPORTANT: Trailing slash is required to match nginx 'location /api/' block
+    this.baseUrl = baseUrl || import.meta.env.VITE_AGUI_ENDPOINT || '/api/';
     logger.info('AGUIClient initialized', { baseUrl: this.baseUrl });
   }
 
