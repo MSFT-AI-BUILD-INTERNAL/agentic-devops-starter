@@ -10,7 +10,10 @@ class StreamHandler {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl || import.meta.env.VITE_AGUI_ENDPOINT || 'http://127.0.0.1:5100';
+    // Use provided baseUrl, fallback to env var, or default to /api/ for production
+    // IMPORTANT: Trailing slash is required to match nginx 'location /api/' block
+    this.baseUrl = baseUrl || import.meta.env.VITE_AGUI_ENDPOINT || '/api/';
+    logger.info('StreamHandler initialized', { baseUrl: this.baseUrl });
   }
 
   /**
@@ -61,14 +64,23 @@ class StreamHandler {
     // Close existing connection
     this.disconnect();
 
-    // Build URL
-    const url = new URL(this.baseUrl);
-    if (threadId) {
-      url.searchParams.set('thread_id', threadId);
+    // Build URL - handle both absolute and relative URLs
+    let urlString: string;
+    if (this.baseUrl.startsWith('http://') || this.baseUrl.startsWith('https://')) {
+      // Absolute URL
+      const url = new URL(this.baseUrl);
+      if (threadId) {
+        url.searchParams.set('thread_id', threadId);
+      }
+      urlString = url.toString();
+    } else {
+      // Relative URL - ensure trailing slash for nginx 'location /api/' matching
+      const baseWithSlash = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
+      urlString = threadId ? `${baseWithSlash}?thread_id=${threadId}` : baseWithSlash;
     }
 
     try {
-      this.eventSource = new EventSource(url.toString());
+      this.eventSource = new EventSource(urlString);
 
       this.eventSource.onopen = () => {
         logger.info('SSE connection established');

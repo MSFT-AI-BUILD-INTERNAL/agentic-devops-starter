@@ -6,7 +6,7 @@ function App() {
   useEffect(() => {
     logger.info('Application started', {
       environment: import.meta.env.MODE,
-      endpoint: import.meta.env.VITE_AGUI_ENDPOINT || 'http://127.0.0.1:5100',
+      endpoint: import.meta.env.VITE_AGUI_ENDPOINT || '/api/',
     });
   }, []);
 

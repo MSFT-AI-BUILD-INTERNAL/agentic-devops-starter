@@ -13,12 +13,13 @@ RUN npm ci
 COPY . .
 
 # Set API endpoint to use nginx proxy path (relative URL)
-# This ensures frontend calls /api which nginx proxies to backend
-ARG VITE_AGUI_ENDPOINT=/api
-ENV VITE_AGUI_ENDPOINT=$VITE_AGUI_ENDPOINT
+# IMPORTANT: Trailing slash is required to match nginx 'location /api/' block
+# This ensures frontend calls /api/ which nginx proxies to backend
+ARG VITE_AGUI_ENDPOINT=/api/
 
-# Build the application
-RUN npm run build
+# Build the application with environment variable
+# Vite will replace import.meta.env.VITE_AGUI_ENDPOINT at build time
+RUN VITE_AGUI_ENDPOINT=$VITE_AGUI_ENDPOINT npm run build
 
 # Production stage with nginx
 FROM nginx:alpine
@@ -39,12 +40,8 @@ RUN echo 'server { \
     add_header X-XSS-Protection "1; mode=block" always; \
     add_header Referrer-Policy "strict-origin-when-cross-origin" always; \
     \
-    # SPA routing - serve index.html for all routes \
-    location / { \
-        try_files $uri $uri/ /index.html; \
-    } \
-    \
     # Proxy API requests to backend on localhost:5100 (same pod) \
+    # IMPORTANT: This must come BEFORE the location / block \
     location /api/ { \
         proxy_pass http://127.0.0.1:5100/; \
         proxy_http_version 1.1; \
@@ -56,6 +53,14 @@ RUN echo 'server { \
         proxy_set_header X-Forwarded-Proto $scheme; \
         proxy_cache_bypass $http_upgrade; \
         proxy_read_timeout 90s; \
+        proxy_send_timeout 90s; \
+        proxy_buffering off; \
+    } \
+    \
+    # SPA routing - serve index.html for all routes \
+    # This must come AFTER /api/ to avoid catching API requests \
+    location / { \
+        try_files $uri $uri/ /index.html; \
     } \
 }' > /etc/nginx/conf.d/default.conf
 
