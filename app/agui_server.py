@@ -16,7 +16,7 @@ from typing import Annotated
 from agent_framework import ChatAgent, ai_function
 from agent_framework.azure import AzureAIAgentClient
 from agent_framework_ag_ui import add_agent_framework_fastapi_endpoint
-from azure.identity import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +34,8 @@ logger = setup_logging()
 endpoint = os.environ.get("AZURE_AI_PROJECT_ENDPOINT")
 deployment_name = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
 api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-08-07")
+azure_client_id = os.environ.get("AZURE_CLIENT_ID")
+azure_tenant_id = os.environ.get("AZURE_TENANT_ID")
 
 
 # Server-side tool example
@@ -84,9 +86,16 @@ def create_agent() -> ChatAgent:
 
     logger.info(f"Using Azure AI Foundry client with DefaultAzureCredential (API version: {api_version})")
 
-    # Use DefaultAzureCredential for Azure AI Foundry authentication
+    # Use DefaultAzureCredential or ManagedIdentityCredential for Azure AI Foundry authentication
     # Azure AI Foundry requires the https://ai.azure.com/.default scope
-    credential = DefaultAzureCredential()
+    # When running in AKS with managed identity and multiple identities exist,
+    # AZURE_CLIENT_ID environment variable must be set to specify which identity to use
+    if azure_client_id:
+        logger.info(f"Using ManagedIdentityCredential with client_id: {azure_client_id}")
+        credential = ManagedIdentityCredential(client_id=azure_client_id)
+    else:
+        logger.info("Using DefaultAzureCredential")
+        credential = DefaultAzureCredential()
 
     chat_client = AzureAIAgentClient(
         endpoint=endpoint,

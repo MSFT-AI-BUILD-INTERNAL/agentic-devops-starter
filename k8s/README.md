@@ -126,7 +126,11 @@ Before deploying, ensure you have:
    - `AZURE_SUBSCRIPTION_ID`: Azure subscription ID
    - `AZURE_AI_PROJECT_ENDPOINT`: (Optional) Azure AI endpoint
    - `AZURE_AI_MODEL_DEPLOYMENT_NAME`: (Optional) Azure AI model deployment name
+   - `AZURE_OPENAI_API_VERSION`: (Optional) Azure OpenAI API version
+   - `AZURE_MANAGED_IDENTITY_CLIENT_ID`: (Required for AKS) The managed identity client ID that has access to Azure AI Foundry. See [CREDENTIAL_CONFIGURATION.md](../CREDENTIAL_CONFIGURATION.md) for setup instructions.
    - `OPENAI_API_KEY`: (Optional) OpenAI API key
+
+**⚠️ Important**: If you encounter authentication errors related to multiple managed identities, see the [Credential Configuration Guide](../CREDENTIAL_CONFIGURATION.md) for detailed troubleshooting steps.
 
 ## GitHub Actions Workflow
 

@@ -95,6 +95,8 @@ jobs:
             --from-literal=endpoint="${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" \
             --from-literal=deployment-name="${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" \
             --from-literal=api-version="${{ secrets.AZURE_OPENAI_API_VERSION }}" \
+            --from-literal=client-id="${{ secrets.AZURE_MANAGED_IDENTITY_CLIENT_ID }}" \
+            --from-literal=tenant-id="${{ secrets.AZURE_TENANT_ID }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Setup HTTPS (if not already installed)

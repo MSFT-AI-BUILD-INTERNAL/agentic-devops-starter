@@ -81,9 +81,16 @@ AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-endpoint>
 AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment>
 AZURE_OPENAI_API_VERSION: <api-version>
 
+# Managed Identity Configuration (Required for AKS)
+# This is the managed identity client ID that has access to Azure AI Foundry
+# See CREDENTIAL_CONFIGURATION.md for detailed setup instructions
+AZURE_MANAGED_IDENTITY_CLIENT_ID: <kubelet-identity-client-id>
+
 # HTTPS Configuration (Optional, for Let's Encrypt)
 LETSENCRYPT_EMAIL: <your-email@example.com>
 ```
+
+**⚠️ Important**: If you encounter authentication errors related to multiple managed identities, see the [Credential Configuration Guide](./CREDENTIAL_CONFIGURATION.md) for detailed troubleshooting steps.
 
 ### 4. Deploy Application
 

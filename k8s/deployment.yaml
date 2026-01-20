@@ -42,6 +42,18 @@ spec:
                   name: azure-config
                   key: api-version
                   optional: true
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: azure-config
+                  key: client-id
+                  optional: true
+            - name: AZURE_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: azure-config
+                  key: tenant-id
+                  optional: true
             - name: CORS_ORIGINS
               value: "*"
           resources:
