@@ -20,6 +20,10 @@ resource "azurerm_kubernetes_cluster" "aks" {
     type = "SystemAssigned"
   }
 
+  # Enable Workload Identity for Azure AD authentication from pods
+  oidc_issuer_enabled       = true
+  workload_identity_enabled = true
+
   network_profile {
     network_plugin    = var.network_plugin
     network_policy    = var.network_policy

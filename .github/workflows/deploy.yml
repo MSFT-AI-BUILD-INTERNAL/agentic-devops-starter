@@ -160,8 +160,14 @@ jobs:
           export ACR_NAME=${{ env.ACR_NAME }}
           export IMAGE_TAG=${{ github.sha }}
           export LETSENCRYPT_EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
+          
+          # Get Workload Identity Client ID from Terraform outputs
+          cd infra
+          export AZURE_CLIENT_ID=$(terraform output -raw workload_identity_client_id)
+          cd ..
 
           # Apply Kubernetes manifests with variable substitution
+          envsubst < k8s/service-account.yaml | kubectl apply -f -
           envsubst < k8s/deployment.yaml | kubectl apply -f -
           kubectl apply -f k8s/service.yaml
           

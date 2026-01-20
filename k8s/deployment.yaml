@@ -14,7 +14,9 @@ spec:
     metadata:
       labels:
         app: agentic-devops
+        azure.workload.identity/use: "true"
     spec:
+      serviceAccountName: agentic-devops-sa
       containers:
         - name: backend
           # Image tag will be substituted by envsubst in the GitHub Actions workflow

@@ -72,3 +72,18 @@ module "aks" {
 
   depends_on = [azurerm_resource_group.main, module.acr, module.log_analytics]
 }
+
+# Managed Identity for Workload Identity
+module "managed_identity" {
+  source = "./managed-identity"
+
+  identity_name        = "${var.aks_cluster_name}-workload-identity"
+  resource_group_name  = azurerm_resource_group.main.name
+  location             = azurerm_resource_group.main.location
+  oidc_issuer_url      = module.aks.oidc_issuer_url
+  kubernetes_namespace = "default"
+  service_account_name = "agentic-devops-sa"
+  tags                 = var.tags
+
+  depends_on = [module.aks]
+}

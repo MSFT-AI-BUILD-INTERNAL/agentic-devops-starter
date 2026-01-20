@@ -85,7 +85,108 @@ AZURE_OPENAI_API_VERSION: <api-version>
 LETSENCRYPT_EMAIL: <your-email@example.com>
 ```
 
-### 4. Deploy Application
+### 4. Configure Azure AD Workload Identity
+
+The application uses **Azure AD Workload Identity** to securely authenticate from AKS pods to Azure services (like Azure AI Foundry) using `DefaultAzureCredential`.
+
+#### Why Workload Identity?
+
+- ✅ **No secrets in pods**: Uses OIDC federation instead of storing credentials
+- ✅ **Fine-grained permissions**: Each workload gets its own managed identity
+- ✅ **Automatic token refresh**: Azure handles token lifecycle
+- ✅ **Best practice**: Recommended by Microsoft for AKS authentication
+
+#### Setup Steps
+
+1. **Infrastructure is already configured** (if you ran `terraform apply`):
+   - AKS has OIDC issuer and Workload Identity enabled
+   - User-Assigned Managed Identity created
+   - Federated credential linked to Kubernetes ServiceAccount
+
+2. **Grant Azure AI permissions to the Managed Identity**:
+
+   ```bash
+   # Get the principal ID from Terraform outputs
+   cd infra
+   PRINCIPAL_ID=$(terraform output -raw workload_identity_principal_id)
+   
+   # Grant permissions to your Azure AI Foundry project
+   az role assignment create \
+     --assignee $PRINCIPAL_ID \
+     --role "Cognitive Services User" \
+     --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RG>/providers/Microsoft.CognitiveServices/accounts/<AI_PROJECT_NAME>"
+   ```
+
+   **Alternative: Use Azure Portal**
+   1. Navigate to your Azure AI Foundry project
+   2. Go to **Access control (IAM)** → **Add role assignment**
+   3. Select role: **Cognitive Services User** or **Azure AI Developer**
+   4. In **Members**, search for: `aks-agentic-devops-workload-identity`
+   5. Click **Review + assign**
+
+3. **Verify the setup**:
+
+   After deploying the application, check pod logs:
+   ```bash
+   kubectl logs -l app=agentic-devops -c backend --tail=20
+   ```
+
+   ✅ Success: You'll see INFO logs with agent responses  
+   ❌ Failure: `DefaultAzureCredential failed to retrieve token` error
+
+#### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  AKS Pod (Backend)                           │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  ServiceAccount: agentic-devops-sa                    │  │
+│  │  Label: azure.workload.identity/use: "true"           │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                         │                                    │
+│                         │ DefaultAzureCredential             │
+│                         ▼                                    │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  Azure Workload Identity Webhook                      │  │
+│  │  - Injects Azure token volume                         │  │
+│  │  - Sets AZURE_* environment variables                 │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           │ OIDC Token Exchange
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│          Azure AD Federated Identity Credential             │
+│  - Maps K8s ServiceAccount → Managed Identity               │
+│  - Issuer: AKS OIDC endpoint                                │
+│  - Subject: system:serviceaccount:default:agentic-devops-sa │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│         User-Assigned Managed Identity                      │
+│  - Has "Cognitive Services User" role on AI project         │
+│  - Returns Azure AD access token                            │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Azure AI Foundry / OpenAI                      │
+│  - Validates token                                          │
+│  - Allows API calls                                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Key Files
+
+- [`k8s/service-account.yaml`](k8s/service-account.yaml) - ServiceAccount with Workload Identity annotations
+- [`k8s/deployment.yaml`](k8s/deployment.yaml) - Pod spec using the ServiceAccount
+- [`infra/managed-identity/`](infra/managed-identity/) - Terraform module for identity setup
+- [`app/agui_server.py`](app/agui_server.py) - Uses `DefaultAzureCredential` for authentication
+
+For troubleshooting Workload Identity issues, see [Troubleshooting](#troubleshooting) section.
+
+### 5. Deploy Application
 
 Push to the `main` branch to trigger automatic deployment:
 
@@ -171,12 +272,16 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 
 - ✅ **Infrastructure as Code**: Terraform for reproducible Azure infrastructure
 - ✅ **Modern Python**: Uses `uv` for fast, reliable dependency management
-- ✅ **Web-Based Chat UI**: React + TypeScript frontend with real-time streaming (NEW)
+- ✅ **Web-Based Chat UI**: React + TypeScript frontend with real-time streaming
 - ✅ **Containerization**: Optimized Docker images with multi-stage builds
 - ✅ **CI/CD Automation**: GitHub Actions for automated build and deployment
 - ✅ **Kubernetes Orchestration**: High-availability deployment with health checks
-- ✅ **Secure Authentication**: OIDC-based Azure authentication (no stored credentials)
+- ✅ **Secure Authentication**: 
+  - OIDC-based Azure authentication for CI/CD (no stored credentials)
+  - Azure AD Workload Identity for pod-to-Azure authentication
+  - `DefaultAzureCredential` for seamless Azure service access
 - ✅ **Monitoring & Logging**: Azure Log Analytics with Container Insights for comprehensive observability
+- ✅ **HTTPS Support**: NGINX Ingress with Let's Encrypt certificates
 - ✅ **Comprehensive Docs**: Detailed guides for infrastructure, deployment, and operations
 
 ## Documentation
@@ -295,17 +400,84 @@ See [infra/README.md](./infra/README.md) for cost optimization tips.
 
 Common issues and solutions:
 
+### General Issues
 1. **404 Not Found from Ingress**: See [INGRESS_TROUBLESHOOTING.md](./INGRESS_TROUBLESHOOTING.md) for IP-based access setup
 2. **Build fails**: Check Dockerfile and dependencies in `pyproject.toml`
 3. **Deploy fails**: Verify GitHub Secrets and Azure permissions
-4. **Pods not starting**: Check logs with `kubectl logs -l app=agentic-devops`
-5. **Can't access service**: Wait for LoadBalancer IP assignment
+4. **Pods not starting**: Check logs with `kubectl logs -l app=agentic-devops -c backend`
+5. **Can't access service**: Wait for LoadBalancer IP assignment with `kubectl get svc`
+
+### Azure AD Workload Identity Issues
+
+**Symptom**: `DefaultAzureCredential failed to retrieve a token from the managed identity`
+
+**Solutions**:
+
+1. **Verify Workload Identity is enabled on AKS**:
+   ```bash
+   az aks show --resource-group rg-agentic-devops --name aks-agentic-devops \
+     --query "oidcIssuerProfile.enabled" -o tsv
+   # Should output: true
+   ```
+
+2. **Check ServiceAccount annotation**:
+   ```bash
+   kubectl get serviceaccount agentic-devops-sa -o yaml
+   # Should show: azure.workload.identity/client-id: <client-id>
+   ```
+
+3. **Verify Pod labels and ServiceAccount**:
+   ```bash
+   kubectl get pod -l app=agentic-devops -o yaml | grep -A 5 "serviceAccountName\|azure.workload.identity"
+   # Should show serviceAccountName: agentic-devops-sa
+   # Should show label: azure.workload.identity/use: "true"
+   ```
+
+4. **Check Azure role assignment**:
+   ```bash
+   # Get the managed identity principal ID
+   cd infra
+   PRINCIPAL_ID=$(terraform output -raw workload_identity_principal_id)
+   
+   # List role assignments
+   az role assignment list --assignee $PRINCIPAL_ID --all -o table
+   # Should show "Cognitive Services User" role on your AI project
+   ```
+
+5. **Verify federated credential**:
+   ```bash
+   IDENTITY_NAME=$(terraform output -raw workload_identity_client_id)
+   az identity federated-credential list \
+     --identity-name aks-agentic-devops-workload-identity \
+     --resource-group rg-agentic-devops -o table
+   # Should show issuer matching AKS OIDC URL
+   ```
+
+6. **Check Pod environment variables** (injected by Workload Identity webhook):
+   ```bash
+   kubectl exec -it deployment/agentic-devops-app -c backend -- env | grep AZURE
+   # Should show AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_FEDERATED_TOKEN_FILE
+   ```
+
+7. **Restart pods after fixing identity issues**:
+   ```bash
+   kubectl rollout restart deployment/agentic-devops-app
+   kubectl rollout status deployment/agentic-devops-app
+   ```
+
+**Symptom**: `ManagedIdentityCredential authentication unavailable`
+
+This usually means the Workload Identity webhook didn't inject the token. Check:
+- Pod has label `azure.workload.identity/use: "true"`
+- ServiceAccount has annotation `azure.workload.identity/client-id`
+- Workload Identity addon is enabled on AKS
 
 For detailed troubleshooting guides, see:
 - [INGRESS_TROUBLESHOOTING.md](./INGRESS_TROUBLESHOOTING.md) - Fix 404 errors and Ingress issues
 - [DEPLOYMENT.md](./DEPLOYMENT.md#troubleshooting) - Deployment workflow issues
 - [infra/README.md](./infra/README.md#troubleshooting) - Infrastructure problems
 - [k8s/README.md](./k8s/README.md#troubleshooting) - Kubernetes operations
+- [Azure Workload Identity Docs](https://azure.github.io/azure-workload-identity/docs/troubleshooting.html) - Official troubleshooting guide
 
 ## License
 
