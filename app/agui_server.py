@@ -34,8 +34,9 @@ logger = setup_logging()
 endpoint = os.environ.get("AZURE_AI_PROJECT_ENDPOINT")
 deployment_name = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
 api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-08-07")
+# azure_client_id is used to specify which managed identity to use in AKS environments
+# where multiple managed identities exist
 azure_client_id = os.environ.get("AZURE_CLIENT_ID")
-azure_tenant_id = os.environ.get("AZURE_TENANT_ID")
 
 
 # Server-side tool example
@@ -84,8 +85,6 @@ def create_agent() -> ChatAgent:
             "AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_MODEL_DEPLOYMENT_NAME must be set"
         )
 
-    logger.info(f"Using Azure AI Foundry client with DefaultAzureCredential (API version: {api_version})")
-
     # Use DefaultAzureCredential or ManagedIdentityCredential for Azure AI Foundry authentication
     # Azure AI Foundry requires the https://ai.azure.com/.default scope
     # When running in AKS with managed identity and multiple identities exist,
@@ -94,7 +93,7 @@ def create_agent() -> ChatAgent:
         logger.info(f"Using ManagedIdentityCredential with client_id: {azure_client_id}")
         credential = ManagedIdentityCredential(client_id=azure_client_id)
     else:
-        logger.info("Using DefaultAzureCredential")
+        logger.info("Using DefaultAzureCredential (will try multiple authentication methods)")
         credential = DefaultAzureCredential()
 
     chat_client = AzureAIAgentClient(
