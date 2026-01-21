@@ -204,6 +204,30 @@ jobs:
           kubectl get pods -l app=agentic-devops -o wide
           
           echo ""
+          echo "=== Pod Events ==="
+          kubectl describe pods -l app=agentic-devops | grep -A 20 "Events:"
+          
+          echo ""
+          echo "=== Backend Container Logs ==="
+          kubectl logs -l app=agentic-devops -c backend --tail=50 || echo "No backend logs available"
+          
+          echo ""
+          echo "=== Frontend Container Logs ==="
+          kubectl logs -l app=agentic-devops -c frontend --tail=30 || echo "No frontend logs available"
+          
+          echo ""
+          echo "=== ServiceAccount Status ==="
+          kubectl get serviceaccount agentic-devops-sa -o yaml
+          
+          echo ""
+          echo "=== Secret Status ==="
+          kubectl get secret azure-config || echo "azure-config secret not found"
+          
+          echo ""
+          echo "=== Pod Status ==="
+          kubectl get pods -l app=agentic-devops -o wide
+          
+          echo ""
           echo "=== Pod Describe ==="
           kubectl describe pods -l app=agentic-devops
           
