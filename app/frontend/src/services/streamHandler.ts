@@ -10,9 +10,8 @@ class StreamHandler {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    // Use provided baseUrl, fallback to env var, or default to /api/ for production
-    // IMPORTANT: Trailing slash is required to match nginx 'location /api/' block
-    this.baseUrl = baseUrl || import.meta.env.VITE_AGUI_ENDPOINT || '/api/';
+    // Use provided baseUrl, fallback to env var, or default to /api for production
+    this.baseUrl = baseUrl || import.meta.env.VITE_AGUI_ENDPOINT || '/api';
     logger.info('StreamHandler initialized', { baseUrl: this.baseUrl });
   }
 
@@ -74,9 +73,8 @@ class StreamHandler {
       }
       urlString = url.toString();
     } else {
-      // Relative URL - ensure trailing slash for nginx 'location /api/' matching
-      const baseWithSlash = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
-      urlString = threadId ? `${baseWithSlash}?thread_id=${threadId}` : baseWithSlash;
+      // Relative URL - construct path with leading slash
+      urlString = threadId ? `${this.baseUrl}/?thread_id=${threadId}` : `${this.baseUrl}/`;
     }
 
     try {
