@@ -76,6 +76,11 @@ AZURE_CLIENT_ID: <github-actions-app-id>
 AZURE_TENANT_ID: <your-tenant-id>
 AZURE_SUBSCRIPTION_ID: <your-subscription-id>
 
+# Workload Identity Configuration
+# This is the managed identity's client ID created by Terraform for AKS pods
+# Run: cd infra && terraform output -raw workload_identity_client_id
+WORKLOAD_IDENTITY_CLIENT_ID: <workload-identity-client-id>
+
 # Application Configuration (Optional)
 AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-endpoint>
 AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment>
@@ -83,6 +88,12 @@ AZURE_OPENAI_API_VERSION: <api-version>
 
 # HTTPS Configuration (Optional, for Let's Encrypt)
 LETSENCRYPT_EMAIL: <your-email@example.com>
+```
+
+**How to get WORKLOAD_IDENTITY_CLIENT_ID:**
+```bash
+cd infra
+terraform output -raw workload_identity_client_id
 ```
 
 ### 4. Configure Azure AD Workload Identity

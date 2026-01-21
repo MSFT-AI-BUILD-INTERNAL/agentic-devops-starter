@@ -161,12 +161,9 @@ jobs:
           export IMAGE_TAG=${{ github.sha }}
           export LETSENCRYPT_EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
           
-          # Get Workload Identity Client ID from Terraform outputs
-          cd infra
-          # Ensure Terraform is initialized before reading outputs
-          terraform init -input=false
-          export AZURE_CLIENT_ID=$(terraform output -raw workload_identity_client_id)
-          cd ..
+          # Get Workload Identity Client ID from GitHub Secrets
+          # This should be set to the managed identity's client ID created by Terraform
+          export AZURE_CLIENT_ID=${{ secrets.WORKLOAD_IDENTITY_CLIENT_ID }}
 
           # Apply Kubernetes manifests with variable substitution
           envsubst < k8s/service-account.yaml | kubectl apply -f -
