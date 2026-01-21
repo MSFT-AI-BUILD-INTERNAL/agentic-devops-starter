@@ -6,7 +6,7 @@ function App() {
   useEffect(() => {
     logger.info('Application started', {
       environment: import.meta.env.MODE,
-      endpoint: import.meta.env.VITE_AGUI_ENDPOINT || '/api/',
+      endpoint: import.meta.env.VITE_AGUI_ENDPOINT || '/api',
     });
   }, []);
 

@@ -288,6 +288,133 @@ Visit `http://127.0.0.1:5100/docs` when the server is running to see:
 - Request/response schemas
 - Try out endpoints directly
 
+## Chat Request Flow (Production Deployment)
+
+When deployed to Kubernetes with the frontend, chat requests follow this flow:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. User Input in Browser                                        │
+│    https://<loadbalancer-ip>/ or https://<domain>/              │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 2. Frontend (React) - useChat Hook                              │
+│    File: app/frontend/src/hooks/useChat.ts                      │
+│    Action: sendMessage() → aguiClient.sendMessage()             │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 3. AGUIClient - HTTP Request                                    │
+│    File: app/frontend/src/services/aguiClient.ts                │
+│    Request: POST /api/                                          │
+│    Headers: Content-Type: application/json                      │
+│    Body: { messages: [...], thread_id, stream: true }           │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 4. NGINX (Frontend Container) - Reverse Proxy                   │
+│    File: app/frontend/Dockerfile                                │
+│    Config: location /api/ { proxy_pass http://127.0.0.1:5100/ }│
+│    Transform: /api/ → / (removes /api/ prefix)                  │
+│    Forwards to: Backend on localhost:5100                       │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 5. Backend (FastAPI) - AG-UI Endpoint                           │
+│    File: app/agui_server.py                                     │
+│    Endpoint: POST / (root path)                                 │
+│    Handler: add_agent_framework_fastapi_endpoint(app, "/")      │
+│    Processing: AG-UI protocol → ChatAgent                       │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 6. ChatAgent - Azure AI Invocation                              │
+│    File: app/agui_server.py (create_agent)                      │
+│    Authentication: DefaultAzureCredential (Workload Identity)   │
+│    Model: Azure AI Foundry                                      │
+│    Response: SSE (Server-Sent Events) stream                    │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 7. SSE Stream Response (Reverse Flow)                           │
+│    Backend → NGINX → Frontend → Browser                         │
+│    Events: RUN_STARTED, TEXT_MESSAGE_CONTENT, RUN_FINISHED      │
+│    Result: Real-time token streaming to UI                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+#### Frontend API Client
+- **Base URL**: `/api/` (relative path)
+- **Build-time Configuration**: `VITE_AGUI_ENDPOINT=/api/` set in Dockerfile
+- **Runtime**: Calls `/api/` which NGINX proxies to backend
+
+#### NGINX Reverse Proxy
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:5100/;  # Trailing slash removes /api/ prefix
+    proxy_http_version 1.1;
+    proxy_buffering off;  # Required for SSE streaming
+    # ... other proxy settings
+}
+```
+
+**Path Rewriting**: 
+- Frontend request: `POST /api/`
+- NGINX proxies to: `POST /` (on backend)
+- The `/api/` prefix is automatically removed
+
+#### Backend AG-UI Endpoint
+```python
+# agui_server.py
+app = FastAPI()
+add_agent_framework_fastapi_endpoint(app, agent, "/")  # Root path
+```
+
+- Receives requests at `/` (after NGINX proxy)
+- Processes AG-UI protocol messages
+- Returns SSE stream for real-time responses
+
+#### Workload Identity Authentication
+- **Service Account**: `agentic-devops-sa` (annotated with Azure Client ID)
+- **Credential**: `DefaultAzureCredential` automatically uses pod identity
+- **Token Exchange**: Kubernetes token → Azure AD token via OIDC federation
+- **Scope**: `https://ai.azure.com/.default` for Azure AI Foundry
+
+### Local Development vs Production
+
+| Aspect | Local Development | Production (Kubernetes) |
+|--------|-------------------|-------------------------|
+| Frontend URL | `http://localhost:5173` | `https://<loadbalancer-ip>` or domain |
+| Backend URL | `http://localhost:5100` | `http://127.0.0.1:5100` (same pod) |
+| API Path | Direct to backend | Through NGINX `/api/` proxy |
+| Authentication | API key or local credentials | Workload Identity |
+| Containers | Separate processes | Single pod, multi-container |
+
+### SSE Streaming Support
+
+The architecture supports Server-Sent Events for real-time streaming:
+
+1. **NGINX Configuration**: 
+   - `proxy_buffering off` - Disables response buffering
+   - `proxy_read_timeout 600s` - Extended timeout for long streams
+
+2. **Backend Response**: 
+   - Content-Type: `text/event-stream`
+   - Streams AG-UI events as they occur
+
+3. **Frontend Handler**: 
+   - Processes events in real-time
+   - Updates UI progressively as tokens arrive
+
 ## Configuration
 
 ### Environment Variables

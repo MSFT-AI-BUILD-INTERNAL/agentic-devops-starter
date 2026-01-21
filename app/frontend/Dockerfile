@@ -13,9 +13,8 @@ RUN npm ci
 COPY . .
 
 # Set API endpoint to use nginx proxy path (relative URL)
-# IMPORTANT: Trailing slash is required to match nginx 'location /api/' block
-# This ensures frontend calls /api/ which nginx proxies to backend
-ARG VITE_AGUI_ENDPOINT=/api/
+# Frontend will call /api/* which nginx proxies to backend
+ARG VITE_AGUI_ENDPOINT=/api
 
 # Build the application with environment variable
 # Vite will replace import.meta.env.VITE_AGUI_ENDPOINT at build time

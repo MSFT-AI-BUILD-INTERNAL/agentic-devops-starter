@@ -32,7 +32,7 @@ const initialState = {
   messages: [],
   connection: {
     status: 'disconnected' as ConnectionStatus,
-    endpoint: import.meta.env.VITE_AGUI_ENDPOINT || '/api/',
+    endpoint: import.meta.env.VITE_AGUI_ENDPOINT || '/api',
     reconnectAttempts: 0,
   },
   streamingState: {

@@ -35,9 +35,8 @@ class AGUIClient {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    // Use provided baseUrl, fallback to env var, or default to /api/ for production
-    // IMPORTANT: Trailing slash is required to match nginx 'location /api/' block
-    this.baseUrl = baseUrl || import.meta.env.VITE_AGUI_ENDPOINT || '/api/';
+    // Use provided baseUrl, fallback to env var, or default to /api for production
+    this.baseUrl = baseUrl || import.meta.env.VITE_AGUI_ENDPOINT || '/api';
     logger.info('AGUIClient initialized', { baseUrl: this.baseUrl });
   }
 
@@ -88,12 +87,19 @@ class AGUIClient {
         let buffer = '';
         let threadIdFromStream: string | undefined;
 
-        // Process stream in background
-        (async () => {
+        // Process stream in background with proper cleanup
+        const processStream = async () => {
+          let streamDone = false;
+          
           try {
-            while (true) {
+            while (!streamDone) {
               const { done, value } = await reader.read();
-              if (done) break;
+              
+              if (done) {
+                streamDone = true;
+                logger.info('Stream reading completed');
+                break;
+              }
 
               buffer += decoder.decode(value, { stream: true });
               const lines = buffer.split('\n');
@@ -118,8 +124,20 @@ class AGUIClient {
             }
           } catch (error) {
             logger.error('Stream reading error', error);
+          } finally {
+            // Ensure reader is properly released
+            try {
+              reader.releaseLock();
+            } catch (e) {
+              // Reader may already be released, ignore error
+            }
           }
-        })();
+        };
+
+        // Start stream processing without blocking
+        processStream().catch((err) => {
+          logger.error('Stream processing failed', err);
+        });
 
         // Return immediately with thread_id (will be updated from stream)
         return { thread_id: threadId || threadIdFromStream || crypto.randomUUID() };
