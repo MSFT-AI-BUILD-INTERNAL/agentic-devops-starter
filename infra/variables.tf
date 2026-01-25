@@ -177,3 +177,70 @@ variable "waf_firewall_mode" {
   default     = "Detection"
 }
 
+# Key Vault Configuration for SSL Certificates
+variable "enable_https" {
+  description = "Enable HTTPS with SSL certificate from Key Vault"
+  type        = bool
+  default     = true
+}
+
+variable "key_vault_name" {
+  description = "Name of the Azure Key Vault for SSL certificates (must be globally unique, 3-24 characters)"
+  type        = string
+  default     = "kv-agentic-devops"
+}
+
+variable "key_vault_sku" {
+  description = "SKU for Key Vault (standard or premium)"
+  type        = string
+  default     = "standard"
+}
+
+variable "key_vault_soft_delete_retention_days" {
+  description = "Number of days to retain deleted Key Vault (7-90 days)"
+  type        = number
+  default     = 7
+}
+
+variable "key_vault_purge_protection_enabled" {
+  description = "Enable purge protection for Key Vault (prevents permanent deletion)"
+  type        = bool
+  default     = false
+}
+
+variable "key_vault_network_default_action" {
+  description = "Default action for Key Vault network rules (Allow or Deny)"
+  type        = string
+  default     = "Allow"
+}
+
+variable "create_self_signed_cert" {
+  description = "Create a self-signed certificate for testing (true) or use imported certificate (false)"
+  type        = bool
+  default     = true
+}
+
+variable "certificate_name" {
+  description = "Name of the certificate in Key Vault"
+  type        = string
+  default     = "app-gateway-ssl-cert"
+}
+
+variable "ssl_certificate_name" {
+  description = "Name for the SSL certificate in Application Gateway"
+  type        = string
+  default     = "appgw-ssl-certificate"
+}
+
+variable "certificate_subject" {
+  description = "Subject for the self-signed certificate"
+  type        = string
+  default     = "agentic-devops.local"
+}
+
+variable "certificate_dns_names" {
+  description = "DNS names for the certificate (Subject Alternative Names)"
+  type        = list(string)
+  default     = ["agentic-devops.local", "*.agentic-devops.local"]
+}
+

@@ -103,3 +103,25 @@ output "vnet_name" {
   description = "Name of the virtual network"
   value       = module.app_gateway.vnet_name
 }
+
+# Key Vault Outputs
+output "key_vault_id" {
+  description = "ID of the Key Vault (if HTTPS is enabled)"
+  value       = var.enable_https ? module.key_vault[0].key_vault_id : null
+}
+
+output "key_vault_name" {
+  description = "Name of the Key Vault (if HTTPS is enabled)"
+  value       = var.enable_https ? module.key_vault[0].key_vault_name : null
+}
+
+output "key_vault_uri" {
+  description = "URI of the Key Vault (if HTTPS is enabled)"
+  value       = var.enable_https ? module.key_vault[0].key_vault_uri : null
+}
+
+output "certificate_secret_id" {
+  description = "Secret ID of the SSL certificate (if HTTPS is enabled)"
+  value       = var.enable_https ? module.key_vault[0].certificate_secret_id : null
+  sensitive   = true
+}

@@ -61,9 +61,33 @@ module "app_gateway" {
   app_gateway_capacity = var.app_gateway_capacity
   waf_firewall_mode    = var.waf_firewall_mode
   subscription_id      = data.azurerm_subscription.current.subscription_id
+  key_vault_secret_id  = var.enable_https ? module.key_vault[0].certificate_secret_id : null
+  ssl_certificate_name = var.ssl_certificate_name
   tags                 = var.tags
 
-  depends_on = [azurerm_resource_group.main]
+  depends_on = [azurerm_resource_group.main, module.key_vault]
+}
+
+# Key Vault Module for SSL Certificate Management
+module "key_vault" {
+  count  = var.enable_https ? 1 : 0
+  source = "./key-vault"
+
+  key_vault_name                     = var.key_vault_name
+  resource_group_name                = azurerm_resource_group.main.name
+  location                           = azurerm_resource_group.main.location
+  key_vault_sku                      = var.key_vault_sku
+  soft_delete_retention_days         = var.key_vault_soft_delete_retention_days
+  purge_protection_enabled           = var.key_vault_purge_protection_enabled
+  key_vault_network_default_action   = var.key_vault_network_default_action
+  app_gateway_identity_principal_id  = module.app_gateway.appgw_identity_principal_id
+  create_self_signed_cert            = var.create_self_signed_cert
+  certificate_name                   = var.certificate_name
+  certificate_subject                = var.certificate_subject
+  certificate_dns_names              = var.certificate_dns_names
+  tags                               = var.tags
+
+  depends_on = [azurerm_resource_group.main, module.app_gateway]
 }
 
 # Azure Container Registry Module

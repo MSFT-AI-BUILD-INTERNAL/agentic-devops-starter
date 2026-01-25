@@ -33,7 +33,7 @@ resource "azurerm_public_ip" "appgw" {
   tags                = var.tags
 }
 
-# Application Gateway
+# Application Gateway with Managed Identity for Key Vault access
 resource "azurerm_application_gateway" "main" {
   name                = var.app_gateway_name
   location            = var.location
@@ -44,6 +44,12 @@ resource "azurerm_application_gateway" "main" {
     name     = var.app_gateway_sku_name
     tier     = var.app_gateway_sku_tier
     capacity = var.app_gateway_capacity
+  }
+
+  # System-assigned managed identity for Key Vault access
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.appgw.id]
   }
 
   gateway_ip_configuration {
@@ -78,6 +84,16 @@ resource "azurerm_application_gateway" "main" {
     request_timeout       = 30
   }
 
+  # SSL Certificate from Key Vault (if provided)
+  dynamic "ssl_certificate" {
+    for_each = var.key_vault_secret_id != null ? [1] : []
+    content {
+      name                = var.ssl_certificate_name
+      key_vault_secret_id = var.key_vault_secret_id
+    }
+  }
+
+  # HTTP Listener
   http_listener {
     name                           = "httpListener"
     frontend_ip_configuration_name = "appGatewayFrontendIP"
@@ -85,13 +101,66 @@ resource "azurerm_application_gateway" "main" {
     protocol                       = "Http"
   }
 
-  request_routing_rule {
-    name                       = "defaultRoutingRule"
-    rule_type                  = "Basic"
-    http_listener_name         = "httpListener"
-    backend_address_pool_name  = "defaultBackendPool"
-    backend_http_settings_name = "defaultBackendHttpSettings"
-    priority                   = 100
+  # HTTPS Listener (if certificate is provided)
+  dynamic "http_listener" {
+    for_each = var.key_vault_secret_id != null ? [1] : []
+    content {
+      name                           = "httpsListener"
+      frontend_ip_configuration_name = "appGatewayFrontendIP"
+      frontend_port_name             = "httpsPort"
+      protocol                       = "Https"
+      ssl_certificate_name           = var.ssl_certificate_name
+    }
+  }
+
+  # HTTP to HTTPS redirect rule (if certificate is provided)
+  dynamic "request_routing_rule" {
+    for_each = var.key_vault_secret_id != null ? [1] : []
+    content {
+      name                        = "httpToHttpsRedirect"
+      rule_type                   = "Basic"
+      http_listener_name          = "httpListener"
+      redirect_configuration_name = "httpToHttpsRedirectConfig"
+      priority                    = 100
+    }
+  }
+
+  # HTTPS routing rule (if certificate is provided)
+  dynamic "request_routing_rule" {
+    for_each = var.key_vault_secret_id != null ? [1] : []
+    content {
+      name                       = "httpsRoutingRule"
+      rule_type                  = "Basic"
+      http_listener_name         = "httpsListener"
+      backend_address_pool_name  = "defaultBackendPool"
+      backend_http_settings_name = "defaultBackendHttpSettings"
+      priority                   = 200
+    }
+  }
+
+  # Default HTTP routing rule (if no certificate)
+  dynamic "request_routing_rule" {
+    for_each = var.key_vault_secret_id == null ? [1] : []
+    content {
+      name                       = "defaultRoutingRule"
+      rule_type                  = "Basic"
+      http_listener_name         = "httpListener"
+      backend_address_pool_name  = "defaultBackendPool"
+      backend_http_settings_name = "defaultBackendHttpSettings"
+      priority                   = 100
+    }
+  }
+
+  # Redirect configuration for HTTP to HTTPS
+  dynamic "redirect_configuration" {
+    for_each = var.key_vault_secret_id != null ? [1] : []
+    content {
+      name                 = "httpToHttpsRedirectConfig"
+      redirect_type        = "Permanent"
+      target_listener_name = "httpsListener"
+      include_path         = true
+      include_query_string = true
+    }
   }
 
   # Enable WAF if using WAF_v2 tier
@@ -104,6 +173,18 @@ resource "azurerm_application_gateway" "main" {
       rule_set_version = "3.2"
     }
   }
+
+  depends_on = [
+    azurerm_user_assigned_identity.appgw
+  ]
+}
+
+# User Assigned Identity for Application Gateway (for Key Vault access)
+resource "azurerm_user_assigned_identity" "appgw" {
+  name                = "${var.app_gateway_name}-identity"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  tags                = var.tags
 }
 
 # User Assigned Identity for AGIC

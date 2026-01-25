@@ -102,6 +102,18 @@ variable "subscription_id" {
   type        = string
 }
 
+variable "key_vault_secret_id" {
+  description = "Key Vault secret ID for SSL certificate (optional - for HTTPS support)"
+  type        = string
+  default     = null
+}
+
+variable "ssl_certificate_name" {
+  description = "Name for the SSL certificate in Application Gateway"
+  type        = string
+  default     = "appgw-ssl-certificate"
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

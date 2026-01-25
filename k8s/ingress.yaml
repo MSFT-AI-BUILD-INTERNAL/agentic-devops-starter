@@ -6,8 +6,8 @@ metadata:
   annotations:
     # Use Azure Application Gateway Ingress Controller
     kubernetes.io/ingress.class: azure/application-gateway
-    # SSL redirect disabled to allow HTTP access (set to "true" after certificate setup)
-    appgw.ingress.kubernetes.io/ssl-redirect: "false"
+    # Enable SSL redirect for HTTPS
+    appgw.ingress.kubernetes.io/ssl-redirect: "true"
     # Connection draining timeout
     appgw.ingress.kubernetes.io/connection-draining: "true"
     appgw.ingress.kubernetes.io/connection-draining-timeout: "30"
@@ -19,11 +19,30 @@ metadata:
     appgw.ingress.kubernetes.io/health-probe-interval: "30"
     appgw.ingress.kubernetes.io/health-probe-timeout: "5"
     appgw.ingress.kubernetes.io/health-probe-unhealthy-threshold: "3"
+    # Use certificate from Application Gateway (configured via Terraform)
+    appgw.ingress.kubernetes.io/appgw-ssl-certificate: "appgw-ssl-certificate"
 spec:
+  # TLS configuration for HTTPS
+  tls:
+    - secretName: appgw-ssl-certificate
+      hosts:
+        - agentic-devops.local
+        - "*.agentic-devops.local"
   rules:
-    # Default rule for IP-based access (without hostname)
-    # This allows accessing the app via Application Gateway Public IP
+    # Default rule for IP-based or hostname-based access
+    # Accessible via Application Gateway Public IP or configured domain
     - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentic-devops-service
+                port:
+                  number: 80
+    # Optional: Add hostname-specific rule
+    - host: agentic-devops.local
+      http:
         paths:
           - path: /
             pathType: Prefix
