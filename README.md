@@ -7,10 +7,19 @@ MVP for Agentic DevOps Starter (Compass) - A complete CI/CD solution for deployi
 This repository provides a full-stack DevOps solution for deploying a Python-based conversational AI application to Azure:
 
 - **Application**: FastAPI server with AG-UI protocol support (`/app`)
-- **Infrastructure**: Terraform code for ACR, AKS, and Log Analytics (`/infra`)
+- **Infrastructure**: Terraform code for VNet, ACR, AKS, Application Gateway, and Log Analytics (`/infra`)
 - **CI/CD**: GitHub Actions workflow for automated deployment (`.github/workflows/deploy.yml`)
 - **Kubernetes**: Manifests for container orchestration (`/k8s`)
 - **Monitoring**: Azure Log Analytics with Container Insights for comprehensive logging and metrics
+
+### Key Infrastructure Components
+
+- **Virtual Network**: Isolated network with dedicated subnets for AKS and Application Gateway
+- **Azure Container Registry (ACR)**: Private Docker image registry
+- **Azure Kubernetes Service (AKS)**: Managed Kubernetes cluster with auto-scaling
+- **Azure Application Gateway**: Layer 7 load balancer with WAF capabilities
+- **Log Analytics**: Centralized logging and monitoring
+- **Managed Identity**: Secure authentication for Azure services
 
 ## Quick Start
 
@@ -266,26 +275,43 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
                            │
                            ▼
          ┌─────────────────────────────────────┐
-         │  Azure Kubernetes Service (AKS)      │
+         │        Azure Virtual Network         │
          │  ┌─────────────┐  ┌─────────────┐   │
-         │  │   Pod 1     │  │   Pod 2     │   │
-         │  │  (app:5100) │  │  (app:5100) │   │
+         │  │  AKS Subnet │  │ AppGW Subnet│   │
          │  └─────────────┘  └─────────────┘   │
-         │          LoadBalancer :80             │
          └─────────────────────────────────────┘
-                           │
-                           ▼
-         ┌─────────────────────────────────────┐
-         │   Azure Log Analytics Workspace      │
-         │   - Container logs & metrics         │
-         │   - Performance monitoring           │
-         │   - Kubernetes events                │
-         └─────────────────────────────────────┘
+                │                      │
+                ▼                      ▼
+  ┌─────────────────────┐   ┌──────────────────────┐
+  │  Azure AKS Cluster  │   │ Application Gateway  │
+  │ ┌─────┐   ┌─────┐   │   │  - Layer 7 LB        │
+  │ │Pod 1│   │Pod 2│   │   │  - WAF (optional)    │
+  │ └─────┘   └─────┘   │   │  - SSL termination   │
+  │   LoadBalancer       │<──│  - Health probes     │
+  └─────────────────────┘   └──────────────────────┘
+                │                      ▲
+                │                      │
+                ▼                 Internet
+  ┌─────────────────────────────────────┐
+  │   Azure Log Analytics Workspace      │
+  │   - Container logs & metrics         │
+  │   - Performance monitoring           │
+  │   - Kubernetes events                │
+  └─────────────────────────────────────┘
 ```
+
+**Traffic Flow:**
+1. User requests → Application Gateway (Public IP)
+2. Application Gateway → AKS LoadBalancer Service
+3. LoadBalancer → Kubernetes Pods
+4. All metrics/logs → Log Analytics Workspace
+
 
 ## Key Features
 
 - ✅ **Infrastructure as Code**: Terraform for reproducible Azure infrastructure
+- ✅ **Network Isolation**: Dedicated VNet with separate subnets for AKS and Application Gateway
+- ✅ **Application Gateway**: Layer 7 load balancer with WAF, SSL termination, and advanced routing
 - ✅ **Modern Python**: Uses `uv` for fast, reliable dependency management
 - ✅ **Web-Based Chat UI**: React + TypeScript frontend with real-time streaming
 - ✅ **Containerization**: Optimized Docker images with multi-stage builds
@@ -296,12 +322,13 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
   - Azure AD Workload Identity for pod-to-Azure authentication
   - `DefaultAzureCredential` for seamless Azure service access
 - ✅ **Monitoring & Logging**: Azure Log Analytics with Container Insights for comprehensive observability
-- ✅ **HTTPS Support**: NGINX Ingress with Let's Encrypt certificates
+- ✅ **HTTPS Support**: Multiple options (NGINX Ingress, Application Gateway)
 - ✅ **Comprehensive Docs**: Detailed guides for infrastructure, deployment, and operations
 
 ## Documentation
 
 - **[Infrastructure Setup](./infra/README.md)**: Terraform configuration and Azure resources
+- **[Application Gateway Setup](./docs/APPLICATION_GATEWAY_SETUP.md)**: Layer 7 load balancer deployment guide
 - **[Deployment Guide](./DEPLOYMENT.md)**: Complete deployment workflow and troubleshooting
 - **[Kubernetes Config](./k8s/README.md)**: Kubernetes manifests and operations
 - **[Backend API Docs](./app/README.md)**: Python application architecture and usage
