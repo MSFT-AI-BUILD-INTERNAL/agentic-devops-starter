@@ -13,7 +13,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     enable_auto_scaling = var.enable_auto_scaling
     min_count           = var.enable_auto_scaling ? var.min_node_count : null
     max_count           = var.enable_auto_scaling ? var.max_node_count : null
-    vnet_subnet_id      = var.vnet_subnet_id
+    vnet_subnet_id      = var.aks_subnet_id
   }
 
   identity {
@@ -36,6 +36,14 @@ resource "azurerm_kubernetes_cluster" "aks" {
     for_each = var.log_analytics_workspace_id != null ? [1] : []
     content {
       log_analytics_workspace_id = var.log_analytics_workspace_id
+    }
+  }
+
+  # Application Gateway Ingress Controller addon
+  dynamic "ingress_application_gateway" {
+    for_each = var.app_gateway_id != null ? [1] : []
+    content {
+      gateway_id = var.app_gateway_id
     }
   }
 

@@ -103,3 +103,77 @@ variable "log_analytics_retention_days" {
   type        = number
   default     = 30
 }
+
+# Application Gateway Configuration
+variable "app_gateway_name" {
+  description = "Name of the Application Gateway"
+  type        = string
+  default     = "appgw-agentic-devops"
+}
+
+variable "app_gateway_public_ip_name" {
+  description = "Name of the public IP for Application Gateway"
+  type        = string
+  default     = "pip-appgw-agentic-devops"
+}
+
+variable "vnet_name" {
+  description = "Name of the virtual network for Application Gateway and AKS"
+  type        = string
+  default     = "vnet-agentic-devops"
+}
+
+variable "vnet_address_space" {
+  description = "Address space for the virtual network"
+  type        = string
+  default     = "10.1.0.0/16"
+}
+
+variable "appgw_subnet_name" {
+  description = "Name of the Application Gateway subnet"
+  type        = string
+  default     = "appgw-subnet"
+}
+
+variable "appgw_subnet_prefix" {
+  description = "Address prefix for Application Gateway subnet"
+  type        = string
+  default     = "10.1.0.0/24"
+}
+
+variable "aks_subnet_name" {
+  description = "Name of the AKS subnet"
+  type        = string
+  default     = "aks-subnet"
+}
+
+variable "aks_subnet_prefix" {
+  description = "Address prefix for AKS subnet"
+  type        = string
+  default     = "10.1.1.0/24"
+}
+
+variable "app_gateway_sku_name" {
+  description = "SKU name for Application Gateway (Standard_v2 or WAF_v2)"
+  type        = string
+  default     = "Standard_v2"
+}
+
+variable "app_gateway_sku_tier" {
+  description = "SKU tier for Application Gateway (Standard_v2 or WAF_v2)"
+  type        = string
+  default     = "Standard_v2"
+}
+
+variable "app_gateway_capacity" {
+  description = "Capacity (instance count) for Application Gateway"
+  type        = number
+  default     = 2
+}
+
+variable "waf_firewall_mode" {
+  description = "Web Application Firewall mode (Detection or Prevention)"
+  type        = string
+  default     = "Detection"
+}
+

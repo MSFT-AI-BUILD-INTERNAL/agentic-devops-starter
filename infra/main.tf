@@ -17,6 +17,10 @@ provider "azurerm" {
   }
 }
 
+# Data source to get current subscription
+data "azurerm_subscription" "current" {
+}
+
 # Resource Group
 resource "azurerm_resource_group" "main" {
   name     = var.resource_group_name
@@ -66,11 +70,13 @@ module "aks" {
   enable_auto_scaling        = var.enable_auto_scaling
   min_node_count             = var.min_node_count
   max_node_count             = var.max_node_count
+  aks_subnet_id              = module.app_gateway.aks_subnet_id
+  app_gateway_id             = module.app_gateway.app_gateway_id
   acr_id                     = module.acr.acr_id
   log_analytics_workspace_id = module.log_analytics.workspace_id
   tags                       = var.tags
 
-  depends_on = [azurerm_resource_group.main, module.acr, module.log_analytics]
+  depends_on = [azurerm_resource_group.main, module.acr, module.log_analytics, module.app_gateway]
 }
 
 # Managed Identity for Workload Identity

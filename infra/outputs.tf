@@ -77,3 +77,29 @@ output "oidc_issuer_url" {
   description = "OIDC issuer URL for Workload Identity"
   value       = module.aks.oidc_issuer_url
 }
+
+# Application Gateway Outputs
+output "app_gateway_id" {
+  description = "ID of the Application Gateway"
+  value       = module.app_gateway.app_gateway_id
+}
+
+output "app_gateway_name" {
+  description = "Name of the Application Gateway"
+  value       = module.app_gateway.app_gateway_name
+}
+
+output "app_gateway_public_ip" {
+  description = "Public IP address of the Application Gateway"
+  value       = module.app_gateway.app_gateway_public_ip
+}
+
+output "agic_identity_client_id" {
+  description = "Client ID of the AGIC managed identity"
+  value       = module.app_gateway.agic_identity_client_id
+}
+
+output "vnet_name" {
+  description = "Name of the virtual network"
+  value       = module.app_gateway.vnet_name
+}
