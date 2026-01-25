@@ -143,9 +143,6 @@ az keyvault certificate import \
 # Application Gateway will automatically use the updated certificate
 ```
 
-   ```
-
-3. **Access**: `http://<APP-GATEWAY-IP>`
 ## Prerequisites
 
 Before deploying, ensure you have:

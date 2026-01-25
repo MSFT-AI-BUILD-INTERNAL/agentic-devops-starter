@@ -275,7 +275,29 @@ The deployment typically takes 10-15 minutes. Terraform will create:
 8. Azure Kubernetes Service with AGIC addon (8-12 minutes)
 9. Role Assignments and Access Policies (< 1 minute)
 
-**Note**: The Key Vault will be created with a self-signed SSL certificate by default (if `create_self_signed_cert = true`). For production, you should import your own certificate.
+**Important Note on HTTPS Setup:**
+
+Due to Terraform resource dependencies, the initial deployment creates the Application Gateway without the SSL certificate. After the first deployment:
+
+1. **Option A: Two-Step Terraform Apply (Recommended)**
+   ```bash
+   # First apply creates all resources
+   terraform apply
+   
+   # Second apply adds the certificate to Application Gateway
+   # (The certificate secret ID is now available from Key Vault)
+   terraform apply -refresh-only  # Refresh state
+   terraform apply                # Apply certificate configuration
+   ```
+
+2. **Option B: Manual Certificate Configuration**
+   ```bash
+   # After terraform apply, add certificate via Azure Portal:
+   # Azure Portal → Application Gateway → Listeners → Add HTTPS listener
+   # Select certificate from Key Vault
+   ```
+
+The self-signed certificate will be created in Key Vault during the first apply. The Application Gateway can be updated to use it in the second apply or manually via the portal.
 
 ### Step 3: Retrieve Outputs
 

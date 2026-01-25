@@ -42,7 +42,7 @@ module "log_analytics" {
   depends_on = [azurerm_resource_group.main]
 }
 
-# Application Gateway Module
+# Application Gateway Module (without certificate initially)
 module "app_gateway" {
   source = "./app-gateway"
 
@@ -61,11 +61,11 @@ module "app_gateway" {
   app_gateway_capacity = var.app_gateway_capacity
   waf_firewall_mode    = var.waf_firewall_mode
   subscription_id      = data.azurerm_subscription.current.subscription_id
-  key_vault_secret_id  = var.enable_https ? module.key_vault[0].certificate_secret_id : null
+  key_vault_secret_id  = null  # Certificate will be added after Key Vault is created
   ssl_certificate_name = var.ssl_certificate_name
   tags                 = var.tags
 
-  depends_on = [azurerm_resource_group.main, module.key_vault]
+  depends_on = [azurerm_resource_group.main]
 }
 
 # Key Vault Module for SSL Certificate Management
