@@ -13,9 +13,13 @@ infra/
 │   ├── variables.tf       # ACR input variables
 │   └── outputs.tf         # ACR outputs
 ├── aks/                    # Azure Kubernetes Service module
-│   ├── main.tf            # AKS resource definition
+│   ├── main.tf            # AKS resource definition with AGIC addon
 │   ├── variables.tf       # AKS input variables
 │   └── outputs.tf         # AKS outputs
+├── app-gateway/            # Azure Application Gateway module (NEW)
+│   ├── main.tf            # Application Gateway and network resources
+│   ├── variables.tf       # Application Gateway input variables
+│   └── outputs.tf         # Application Gateway outputs
 ├── log-analytics/          # Azure Log Analytics module
 │   ├── main.tf            # Log Analytics Workspace and Container Insights
 │   ├── variables.tf       # Log Analytics input variables
@@ -31,19 +35,32 @@ infra/
 The infrastructure provisions the following resources:
 
 1. **Resource Group**: Container for all Azure resources
-2. **Azure Container Registry (ACR)**: Private container registry for storing Docker images
-3. **Azure Kubernetes Service (AKS)**: Managed Kubernetes cluster for running containerized applications
-4. **Azure Log Analytics Workspace**: Centralized logging and monitoring solution for AKS
-5. **Container Insights**: Azure Monitor solution for collecting logs and metrics from AKS clusters
-6. **Role Assignment**: Configures AKS to pull images from ACR using managed identity
+2. **Virtual Network**: Isolated network for Application Gateway and AKS
+   - Application Gateway Subnet (10.1.0.0/24)
+   - AKS Subnet (10.1.1.0/24)
+3. **Azure Application Gateway**: L7 load balancer with advanced traffic management
+   - Public IP for external access
+   - WAF capabilities (optional with WAF_v2 SKU)
+   - SSL/TLS termination
+   - Path-based routing
+4. **Application Gateway Ingress Controller (AGIC)**: Manages Application Gateway from Kubernetes
+5. **Azure Container Registry (ACR)**: Private container registry for storing Docker images
+6. **Azure Kubernetes Service (AKS)**: Managed Kubernetes cluster for running containerized applications
+7. **Azure Log Analytics Workspace**: Centralized logging and monitoring solution for AKS
+8. **Container Insights**: Azure Monitor solution for collecting logs and metrics from AKS clusters
+9. **Role Assignments**: 
+   - AKS to pull images from ACR using managed identity
+   - AGIC to manage Application Gateway
 
 ### Key Features
 
-- **Modular Design**: Separate modules for ACR, AKS, and Log Analytics for reusability
+- **Modular Design**: Separate modules for ACR, AKS, Application Gateway, and Log Analytics for reusability
 - **Managed Identity**: Uses system-assigned managed identities for secure authentication
 - **ACR Integration**: AKS is automatically configured with AcrPull role to pull images from ACR
 - **Auto-scaling**: Node pool configured with auto-scaling (1-5 nodes by default)
-- **Network Configuration**: Uses Azure CNI for advanced networking capabilities
+- **Network Isolation**: Dedicated VNet with separate subnets for Application Gateway and AKS
+- **L7 Load Balancing**: Application Gateway provides advanced traffic management capabilities
+- **AGIC**: Application Gateway Ingress Controller for seamless Kubernetes integration
 - **Centralized Logging**: Log Analytics Workspace collects logs and metrics from AKS
 - **Container Insights**: Pre-configured monitoring solution for containerized workloads
 - **Tagging**: Comprehensive tagging for resource organization and cost tracking
@@ -173,6 +190,16 @@ log_analytics_retention_days = 30
 | `log_analytics_workspace_name` | Log Analytics Workspace name | `log-agentic-devops` | No |
 | `log_analytics_sku` | Log Analytics SKU | `PerGB2018` | No |
 | `log_analytics_retention_days` | Log retention period (days) | `30` | No |
+| `app_gateway_name` | Application Gateway name | `appgw-agentic-devops` | No |
+| `app_gateway_public_ip_name` | Public IP name for App Gateway | `pip-appgw-agentic-devops` | No |
+| `vnet_name` | Virtual network name | `vnet-agentic-devops` | No |
+| `vnet_address_space` | VNet address space | `10.1.0.0/16` | No |
+| `appgw_subnet_prefix` | App Gateway subnet prefix | `10.1.0.0/24` | No |
+| `aks_subnet_prefix` | AKS subnet prefix | `10.1.1.0/24` | No |
+| `app_gateway_sku_name` | App Gateway SKU name | `Standard_v2` | No |
+| `app_gateway_sku_tier` | App Gateway SKU tier | `Standard_v2` | No |
+| `app_gateway_capacity` | App Gateway instance count | `2` | No |
+| `waf_firewall_mode` | WAF mode (Detection/Prevention) | `Detection` | No |
 
 \* Must be customized to ensure global uniqueness
 
@@ -207,8 +234,10 @@ The deployment typically takes 10-15 minutes. Terraform will create:
 2. Log Analytics Workspace (2-3 minutes)
 3. Container Insights Solution (1-2 minutes)
 4. Azure Container Registry (2-3 minutes)
-5. Azure Kubernetes Service with monitoring enabled (8-12 minutes)
-6. Role Assignment (< 1 minute)
+5. Virtual Network and Subnets (1-2 minutes)
+6. Application Gateway with Public IP (3-5 minutes)
+7. Azure Kubernetes Service with AGIC addon (8-12 minutes)
+8. Role Assignments (< 1 minute)
 
 ### Step 3: Retrieve Outputs
 
@@ -220,6 +249,7 @@ terraform output
 
 # View specific output
 terraform output acr_login_server
+terraform output app_gateway_public_ip
 terraform output configure_kubectl_command
 ```
 
@@ -609,15 +639,26 @@ Approximate monthly costs (US East region):
 | AKS | 2 x Standard_D2s_v3 nodes | ~$140/month |
 | AKS Management | Free | $0 |
 | ACR | Standard tier | ~$20/month |
-| Load Balancer | Standard | ~$20/month |
+| Application Gateway | Standard_v2, 2 instances | ~$140-200/month |
+| VNet | Standard | ~$5/month |
 | Log Analytics | ~5 GB/month data ingestion | ~$10-15/month |
 | Container Insights | Included with Log Analytics | $0 |
-| **Total** | | **~$190-195/month** |
+| **Total** | | **~$315-380/month** |
+
+**Application Gateway Benefits:**
+- L7 load balancing with path-based routing
+- SSL/TLS termination
+- Web Application Firewall (WAF) capabilities (with WAF_v2 SKU)
+- Cookie-based session affinity
+- Health probing and automatic failover
+- Integration with Azure services
 
 To reduce costs:
 - Use `Basic` ACR SKU (~$5/month)
 - Use smaller VM sizes (e.g., `Standard_B2s`)
 - Reduce minimum node count to 1
+- Use `Standard_v2` instead of `WAF_v2` for Application Gateway
+- Reduce Application Gateway capacity to 1 instance
 - Reduce Log Analytics retention period (minimum 7 days)
 - Use free tier Log Analytics for development (500 MB/day limit)
 - Delete resources when not in use
