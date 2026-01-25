@@ -2,6 +2,7 @@
 import { useCallback } from 'react';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
+import { ThemeSelector } from './ThemeSelector';
 import { useChat } from '../hooks/useChat';
 import { useStreaming } from '../hooks/useStreaming';
 import { logger } from '../utils/logger';
@@ -36,14 +37,14 @@ export function ChatInterface() {
   }, [newConversation]);
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg shadow-lg overflow-hidden">
+    <div className="flex flex-col h-full bg-primary rounded-lg shadow-lg overflow-hidden border border-border">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between">
+      <div className="bg-accent text-white px-6 py-4 flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold">AI Assistant</h2>
           <div className="text-sm opacity-90 mt-1">
             <span className="flex items-center">
-              <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
+              <span className="w-2 h-2 bg-success rounded-full mr-2 animate-pulse"></span>
               Ready
             </span>
           </div>
@@ -81,6 +82,11 @@ export function ChatInterface() {
               <span>New</span>
             </div>
           </button>
+          
+          {/* Theme Selector */}
+          <div className="ml-2">
+            <ThemeSelector />
+          </div>
         </div>
       </div>
 
