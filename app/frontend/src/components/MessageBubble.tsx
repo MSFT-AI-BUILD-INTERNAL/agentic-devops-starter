@@ -12,16 +12,16 @@ export const MessageBubble = memo(({ message }: MessageBubbleProps) => {
   const isTool = message.role === 'tool';
 
   const bubbleClass = isUser
-    ? 'chat-message-user ml-auto'
+    ? 'bg-message-user text-message-user-text ml-auto'
     : isAssistant
-    ? 'chat-message-assistant mr-auto'
-    : 'chat-message-tool mx-auto';
+    ? 'bg-message-assistant text-message-assistant-text mr-auto'
+    : 'bg-message-tool text-message-tool-text mx-auto border border-border';
 
   const alignmentClass = isUser ? 'justify-end' : 'justify-start';
 
   return (
     <div className={`flex ${alignmentClass} mb-4`}>
-      <div className={`max-w-[70%] rounded-lg px-4 py-2 ${bubbleClass}`}>
+      <div className={`max-w-[70%] rounded-lg px-4 py-2 shadow-sm ${bubbleClass}`}>
         {/* Role indicator for non-user messages */}
         {!isUser && (
           <div className="text-xs font-semibold mb-1 opacity-70">

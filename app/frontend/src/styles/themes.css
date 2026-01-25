@@ -1,0 +1,152 @@
+/**
+ * Theme System - CSS Custom Properties
+ * 
+ * This file defines CSS variables for all available themes.
+ * Themes are applied by setting the data-theme attribute on the html element.
+ * 
+ * Usage: <html data-theme="light"> or <html data-theme="dark">
+ */
+
+/* ============================================================================
+   Light Theme (Default)
+   ============================================================================ */
+
+[data-theme="light"] {
+  /* Background colors */
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f9fafb;
+  --color-bg-tertiary: #f3f4f6;
+  
+  /* Text colors */
+  --color-text-primary: #1f2937;
+  --color-text-secondary: #6b7280;
+  --color-text-inverse: #ffffff;
+  
+  /* Accent colors */
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-light: #dbeafe;
+  
+  /* UI element colors */
+  --color-border: #e5e7eb;
+  --color-border-focus: #3b82f6;
+  
+  /* Message bubble colors */
+  --color-message-user: #2563eb;
+  --color-message-user-text: #ffffff;
+  --color-message-assistant: #f3f4f6;
+  --color-message-assistant-text: #1f2937;
+  --color-message-tool: #fef3c7;
+  --color-message-tool-text: #92400e;
+  
+  /* Status colors */
+  --color-success: #10b981;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+  
+  /* Interactive states */
+  --color-hover-overlay: rgba(0, 0, 0, 0.05);
+  --color-active-overlay: rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================================================
+   Dark Theme
+   ============================================================================ */
+
+[data-theme="dark"] {
+  /* Background colors */
+  --color-bg-primary: #1f2937;
+  --color-bg-secondary: #111827;
+  --color-bg-tertiary: #374151;
+  
+  /* Text colors */
+  --color-text-primary: #f9fafb;
+  --color-text-secondary: #d1d5db;
+  --color-text-inverse: #1f2937;
+  
+  /* Accent colors */
+  --color-accent: #60a5fa;
+  --color-accent-hover: #3b82f6;
+  --color-accent-light: #1e3a8a;
+  
+  /* UI element colors */
+  --color-border: #374151;
+  --color-border-focus: #60a5fa;
+  
+  /* Message bubble colors */
+  --color-message-user: #1e40af;
+  --color-message-user-text: #e0e7ff;
+  --color-message-assistant: #374151;
+  --color-message-assistant-text: #f9fafb;
+  --color-message-tool: #78350f;
+  --color-message-tool-text: #fef3c7;
+  
+  /* Status colors */
+  --color-success: #34d399;
+  --color-error: #f87171;
+  --color-warning: #fbbf24;
+  --color-info: #60a5fa;
+  
+  /* Interactive states */
+  --color-hover-overlay: rgba(255, 255, 255, 0.1);
+  --color-active-overlay: rgba(255, 255, 255, 0.15);
+}
+
+/* ============================================================================
+   High Contrast Theme (WCAG AAA)
+   ============================================================================ */
+
+[data-theme="high-contrast"] {
+  /* Background colors */
+  --color-bg-primary: #000000;
+  --color-bg-secondary: #1a1a1a;
+  --color-bg-tertiary: #2d2d2d;
+  
+  /* Text colors */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #e5e5e5;
+  --color-text-inverse: #000000;
+  
+  /* Accent colors */
+  --color-accent: #ffff00;
+  --color-accent-hover: #ffea00;
+  --color-accent-light: #333300;
+  
+  /* UI element colors */
+  --color-border: #ffffff;
+  --color-border-focus: #ffff00;
+  
+  /* Message bubble colors */
+  --color-message-user: #0000ff;
+  --color-message-user-text: #ffffff;
+  --color-message-assistant: #1a1a1a;
+  --color-message-assistant-text: #ffffff;
+  --color-message-tool: #4d2600;
+  --color-message-tool-text: #ffff99;
+  
+  /* Status colors */
+  --color-success: #00ff00;
+  --color-error: #ff0000;
+  --color-warning: #ffff00;
+  --color-info: #00ffff;
+  
+  /* Interactive states */
+  --color-hover-overlay: rgba(255, 255, 255, 0.2);
+  --color-active-overlay: rgba(255, 255, 255, 0.3);
+}
+
+/* ============================================================================
+   Smooth Transitions
+   ============================================================================ */
+
+* {
+  transition: background-color 0.2s ease-in-out,
+              color 0.2s ease-in-out,
+              border-color 0.2s ease-in-out;
+}
+
+/* Disable transitions on theme change to prevent flash */
+html.theme-changing * {
+  transition: none !important;
+}
