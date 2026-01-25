@@ -20,6 +20,18 @@ infra/
 │   ├── main.tf            # Log Analytics Workspace and Container Insights
 │   ├── variables.tf       # Log Analytics input variables
 │   └── outputs.tf         # Log Analytics outputs
+├── vnet/                   # Azure Virtual Network module
+│   ├── main.tf            # VNet and Subnets resource definitions
+│   ├── variables.tf       # VNet input variables
+│   └── outputs.tf         # VNet outputs
+├── application-gateway/    # Azure Application Gateway module
+│   ├── main.tf            # Application Gateway resource definition
+│   ├── variables.tf       # Application Gateway input variables
+│   └── outputs.tf         # Application Gateway outputs
+├── managed-identity/       # Azure Managed Identity module for Workload Identity
+│   ├── main.tf            # Managed Identity resource definition
+│   ├── variables.tf       # Managed Identity input variables
+│   └── outputs.tf         # Managed Identity outputs
 ├── main.tf                # Root configuration orchestrating modules
 ├── variables.tf           # Root input variables
 ├── outputs.tf             # Root outputs
@@ -31,15 +43,20 @@ infra/
 The infrastructure provisions the following resources:
 
 1. **Resource Group**: Container for all Azure resources
-2. **Azure Container Registry (ACR)**: Private container registry for storing Docker images
-3. **Azure Kubernetes Service (AKS)**: Managed Kubernetes cluster for running containerized applications
-4. **Azure Log Analytics Workspace**: Centralized logging and monitoring solution for AKS
-5. **Container Insights**: Azure Monitor solution for collecting logs and metrics from AKS clusters
-6. **Role Assignment**: Configures AKS to pull images from ACR using managed identity
+2. **Virtual Network (VNet)**: Network isolation with dedicated subnets for AKS and Application Gateway
+3. **Azure Container Registry (ACR)**: Private container registry for storing Docker images
+4. **Azure Kubernetes Service (AKS)**: Managed Kubernetes cluster for running containerized applications
+5. **Azure Application Gateway**: Layer 7 load balancer providing HTTP/HTTPS routing and SSL termination
+6. **Azure Log Analytics Workspace**: Centralized logging and monitoring solution for AKS
+7. **Container Insights**: Azure Monitor solution for collecting logs and metrics from AKS clusters
+8. **Managed Identity**: For Workload Identity authentication from pods to Azure services
+9. **Role Assignment**: Configures AKS to pull images from ACR using managed identity
 
 ### Key Features
 
-- **Modular Design**: Separate modules for ACR, AKS, and Log Analytics for reusability
+- **Modular Design**: Separate modules for ACR, AKS, VNet, Application Gateway, and Log Analytics for reusability
+- **Network Isolation**: Dedicated VNet with separate subnets for AKS and Application Gateway
+- **Application Gateway**: Enterprise-grade Layer 7 load balancer with health probes and routing rules
 - **Managed Identity**: Uses system-assigned managed identities for secure authentication
 - **ACR Integration**: AKS is automatically configured with AcrPull role to pull images from ACR
 - **Auto-scaling**: Node pool configured with auto-scaling (1-5 nodes by default)
@@ -164,17 +181,29 @@ log_analytics_retention_days = 30
 | `acr_admin_enabled` | Enable ACR admin user | `false` | No |
 | `aks_cluster_name` | AKS cluster name | `aks-agentic-devops` | No |
 | `aks_dns_prefix` | DNS prefix for AKS | `aks-agentic-devops` | No |
-| `kubernetes_version` | Kubernetes version | `1.28` | No |
+| `kubernetes_version` | Kubernetes version | `1.32` | No |
 | `node_count` | Initial node count | `2` | No |
 | `vm_size` | VM size for nodes | `Standard_D2s_v3` | No |
 | `enable_auto_scaling` | Enable auto-scaling | `true` | No |
 | `min_node_count` | Min nodes (auto-scaling) | `1` | No |
 | `max_node_count` | Max nodes (auto-scaling) | `5` | No |
+| `vnet_name` | Virtual Network name | `vnet-agentic-devops` | No |
+| `vnet_address_space` | VNet address space | `["10.1.0.0/16"]` | No |
+| `aks_subnet_name` | AKS subnet name | `aks-subnet` | No |
+| `aks_subnet_address_prefixes` | AKS subnet address prefixes | `["10.1.0.0/20"]` | No |
+| `appgw_subnet_name` | App Gateway subnet name | `appgw-subnet` | No |
+| `appgw_subnet_address_prefixes` | App Gateway subnet address prefixes | `["10.1.16.0/24"]` | No |
+| `appgw_name` | Application Gateway name | `appgw-agentic-devops` | No |
+| `appgw_sku_name` | App Gateway SKU name | `Standard_v2` | No |
+| `appgw_sku_tier` | App Gateway SKU tier | `Standard_v2` | No |
+| `appgw_capacity` | App Gateway instance count | `2` | No |
+| `appgw_backend_fqdns` | Backend FQDNs for App Gateway | `[]` | No** |
 | `log_analytics_workspace_name` | Log Analytics Workspace name | `log-agentic-devops` | No |
 | `log_analytics_sku` | Log Analytics SKU | `PerGB2018` | No |
 | `log_analytics_retention_days` | Log retention period (days) | `30` | No |
 
-\* Must be customized to ensure global uniqueness
+\* Must be customized to ensure global uniqueness  
+\*\* Can be updated after AKS deployment with the LoadBalancer service IP or ingress FQDN
 
 ## Deployment
 
@@ -202,13 +231,15 @@ terraform apply
 
 You'll be prompted to confirm. Type `yes` to proceed.
 
-The deployment typically takes 10-15 minutes. Terraform will create:
+The deployment typically takes 15-20 minutes. Terraform will create:
 1. Resource Group (1-2 minutes)
-2. Log Analytics Workspace (2-3 minutes)
-3. Container Insights Solution (1-2 minutes)
-4. Azure Container Registry (2-3 minutes)
-5. Azure Kubernetes Service with monitoring enabled (8-12 minutes)
-6. Role Assignment (< 1 minute)
+2. Virtual Network with Subnets (2-3 minutes)
+3. Log Analytics Workspace (2-3 minutes)
+4. Container Insights Solution (1-2 minutes)
+5. Azure Container Registry (2-3 minutes)
+6. Azure Kubernetes Service with monitoring enabled (8-12 minutes)
+7. Application Gateway with Public IP (5-8 minutes)
+8. Managed Identity and Role Assignments (< 1 minute)
 
 ### Step 3: Retrieve Outputs
 
@@ -741,6 +772,212 @@ az group show --name rg-agentic-devops
 - [Azure Kubernetes Service Documentation](https://docs.microsoft.com/azure/aks/)
 - [Terraform Azure Provider Documentation](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
+- [Azure Application Gateway Documentation](https://docs.microsoft.com/azure/application-gateway/)
+
+## Application Gateway Integration
+
+### Overview
+
+Azure Application Gateway is a Layer 7 (HTTP/HTTPS) load balancer that provides advanced routing and load balancing capabilities for web applications. This infrastructure deploys Application Gateway with the following features:
+
+- **Public IP Address**: Static public IP for external access
+- **Backend Pool**: Configured to route traffic to AKS ingress or LoadBalancer service
+- **HTTP Listener**: Listens on port 80 for incoming HTTP traffic
+- **Health Probes**: Monitors backend health on port 80
+- **Routing Rules**: Routes traffic from frontend to backend based on URL paths
+
+### Architecture
+
+```
+Internet → Application Gateway (Public IP) → Backend Pool → AKS LoadBalancer/Ingress → Pods
+```
+
+The Application Gateway sits in front of your AKS cluster, providing:
+1. **Single Entry Point**: All external traffic goes through the Application Gateway
+2. **SSL Termination**: Can handle SSL/TLS encryption at the gateway level
+3. **Layer 7 Routing**: URL-based routing to different backend services
+4. **Health Monitoring**: Automatic detection and removal of unhealthy backends
+5. **WAF Protection**: Optional Web Application Firewall (when using WAF_v2 SKU)
+
+### Configuration Steps
+
+#### 1. Initial Deployment
+
+After running `terraform apply`, the Application Gateway is deployed but needs to be configured with backend targets.
+
+#### 2. Get AKS LoadBalancer IP
+
+After deploying your application to AKS:
+
+```bash
+# Deploy your application with LoadBalancer service
+kubectl apply -f /path/to/your/service.yaml
+
+# Get the LoadBalancer external IP
+kubectl get service agentic-devops-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+```
+
+#### 3. Update Application Gateway Backend Pool
+
+Once you have the AKS LoadBalancer IP or ingress FQDN, update your `terraform.tfvars`:
+
+```hcl
+appgw_backend_fqdns = ["<AKS_LOADBALANCER_IP>"]
+# Or if using a domain/FQDN:
+# appgw_backend_fqdns = ["aks-ingress.example.com"]
+```
+
+Then apply the changes:
+
+```bash
+terraform apply
+```
+
+#### 4. Access Your Application
+
+After configuration, access your application through the Application Gateway public IP:
+
+```bash
+# Get Application Gateway public IP
+terraform output appgw_public_ip
+
+# Test access
+curl http://<APPGW_PUBLIC_IP>
+```
+
+### Advanced Configuration
+
+#### Enable HTTPS
+
+To enable HTTPS on Application Gateway, you can:
+
+1. **Self-Signed Certificate** (for testing):
+```bash
+# Create a self-signed certificate
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout appgw.key -out appgw.crt \
+  -subj "/CN=agentic-devops.example.com"
+
+# Convert to PFX format
+openssl pkcs12 -export -out appgw.pfx -inkey appgw.key -in appgw.crt
+```
+
+2. **Upload to Azure Key Vault** (recommended for production)
+3. **Update Application Gateway** with SSL certificate and HTTPS listener
+
+#### Enable WAF (Web Application Firewall)
+
+To enable WAF protection, update your `terraform.tfvars`:
+
+```hcl
+appgw_sku_name = "WAF_v2"
+appgw_sku_tier = "WAF_v2"
+```
+
+Then apply the changes with `terraform apply`.
+
+### Connecting to AKS Ingress
+
+The Application Gateway can work with AKS ingress in two ways:
+
+#### Option 1: External LoadBalancer (Current Setup)
+
+The current configuration uses the AKS LoadBalancer service IP as the backend. Traffic flows:
+```
+Application Gateway → AKS LoadBalancer → Ingress Controller → Service → Pods
+```
+
+#### Option 2: Application Gateway Ingress Controller (AGIC)
+
+For tighter integration, you can install AGIC which allows the Application Gateway to directly target AKS pods:
+
+1. **Enable AGIC Add-on**:
+```bash
+az aks enable-addons \
+  --resource-group rg-agentic-devops \
+  --name aks-agentic-devops \
+  --addons ingress-appgw \
+  --appgw-id $(terraform output -raw appgw_id)
+```
+
+2. **Update Ingress Annotations**:
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentic-devops-ingress
+  annotations:
+    kubernetes.io/ingress.class: azure/application-gateway
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: agentic-devops-service
+            port:
+              number: 80
+```
+
+### Monitoring and Troubleshooting
+
+#### View Application Gateway Metrics
+
+```bash
+# In Azure Portal, navigate to:
+# Application Gateway → Monitoring → Metrics
+
+# Or use Azure CLI:
+az monitor metrics list \
+  --resource $(terraform output -raw appgw_id) \
+  --metric-names "TotalRequests,FailedRequests,HealthyHostCount"
+```
+
+#### Check Backend Health
+
+```bash
+# View backend health status
+az network application-gateway show-backend-health \
+  --resource-group rg-agentic-devops \
+  --name appgw-agentic-devops
+```
+
+#### Common Issues
+
+1. **Backend Shows Unhealthy**:
+   - Verify the backend IP/FQDN is correct
+   - Check AKS service is running: `kubectl get services`
+   - Verify health probe path returns 200 OK
+   - Check NSG rules allow traffic from Application Gateway subnet
+
+2. **502 Bad Gateway**:
+   - Backend service may be down
+   - Check AKS pod logs: `kubectl logs <pod-name>`
+   - Verify service port configuration
+
+3. **Timeout Errors**:
+   - Increase timeout settings in Application Gateway
+   - Check backend service response time
+
+### Outputs
+
+After deployment, these outputs are available:
+
+```bash
+terraform output appgw_id              # Application Gateway resource ID
+terraform output appgw_name            # Application Gateway name
+terraform output appgw_public_ip       # Public IP address to access your app
+terraform output appgw_public_ip_fqdn  # FQDN if configured
+```
+
+## References
+
+- [Azure Kubernetes Service Documentation](https://docs.microsoft.com/azure/aks/)
+- [Terraform Azure Provider Documentation](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
+- [Kubernetes Documentation](https://kubernetes.io/docs/)
+- [Azure Application Gateway Documentation](https://docs.microsoft.com/azure/application-gateway/)
 
 ## Contributing
 

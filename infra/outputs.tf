@@ -77,3 +77,45 @@ output "oidc_issuer_url" {
   description = "OIDC issuer URL for Workload Identity"
   value       = module.aks.oidc_issuer_url
 }
+
+# Virtual Network Outputs
+output "vnet_id" {
+  description = "The ID of the Virtual Network"
+  value       = module.vnet.vnet_id
+}
+
+output "vnet_name" {
+  description = "The name of the Virtual Network"
+  value       = module.vnet.vnet_name
+}
+
+output "aks_subnet_id" {
+  description = "The ID of the AKS subnet"
+  value       = module.vnet.aks_subnet_id
+}
+
+output "appgw_subnet_id" {
+  description = "The ID of the Application Gateway subnet"
+  value       = module.vnet.appgw_subnet_id
+}
+
+# Application Gateway Outputs
+output "appgw_id" {
+  description = "The ID of the Application Gateway"
+  value       = module.application_gateway.appgw_id
+}
+
+output "appgw_name" {
+  description = "The name of the Application Gateway"
+  value       = module.application_gateway.appgw_name
+}
+
+output "appgw_public_ip" {
+  description = "The public IP address of the Application Gateway"
+  value       = module.application_gateway.appgw_public_ip
+}
+
+output "appgw_public_ip_fqdn" {
+  description = "The FQDN of the Application Gateway public IP"
+  value       = module.application_gateway.appgw_public_ip_fqdn
+}

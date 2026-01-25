@@ -27,6 +27,21 @@ log_analytics_workspace_name = "log-agentic-devops"
 log_analytics_sku            = "PerGB2018"          # Options: Free, PerNode, Premium, Standard, Standalone, Unlimited, CapacityReservation, PerGB2018
 log_analytics_retention_days = 30                   # Retention period in days (7-730 for paid tier, 7 for free tier)
 
+# Virtual Network Configuration
+vnet_name                     = "vnet-agentic-devops"
+vnet_address_space            = ["10.1.0.0/16"]
+aks_subnet_name               = "aks-subnet"
+aks_subnet_address_prefixes   = ["10.1.0.0/20"]
+appgw_subnet_name             = "appgw-subnet"
+appgw_subnet_address_prefixes = ["10.1.16.0/24"]
+
+# Application Gateway Configuration
+appgw_name           = "appgw-agentic-devops"
+appgw_sku_name       = "Standard_v2"               # Options: Standard_v2, WAF_v2
+appgw_sku_tier       = "Standard_v2"               # Options: Standard_v2, WAF_v2
+appgw_capacity       = 2                           # Number of instances (1-125)
+appgw_backend_fqdns  = []                          # Add AKS LoadBalancer IPs or ingress FQDNs after deployment
+
 # Tags
 tags = {
   Environment = "Development"

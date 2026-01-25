@@ -38,6 +38,23 @@ module "log_analytics" {
   depends_on = [azurerm_resource_group.main]
 }
 
+# Virtual Network Module
+module "vnet" {
+  source = "./vnet"
+
+  vnet_name                     = var.vnet_name
+  resource_group_name           = azurerm_resource_group.main.name
+  location                      = azurerm_resource_group.main.location
+  address_space                 = var.vnet_address_space
+  aks_subnet_name               = var.aks_subnet_name
+  aks_subnet_address_prefixes   = var.aks_subnet_address_prefixes
+  appgw_subnet_name             = var.appgw_subnet_name
+  appgw_subnet_address_prefixes = var.appgw_subnet_address_prefixes
+  tags                          = var.tags
+
+  depends_on = [azurerm_resource_group.main]
+}
+
 # Azure Container Registry Module
 module "acr" {
   source = "./acr"
@@ -66,11 +83,12 @@ module "aks" {
   enable_auto_scaling        = var.enable_auto_scaling
   min_node_count             = var.min_node_count
   max_node_count             = var.max_node_count
+  vnet_subnet_id             = module.vnet.aks_subnet_id
   acr_id                     = module.acr.acr_id
   log_analytics_workspace_id = module.log_analytics.workspace_id
   tags                       = var.tags
 
-  depends_on = [azurerm_resource_group.main, module.acr, module.log_analytics]
+  depends_on = [azurerm_resource_group.main, module.acr, module.log_analytics, module.vnet]
 }
 
 # Managed Identity for Workload Identity
@@ -86,4 +104,22 @@ module "managed_identity" {
   tags                 = var.tags
 
   depends_on = [module.aks]
+}
+
+# Application Gateway Module
+module "application_gateway" {
+  source = "./application-gateway"
+
+  appgw_name          = var.appgw_name
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  subnet_id           = module.vnet.appgw_subnet_id
+  public_ip_name      = "${var.appgw_name}-pip"
+  sku_name            = var.appgw_sku_name
+  sku_tier            = var.appgw_sku_tier
+  capacity            = var.appgw_capacity
+  backend_fqdns       = var.appgw_backend_fqdns
+  tags                = var.tags
+
+  depends_on = [module.vnet, module.aks]
 }
