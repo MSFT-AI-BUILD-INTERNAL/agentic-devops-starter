@@ -22,12 +22,95 @@ Access your application at: `http://<EXTERNAL-IP>`
 - **deployment.yaml**: Defines the Kubernetes Deployment for the application with 2 replicas
 - **service.yaml**: Defines a ClusterIP Service (use with Ingress) or LoadBalancer Service for direct access
 - **ingress.yaml**: Defines HTTPS Ingress with automatic TLS certificate (requires NGINX Ingress Controller)
+- **ingress-appgw.yaml**: Alternative ingress configuration for Azure Application Gateway Ingress Controller (AGIC)
 - **cert-issuer.yaml**: Let's Encrypt certificate issuer for automatic TLS certificates
 - **setup-https.sh**: Automated script to install NGINX Ingress Controller and cert-manager
 
+## Access Options
+
+This deployment supports multiple ways to expose your application:
+
+1. **Application Gateway + LoadBalancer** (Enterprise) - Layer 7 load balancer with WAF support
+2. **NGINX Ingress Controller** (Recommended) - Full-featured ingress with automatic HTTPS
+3. **LoadBalancer Service** (Simple) - Direct access without ingress
+
+### Option 1: Application Gateway + AKS Integration 🏢
+
+**Best for:** Enterprise deployments requiring WAF, advanced routing, and SSL offloading
+
+Azure Application Gateway is deployed as part of the Terraform infrastructure and provides:
+- ✅ Layer 7 load balancing with advanced routing
+- ✅ Web Application Firewall (WAF) protection
+- ✅ SSL/TLS termination at the gateway
+- ✅ Health probing and automatic failover
+- ✅ Integration with Azure services
+
+**Architecture:**
+```
+Internet → Application Gateway → AKS LoadBalancer → Ingress/Service → Pods
+```
+
+**Setup Steps:**
+
+1. **Deploy infrastructure with Application Gateway**:
+   ```bash
+   cd infra
+   terraform apply
+   ```
+
+2. **Deploy your application to AKS**:
+   ```bash
+   kubectl apply -f k8s/service-account.yaml
+   kubectl apply -f k8s/deployment.yaml
+   kubectl apply -f k8s/service.yaml  # Ensure type: LoadBalancer
+   ```
+
+3. **Get AKS LoadBalancer IP**:
+   ```bash
+   kubectl get service agentic-devops-service
+   # Wait for EXTERNAL-IP to be assigned
+   ```
+
+4. **Update Application Gateway backend**:
+   ```bash
+   # Update infra/terraform.tfvars with the LoadBalancer IP:
+   # appgw_backend_fqdns = ["<LOADBALANCER-IP>"]
+   
+   cd infra
+   terraform apply
+   ```
+
+5. **Access via Application Gateway**:
+   ```bash
+   # Get Application Gateway public IP
+   cd infra
+   terraform output appgw_public_ip
+   
+   # Access your application
+   curl http://<APPGW-PUBLIC-IP>
+   ```
+
+**Using Application Gateway Ingress Controller (AGIC):**
+
+For tighter integration, you can use AGIC which allows Application Gateway to directly manage ingress:
+
+```bash
+# Enable AGIC add-on
+az aks enable-addons \
+  --resource-group $(cd infra && terraform output -raw resource_group_name) \
+  --name $(cd infra && terraform output -raw aks_name) \
+  --addons ingress-appgw \
+  --appgw-id $(cd infra && terraform output -raw appgw_id)
+
+# Deploy with AGIC ingress
+kubectl apply -f k8s/ingress-appgw.yaml
+```
+
+📖 **Detailed Guide:** See [Application Gateway Setup Guide](../docs/APPLICATION_GATEWAY_SETUP.md)
+
 ## HTTPS Setup
 
-### Option 1: Using NGINX Ingress Controller (Recommended) ⭐
+### Option 2: Using NGINX Ingress Controller (Recommended) ⭐
 
 This option provides:
 - ✅ Automatic HTTPS with Let's Encrypt certificates
@@ -79,7 +162,7 @@ This option provides:
 
    Certificate issuance takes 1-2 minutes. Access your app at: `https://your-domain.com`
 
-### Option 2: LoadBalancer with HTTP Only
+### Option 3: LoadBalancer with HTTP Only
 
 If you don't need HTTPS or want to use an external proxy:
 

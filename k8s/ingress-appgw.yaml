@@ -1,0 +1,57 @@
+---
+# Alternative Ingress configuration for Azure Application Gateway Ingress Controller (AGIC)
+# Use this instead of ingress.yaml if you want Application Gateway to directly manage AKS ingress
+# 
+# To enable AGIC:
+# 1. Enable the AGIC add-on:
+#    az aks enable-addons --resource-group <rg-name> --name <aks-name> \
+#      --addons ingress-appgw --appgw-id <appgw-resource-id>
+# 2. Apply this ingress configuration:
+#    kubectl apply -f ingress-appgw.yaml
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentic-devops-ingress-appgw
+  annotations:
+    # Use Application Gateway Ingress Controller
+    kubernetes.io/ingress.class: azure/application-gateway
+    # Optional: Enable SSL redirect
+    appgw.ingress.kubernetes.io/ssl-redirect: "false"
+    # Optional: Connection draining timeout
+    appgw.ingress.kubernetes.io/connection-draining: "true"
+    appgw.ingress.kubernetes.io/connection-draining-timeout: "30"
+    # Optional: Request timeout (in seconds)
+    appgw.ingress.kubernetes.io/request-timeout: "600"
+    # Optional: Backend protocol (http or https)
+    appgw.ingress.kubernetes.io/backend-protocol: "http"
+spec:
+  rules:
+    # Default rule for all traffic
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentic-devops-service
+                port:
+                  number: 80
+    # Optional: Rule for specific domain
+    # Uncomment and configure after setting up custom domain
+    # - host: agentic-devops.yourdomain.com
+    #   http:
+    #     paths:
+    #       - path: /
+    #         pathType: Prefix
+    #         backend:
+    #           service:
+    #             name: agentic-devops-service
+    #             port:
+    #               number: 80
+  # Optional: TLS configuration
+  # Uncomment after uploading SSL certificate to Application Gateway
+  # tls:
+  #   - hosts:
+  #       - agentic-devops.yourdomain.com
+  #     secretName: agentic-devops-tls
