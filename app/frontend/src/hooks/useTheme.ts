@@ -61,12 +61,12 @@ export interface UseThemeReturn {
  * ```
  */
 export function useTheme(): UseThemeReturn {
-  const currentTheme = useThemeStore((state: any) => state.currentTheme);
-  const availableThemes = useThemeStore((state: any) => state.availableThemes);
-  const setTheme = useThemeStore((state: any) => state.setTheme);
-  const isLoading = useThemeStore((state: any) => state.isLoading);
-  const initializeTheme = useThemeStore((state: any) => state.initializeTheme);
-  const getCurrentThemeObject = useThemeStore((state: any) => state.getCurrentThemeObject);
+  const currentTheme = useThemeStore((state) => state.currentTheme);
+  const availableThemes = useThemeStore((state) => state.availableThemes);
+  const setTheme = useThemeStore((state) => state.setTheme);
+  const isLoading = useThemeStore((state) => state.isLoading);
+  const initializeTheme = useThemeStore((state) => state.initializeTheme);
+  const getCurrentThemeObject = useThemeStore((state) => state.getCurrentThemeObject);
   
   // Initialize theme on mount
   useEffect(() => {

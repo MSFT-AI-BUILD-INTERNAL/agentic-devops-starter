@@ -19,16 +19,24 @@
           const stored = localStorage.getItem('app-theme-preference');
           if (stored) {
             const parsed = JSON.parse(stored);
-            const themeId = parsed?.state?.currentTheme || 'light';
+            // Support both Zustand persist structure and direct theme value
+            const themeId = (parsed && typeof parsed === 'object') 
+              ? (parsed.state?.currentTheme || parsed.currentTheme || 'light')
+              : 'light';
+            
+            // Validate theme ID (only allow known themes)
+            const validThemes = ['light', 'dark', 'high-contrast'];
+            const finalTheme = validThemes.includes(themeId) ? themeId : 'light';
             
             // Apply theme immediately
-            document.documentElement.setAttribute('data-theme', themeId);
+            document.documentElement.setAttribute('data-theme', finalTheme);
           } else {
             // No preference saved, use default
             document.documentElement.setAttribute('data-theme', 'light');
           }
         } catch (error) {
           // If anything fails, fall back to light theme
+          console.warn('Failed to load theme preference:', error);
           document.documentElement.setAttribute('data-theme', 'light');
         }
       })();

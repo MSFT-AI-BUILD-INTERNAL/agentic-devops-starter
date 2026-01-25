@@ -48,13 +48,14 @@ export function hexToRgb(hex: string): { r: number; g: number; b: number } | nul
  * @returns Relative luminance (0-1)
  */
 export function getRelativeLuminance(rgb: { r: number; g: number; b: number }): number {
-  // Convert RGB values to 0-1 range
-  const [r, g, b] = [rgb.r, rgb.g, rgb.b].map(val => {
-    const normalized = val / 255;
-    return normalized <= 0.03928
-      ? normalized / 12.92
-      : Math.pow((normalized + 0.055) / 1.055, 2.4);
-  });
+  // Convert RGB values to 0-1 range and apply WCAG formula
+  const rNorm = rgb.r / 255;
+  const gNorm = rgb.g / 255;
+  const bNorm = rgb.b / 255;
+  
+  const r = rNorm <= 0.03928 ? rNorm / 12.92 : Math.pow((rNorm + 0.055) / 1.055, 2.4);
+  const g = gNorm <= 0.03928 ? gNorm / 12.92 : Math.pow((gNorm + 0.055) / 1.055, 2.4);
+  const b = bNorm <= 0.03928 ? bNorm / 12.92 : Math.pow((bNorm + 0.055) / 1.055, 2.4);
   
   // Calculate luminance using WCAG formula
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;

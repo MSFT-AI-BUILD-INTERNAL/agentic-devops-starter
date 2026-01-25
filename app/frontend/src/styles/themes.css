@@ -140,7 +140,11 @@
    Smooth Transitions
    ============================================================================ */
 
-* {
+/* Apply transitions only to theme-aware elements for better performance */
+body,
+[class*="bg-"],
+[class*="text-"],
+[class*="border-"] {
   transition: background-color 0.2s ease-in-out,
               color 0.2s ease-in-out,
               border-color 0.2s ease-in-out;

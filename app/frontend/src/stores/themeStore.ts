@@ -44,7 +44,7 @@ interface ThemeStore {
  */
 export const useThemeStore = create<ThemeStore>()(
   persist(
-    (set: any, get: any) => ({
+    (set, get) => ({
       // Initial state
       currentTheme: themeConfig.defaultTheme,
       availableThemes: themeConfig.themes,
@@ -83,7 +83,7 @@ export const useThemeStore = create<ThemeStore>()(
       // Computed values
       getCurrentThemeObject: () => {
         const { currentTheme, availableThemes } = get();
-        const theme = availableThemes.find((t: Theme) => t.id === currentTheme);
+        const theme = availableThemes.find((t) => t.id === currentTheme);
         return theme || availableThemes[0]; // Fallback to first theme
       },
     }),
@@ -101,7 +101,7 @@ export const useThemeStore = create<ThemeStore>()(
             return null;
           }
         },
-        setItem: (name: string, value: any) => {
+        setItem: (name: string, value: unknown) => {
           try {
             localStorage.setItem(name, JSON.stringify(value));
           } catch (error) {
@@ -118,13 +118,13 @@ export const useThemeStore = create<ThemeStore>()(
       },
       
       // Only persist currentTheme (not computed values)
-      partialize: (state: any) => ({
+      partialize: (state) => ({
         currentTheme: state.currentTheme,
       }),
       
       // Migrate old data if needed
       version: 1,
-      migrate: (persistedState: any, version: number) => {
+      migrate: (persistedState: unknown, version: number) => {
         if (version === 0) {
           // Migrate from old format (if needed in future)
           return persistedState as ThemeStore;
@@ -133,8 +133,11 @@ export const useThemeStore = create<ThemeStore>()(
       },
       
       // Merge persisted state with default state
-      merge: (persistedState: any, currentState: any) => {
-        const merged = { ...currentState, ...persistedState };
+      merge: (persistedState, currentState) => {
+        const merged = { 
+          ...currentState, 
+          ...(persistedState && typeof persistedState === 'object' ? persistedState : {})
+        };
         
         // Validate persisted theme ID
         if (persistedState && typeof persistedState === 'object' && 'currentTheme' in persistedState) {
