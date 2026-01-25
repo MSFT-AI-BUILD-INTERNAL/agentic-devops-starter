@@ -55,7 +55,7 @@ export function MessageList({ messages, isStreaming, streamingText }: MessageLis
   }, [messages, scrollToBottom]);
 
   return (
-    <div className="relative flex-1 overflow-hidden">
+    <div className="relative flex-1 overflow-hidden bg-secondary">
       <div
         ref={containerRef}
         onScroll={handleScroll}
@@ -63,7 +63,7 @@ export function MessageList({ messages, isStreaming, streamingText }: MessageLis
       >
         {messages.length === 0 && !isStreaming ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center text-gray-500">
+            <div className="text-center text-text-secondary">
               <svg
                 className="mx-auto h-12 w-12 mb-4 opacity-50"
                 fill="none"
@@ -77,7 +77,7 @@ export function MessageList({ messages, isStreaming, streamingText }: MessageLis
                   d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                 />
               </svg>
-              <p className="text-lg font-medium">Start a conversation</p>
+              <p className="text-lg font-medium text-text-primary">Start a conversation</p>
               <p className="text-sm mt-2">Send a message to begin chatting with the AI assistant</p>
             </div>
           </div>
@@ -90,13 +90,13 @@ export function MessageList({ messages, isStreaming, streamingText }: MessageLis
             {/* Streaming message preview */}
             {isStreaming && streamingText && (
               <div className="flex justify-start mb-4">
-                <div className="max-w-[70%] rounded-lg px-4 py-2 chat-message-assistant mr-auto">
+                <div className="max-w-[70%] rounded-lg px-4 py-2 bg-message-assistant text-message-assistant-text shadow-sm mr-auto">
                   <div className="text-xs font-semibold mb-1 opacity-70">Assistant</div>
                   <div className="whitespace-pre-wrap break-words">{streamingText}</div>
                   <div className="typing-indicator mt-2 flex space-x-1">
-                    <span className="w-2 h-2 bg-gray-600 rounded-full"></span>
-                    <span className="w-2 h-2 bg-gray-600 rounded-full"></span>
-                    <span className="w-2 h-2 bg-gray-600 rounded-full"></span>
+                    <span className="w-2 h-2 bg-text-secondary rounded-full"></span>
+                    <span className="w-2 h-2 bg-text-secondary rounded-full"></span>
+                    <span className="w-2 h-2 bg-text-secondary rounded-full"></span>
                   </div>
                 </div>
               </div>
@@ -114,7 +114,7 @@ export function MessageList({ messages, isStreaming, streamingText }: MessageLis
             setShouldAutoScroll(true);
             scrollToBottom('smooth');
           }}
-          className="absolute bottom-4 right-4 bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 transition-colors"
+          className="absolute bottom-4 right-4 bg-accent text-white p-3 rounded-full shadow-lg hover:bg-accent-hover transition-colors focus:outline-none focus:ring-2 focus:ring-border-focus"
           aria-label="Scroll to bottom"
         >
           <svg
