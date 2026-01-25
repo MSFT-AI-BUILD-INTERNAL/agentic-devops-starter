@@ -7,11 +7,12 @@ MVP for Agentic DevOps Starter (Compass) - A complete CI/CD solution for deployi
 This repository provides a full-stack DevOps solution for deploying a Python-based conversational AI application to Azure:
 
 - **Application**: FastAPI server with AG-UI protocol support (`/app`)
-- **Infrastructure**: Terraform code for ACR, AKS, Application Gateway, and Log Analytics (`/infra`)
+- **Infrastructure**: Terraform code for ACR, AKS, Application Gateway, Key Vault, and Log Analytics (`/infra`)
 - **CI/CD**: GitHub Actions workflow for automated deployment (`.github/workflows/deploy.yml`)
 - **Kubernetes**: Manifests for container orchestration (`/k8s`)
 - **Monitoring**: Azure Log Analytics with Container Insights for comprehensive logging and metrics
 - **Load Balancing**: Azure Application Gateway (L7) with Kubernetes Ingress for advanced traffic management
+- **Security**: Azure Key Vault for SSL certificate management with HTTPS support
 
 ## Quick Start
 
@@ -301,7 +302,8 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
   - Azure AD Workload Identity for pod-to-Azure authentication
   - `DefaultAzureCredential` for seamless Azure service access
 - ✅ **Monitoring & Logging**: Azure Log Analytics with Container Insights for comprehensive observability
-- ✅ **HTTPS Support**: Native SSL/TLS termination at Application Gateway
+- ✅ **HTTPS Support**: Native SSL/TLS termination at Application Gateway with Azure Key Vault certificate management
+- ✅ **SSL Certificate Management**: Azure Key Vault for secure certificate storage and automatic provisioning
 - ✅ **Comprehensive Docs**: Detailed guides for infrastructure, deployment, and operations
 
 ## Documentation

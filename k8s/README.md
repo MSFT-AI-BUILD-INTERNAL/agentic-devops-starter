@@ -4,106 +4,145 @@ This directory contains Kubernetes manifests for deploying the Agentic DevOps St
 
 ## Quick Access via Application Gateway
 
-🚀 **Access your application through Azure Application Gateway (L7 Load Balancer)**
+🚀 **Access your application through Azure Application Gateway (L7 Load Balancer) with HTTPS**
 
 After deploying, get the Application Gateway IP:
 ```bash
 kubectl get ingress agentic-devops-ingress
 ```
 
-Access your application at: `http://<APPLICATION-GATEWAY-IP>`
+Access your application:
+- **HTTPS (Recommended)**: `https://<APPLICATION-GATEWAY-IP>` or `https://agentic-devops.local` (if DNS configured)
+- **HTTP**: Automatically redirects to HTTPS
 
-**Note:** This uses HTTP by default. For production with HTTPS, configure SSL certificates on the Application Gateway.
+**Note:** By default, the infrastructure provisions HTTPS with a self-signed certificate from Azure Key Vault. For production, import your own certificate.
 
 ## Files
 
 - **deployment.yaml**: Defines the Kubernetes Deployment for the application with 2 replicas
 - **service.yaml**: Defines a ClusterIP Service for internal pod communication
-- **ingress.yaml**: Defines Application Gateway Ingress with AGIC annotations
+- **ingress.yaml**: Defines Application Gateway Ingress with AGIC annotations and HTTPS support
 - **service-account.yaml**: ServiceAccount for Azure AD Workload Identity
 
-**Note:** The following files are for NGINX Ingress Controller and are no longer used with Application Gateway:
-- ~~**cert-issuer.yaml**: Let's Encrypt certificate issuer~~ (use Application Gateway SSL certificates instead)
-- ~~**setup-https.sh**: Script to install NGINX Ingress Controller~~ (AGIC is installed via Terraform)
+**Note:** The infrastructure now uses Azure Application Gateway with SSL certificates from Azure Key Vault:
+- SSL certificate is stored in Key Vault and automatically provisioned
+- HTTP traffic is automatically redirected to HTTPS
+- Self-signed certificate is created by default (can be replaced with your own certificate)
 
 ## HTTPS Setup with Application Gateway
 
-### Option 1: Using Azure Application Gateway with SSL Certificate (Recommended) ⭐
+### Automatic HTTPS with Azure Key Vault (Default) ⭐
 
-This option provides:
-- ✅ Native L7 load balancing
-- ✅ SSL/TLS termination at the gateway
-- ✅ Path-based routing
-- ✅ WAF capabilities (with WAF_v2 SKU)
-- ✅ Better performance and scalability
+The infrastructure is pre-configured for HTTPS with SSL certificate management via Azure Key Vault:
 
-**Steps:**
+✅ **What's Already Configured:**
+- Azure Key Vault is provisioned with access policies
+- Self-signed SSL certificate is automatically created for testing
+- Application Gateway has a managed identity with Key Vault access
+- HTTPS listener (port 443) is configured on Application Gateway
+- HTTP to HTTPS redirect is enabled
+- Kubernetes Ingress has TLS configuration
 
-1. **Application Gateway is already provisioned** (via Terraform):
-   - Public IP for external access
-   - AGIC (Application Gateway Ingress Controller) addon enabled on AKS
-   - Virtual network with dedicated subnets
+**Default Setup:**
+```bash
+# After running terraform apply, HTTPS is automatically enabled
+# Access your application:
+https://<APPLICATION-GATEWAY-IP>
 
-2. **Configure SSL certificate**:
+# Check certificate details:
+terraform output certificate_secret_id
+terraform output key_vault_name
+```
 
-   **Option A: Use Azure Key Vault (Recommended for production)**
-   ```bash
-   # Upload certificate to Key Vault
-   az keyvault certificate import \
-     --vault-name <your-keyvault> \
-     --name app-gateway-cert \
-     --file certificate.pfx
-   
-   # Configure Application Gateway to use the certificate
-   # This can be done via Azure Portal or Terraform
+### Using Your Own SSL Certificate
+
+For production, replace the self-signed certificate with your own:
+
+**Option 1: Import Certificate to Key Vault (Recommended)**
+```bash
+# Get Key Vault name from Terraform output
+KEY_VAULT_NAME=$(cd infra && terraform output -raw key_vault_name)
+
+# Import your certificate (.pfx format)
+az keyvault certificate import \
+  --vault-name $KEY_VAULT_NAME \
+  --name app-gateway-ssl-cert \
+  --file /path/to/your-certificate.pfx \
+  --password "your-pfx-password"
+
+# The Application Gateway will automatically use the updated certificate
+```
+
+**Option 2: Use Let's Encrypt or Other CA**
+```bash
+# Generate certificate using certbot or other tool
+certbot certonly --manual --preferred-challenges dns -d yourdomain.com
+
+# Convert to PFX format
+openssl pkcs12 -export \
+  -out certificate.pfx \
+  -inkey privkey.pem \
+  -in fullchain.pem
+
+# Import to Key Vault (as shown above)
+```
+
+### Disabling HTTPS (Development Only)
+
+To disable HTTPS and use HTTP only:
+
+1. **Update Terraform variables** in `infra/terraform.tfvars`:
+   ```hcl
+   enable_https = false
    ```
 
-   **Option B: Upload certificate directly to Application Gateway**
-   ```bash
-   # Via Azure Portal:
-   # 1. Go to Application Gateway → Listeners
-   # 2. Create/Edit HTTPS listener
-   # 3. Upload certificate (.pfx file)
-   ```
-
-3. **Update Ingress manifest for HTTPS**:
-   
-   Edit `k8s/ingress.yaml` to add SSL configuration:
+2. **Update Ingress** in `k8s/ingress.yaml`:
    ```yaml
    metadata:
      annotations:
-       appgw.ingress.kubernetes.io/ssl-redirect: "true"
-   spec:
-     tls:
-       - secretName: app-gateway-tls-cert
-         hosts:
-           - your-domain.com
+       appgw.ingress.kubernetes.io/ssl-redirect: "false"
+   # Remove the tls: section
    ```
 
-4. **Deploy the Ingress**:
+3. **Apply changes**:
    ```bash
+   cd infra && terraform apply
    kubectl apply -f k8s/ingress.yaml
    ```
 
-5. **Verify setup**:
-   ```bash
-   kubectl get ingress agentic-devops-ingress
-   ```
+## Certificate Management
 
-   Access your app at: `https://your-domain.com` or `https://<APP-GATEWAY-PUBLIC-IP>`
+### Viewing Certificate Information
+```bash
+# Get certificate details from Key Vault
+KEY_VAULT_NAME=$(cd infra && terraform output -raw key_vault_name)
+az keyvault certificate show \
+  --vault-name $KEY_VAULT_NAME \
+  --name app-gateway-ssl-cert
 
-### Option 2: HTTP Only (Development/Testing)
+# Check certificate expiration
+az keyvault certificate show \
+  --vault-name $KEY_VAULT_NAME \
+  --name app-gateway-ssl-cert \
+  --query "attributes.expires" -o tsv
+```
 
-The default configuration uses HTTP without SSL:
+### Certificate Renewal
 
-1. **Deploy** (already done via GitHub Actions):
-   ```bash
-   kubectl apply -f k8s/ingress.yaml
-   ```
+**For Self-Signed Certificates:**
+The certificate is set to auto-renew 30 days before expiration. No manual intervention needed.
 
-2. **Get Application Gateway IP**:
-   ```bash
-   kubectl get ingress agentic-devops-ingress
+**For Imported Certificates:**
+```bash
+# Import renewed certificate
+az keyvault certificate import \
+  --vault-name $KEY_VAULT_NAME \
+  --name app-gateway-ssl-cert \
+  --file /path/to/renewed-certificate.pfx
+
+# Application Gateway will automatically use the updated certificate
+```
+
    ```
 
 3. **Access**: `http://<APP-GATEWAY-IP>`
