@@ -42,6 +42,30 @@ module "log_analytics" {
   depends_on = [azurerm_resource_group.main]
 }
 
+# Application Gateway Module
+module "app_gateway" {
+  source = "./app-gateway"
+
+  app_gateway_name     = var.app_gateway_name
+  resource_group_name  = azurerm_resource_group.main.name
+  location             = azurerm_resource_group.main.location
+  vnet_name            = var.vnet_name
+  vnet_address_space   = var.vnet_address_space
+  appgw_subnet_name    = var.appgw_subnet_name
+  appgw_subnet_prefix  = var.appgw_subnet_prefix
+  aks_subnet_name      = var.aks_subnet_name
+  aks_subnet_prefix    = var.aks_subnet_prefix
+  public_ip_name       = var.app_gateway_public_ip_name
+  app_gateway_sku_name = var.app_gateway_sku_name
+  app_gateway_sku_tier = var.app_gateway_sku_tier
+  app_gateway_capacity = var.app_gateway_capacity
+  waf_firewall_mode    = var.waf_firewall_mode
+  subscription_id      = data.azurerm_subscription.current.subscription_id
+  tags                 = var.tags
+
+  depends_on = [azurerm_resource_group.main]
+}
+
 # Azure Container Registry Module
 module "acr" {
   source = "./acr"
