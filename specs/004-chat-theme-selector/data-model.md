@@ -433,7 +433,7 @@ const validateTheme = (theme: Theme): ValidationResult => {
 
 ## Complete Type Definitions
 
-See `/specs/001-chat-theme-selector/contracts/theme-types.ts` for full TypeScript implementation with:
+See `/specs/004-chat-theme-selector/contracts/theme-types.ts` for full TypeScript implementation with:
 - All interface definitions
 - Type guards
 - Validation functions

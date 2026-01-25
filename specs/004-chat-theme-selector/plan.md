@@ -1,7 +1,7 @@
 # Implementation Plan: Chat Theme Selector
 
-**Branch**: `001-chat-theme-selector` | **Date**: 2025-01-25 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/001-chat-theme-selector/spec.md`
+**Branch**: `004-chat-theme-selector` | **Date**: 2025-01-25 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/004-chat-theme-selector/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
@@ -77,7 +77,7 @@ No constitution violations detected in design phase. The implementation plan mai
 ### Documentation (this feature)
 
 ```text
-specs/001-chat-theme-selector/
+specs/004-chat-theme-selector/
 ├── plan.md              # This file (/speckit.plan command output)
 ├── research.md          # Phase 0 output - Theme system architecture research
 ├── data-model.md        # Phase 1 output - Theme and preference entities
@@ -192,7 +192,7 @@ app/frontend/
 ---
 
 **Implementation Plan Complete** ✅  
-**Branch**: `001-chat-theme-selector`  
+**Branch**: `004-chat-theme-selector`  
 **Ready for**: Task generation (`/speckit.tasks` command)
 
 ---

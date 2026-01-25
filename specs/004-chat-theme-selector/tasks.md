@@ -1,6 +1,6 @@
 # Tasks: Chat Theme Selector
 
-**Input**: Design documents from `/specs/001-chat-theme-selector/`
+**Input**: Design documents from `/specs/004-chat-theme-selector/`
 **Prerequisites**: plan.md ✅, spec.md ✅, research.md ✅, data-model.md ✅, contracts/theme-types.ts ✅
 
 **Tests**: No explicit test requirements found in spec.md - tests are OPTIONAL for this feature.
@@ -25,7 +25,7 @@ This is a **web application** (frontend only feature):
 
 **Purpose**: Project initialization and basic structure for theme system
 
-- [X] T001 Copy TypeScript type definitions from specs/001-chat-theme-selector/contracts/theme-types.ts to app/frontend/src/types/theme.ts
+- [X] T001 Copy TypeScript type definitions from specs/004-chat-theme-selector/contracts/theme-types.ts to app/frontend/src/types/theme.ts
 - [X] T002 [P] Create CSS themes stylesheet at app/frontend/src/styles/themes.css with CSS custom properties for light, dark, and high-contrast themes
 - [X] T003 [P] Update app/frontend/src/index.css to import themes.css
 - [X] T004 Update app/frontend/tailwind.config.js to map CSS variables to Tailwind utility classes
@@ -120,7 +120,7 @@ This is a **web application** (frontend only feature):
   - Rapid theme switching (10+ clicks in 2 seconds)
   - localStorage disabled in browser
   - Corrupted theme data in localStorage
-- [ ] T032 [P] Update developer documentation in specs/001-chat-theme-selector/quickstart.md if any API changes were made during implementation
+- [ ] T032 [P] Update developer documentation in specs/004-chat-theme-selector/quickstart.md if any API changes were made during implementation
 - [ ] T033 Code review and refactoring for consistency with existing frontend patterns
 - [ ] T034 Verify no breaking changes to existing chat functionality (message sending, receiving, scrolling)
 
