@@ -114,6 +114,12 @@ variable "ssl_certificate_name" {
   default     = "appgw-ssl-certificate"
 }
 
+variable "appgw_identity_id" {
+  description = "ID of the pre-created User Assigned Identity for Application Gateway (for Key Vault access)"
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

@@ -61,3 +61,26 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
 
   depends_on = [azurerm_kubernetes_cluster.aks]
 }
+
+# Role assignment for AGIC addon to manage Application Gateway
+# The AGIC addon creates its own identity, which needs Contributor access to App Gateway
+resource "azurerm_role_assignment" "agic_appgw_contributor" {
+  count                            = var.app_gateway_id != null ? 1 : 0
+  principal_id                     = azurerm_kubernetes_cluster.aks.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id
+  role_definition_name             = "Contributor"
+  scope                            = var.app_gateway_id
+  skip_service_principal_aad_check = true
+
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
+
+# Role assignment for AGIC addon to read Resource Group
+resource "azurerm_role_assignment" "agic_rg_reader" {
+  count                            = var.app_gateway_id != null ? 1 : 0
+  principal_id                     = azurerm_kubernetes_cluster.aks.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id
+  role_definition_name             = "Reader"
+  scope                            = var.resource_group_id
+  skip_service_principal_aad_check = true
+
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}

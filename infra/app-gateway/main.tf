@@ -52,10 +52,13 @@ resource "azurerm_application_gateway" "main" {
     policy_name = "AppGwSslPolicy20220101"  # TLS 1.2 minimum, modern ciphers
   }
 
-  # System-assigned managed identity for Key Vault access
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.appgw.id]
+  # User Assigned managed identity for Key Vault access (use external identity if provided)
+  dynamic "identity" {
+    for_each = var.appgw_identity_id != null ? [1] : []
+    content {
+      type         = "UserAssigned"
+      identity_ids = [var.appgw_identity_id]
+    }
   }
 
   gateway_ip_configuration {
@@ -179,18 +182,6 @@ resource "azurerm_application_gateway" "main" {
       rule_set_version = "3.2"
     }
   }
-
-  depends_on = [
-    azurerm_user_assigned_identity.appgw
-  ]
-}
-
-# User Assigned Identity for Application Gateway (for Key Vault access)
-resource "azurerm_user_assigned_identity" "appgw" {
-  name                = "${var.app_gateway_name}-identity"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  tags                = var.tags
 }
 
 # User Assigned Identity for AGIC
