@@ -6,14 +6,15 @@ resource "azurerm_kubernetes_cluster" "aks" {
   kubernetes_version  = var.kubernetes_version
 
   default_node_pool {
-    name                = var.default_node_pool_name
-    node_count          = var.enable_auto_scaling ? null : var.node_count
-    vm_size             = var.vm_size
-    os_disk_size_gb     = var.os_disk_size_gb
-    enable_auto_scaling = var.enable_auto_scaling
-    min_count           = var.enable_auto_scaling ? var.min_node_count : null
-    max_count           = var.enable_auto_scaling ? var.max_node_count : null
-    vnet_subnet_id      = var.aks_subnet_id
+    name                         = var.default_node_pool_name
+    node_count                   = var.enable_auto_scaling ? null : var.node_count
+    vm_size                      = var.vm_size
+    os_disk_size_gb              = var.os_disk_size_gb
+    enable_auto_scaling          = var.enable_auto_scaling
+    min_count                    = var.enable_auto_scaling ? var.min_node_count : null
+    max_count                    = var.enable_auto_scaling ? var.max_node_count : null
+    vnet_subnet_id               = var.aks_subnet_id
+    temporary_name_for_rotation  = "tmpnodepool"
   }
 
   identity {

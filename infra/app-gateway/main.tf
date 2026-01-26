@@ -46,6 +46,12 @@ resource "azurerm_application_gateway" "main" {
     capacity = var.app_gateway_capacity
   }
 
+  # SSL Policy - Use modern TLS 1.2+ policy
+  ssl_policy {
+    policy_type = "Predefined"
+    policy_name = "AppGwSslPolicy20220101"  # TLS 1.2 minimum, modern ciphers
+  }
+
   # System-assigned managed identity for Key Vault access
   identity {
     type         = "UserAssigned"
