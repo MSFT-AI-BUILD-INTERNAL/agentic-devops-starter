@@ -156,3 +156,9 @@ variable "log_analytics_workspace_id" {
   type        = string
   default     = null
 }
+
+variable "resource_group_id" {
+  description = "ID of the resource group (for AGIC role assignment)"
+  type        = string
+  default     = null
+}
