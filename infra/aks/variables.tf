@@ -77,7 +77,19 @@ variable "max_node_count" {
 }
 
 variable "vnet_subnet_id" {
+  description = "Subnet ID for the AKS cluster nodes (deprecated - use aks_subnet_id)"
+  type        = string
+  default     = null
+}
+
+variable "aks_subnet_id" {
   description = "Subnet ID for the AKS cluster nodes"
+  type        = string
+  default     = null
+}
+
+variable "app_gateway_id" {
+  description = "ID of the Application Gateway for AGIC integration"
   type        = string
   default     = null
 }

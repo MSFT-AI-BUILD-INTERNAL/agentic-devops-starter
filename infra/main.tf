@@ -17,6 +17,10 @@ provider "azurerm" {
   }
 }
 
+# Data source to get current subscription
+data "azurerm_subscription" "current" {
+}
+
 # Resource Group
 resource "azurerm_resource_group" "main" {
   name     = var.resource_group_name
@@ -36,6 +40,54 @@ module "log_analytics" {
   tags                         = var.tags
 
   depends_on = [azurerm_resource_group.main]
+}
+
+# Application Gateway Module (without certificate initially)
+module "app_gateway" {
+  source = "./app-gateway"
+
+  app_gateway_name     = var.app_gateway_name
+  resource_group_name  = azurerm_resource_group.main.name
+  location             = azurerm_resource_group.main.location
+  vnet_name            = var.vnet_name
+  vnet_address_space   = var.vnet_address_space
+  appgw_subnet_name    = var.appgw_subnet_name
+  appgw_subnet_prefix  = var.appgw_subnet_prefix
+  aks_subnet_name      = var.aks_subnet_name
+  aks_subnet_prefix    = var.aks_subnet_prefix
+  public_ip_name       = var.app_gateway_public_ip_name
+  app_gateway_sku_name = var.app_gateway_sku_name
+  app_gateway_sku_tier = var.app_gateway_sku_tier
+  app_gateway_capacity = var.app_gateway_capacity
+  waf_firewall_mode    = var.waf_firewall_mode
+  subscription_id      = data.azurerm_subscription.current.subscription_id
+  key_vault_secret_id  = null  # Certificate will be added after Key Vault is created
+  ssl_certificate_name = var.ssl_certificate_name
+  tags                 = var.tags
+
+  depends_on = [azurerm_resource_group.main]
+}
+
+# Key Vault Module for SSL Certificate Management
+module "key_vault" {
+  count  = var.enable_https ? 1 : 0
+  source = "./key-vault"
+
+  key_vault_name                     = var.key_vault_name
+  resource_group_name                = azurerm_resource_group.main.name
+  location                           = azurerm_resource_group.main.location
+  key_vault_sku                      = var.key_vault_sku
+  soft_delete_retention_days         = var.key_vault_soft_delete_retention_days
+  purge_protection_enabled           = var.key_vault_purge_protection_enabled
+  key_vault_network_default_action   = var.key_vault_network_default_action
+  app_gateway_identity_principal_id  = module.app_gateway.appgw_identity_principal_id
+  create_self_signed_cert            = var.create_self_signed_cert
+  certificate_name                   = var.certificate_name
+  certificate_subject                = var.certificate_subject
+  certificate_dns_names              = var.certificate_dns_names
+  tags                               = var.tags
+
+  depends_on = [azurerm_resource_group.main, module.app_gateway]
 }
 
 # Azure Container Registry Module
@@ -66,11 +118,13 @@ module "aks" {
   enable_auto_scaling        = var.enable_auto_scaling
   min_node_count             = var.min_node_count
   max_node_count             = var.max_node_count
+  aks_subnet_id              = module.app_gateway.aks_subnet_id
+  app_gateway_id             = module.app_gateway.app_gateway_id
   acr_id                     = module.acr.acr_id
   log_analytics_workspace_id = module.log_analytics.workspace_id
   tags                       = var.tags
 
-  depends_on = [azurerm_resource_group.main, module.acr, module.log_analytics]
+  depends_on = [azurerm_resource_group.main, module.acr, module.log_analytics, module.app_gateway]
 }
 
 # Managed Identity for Workload Identity

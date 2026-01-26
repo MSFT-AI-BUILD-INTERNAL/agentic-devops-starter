@@ -7,10 +7,12 @@ MVP for Agentic DevOps Starter (Compass) - A complete CI/CD solution for deployi
 This repository provides a full-stack DevOps solution for deploying a Python-based conversational AI application to Azure:
 
 - **Application**: FastAPI server with AG-UI protocol support (`/app`)
-- **Infrastructure**: Terraform code for ACR, AKS, and Log Analytics (`/infra`)
+- **Infrastructure**: Terraform code for ACR, AKS, Application Gateway, Key Vault, and Log Analytics (`/infra`)
 - **CI/CD**: GitHub Actions workflow for automated deployment (`.github/workflows/deploy.yml`)
 - **Kubernetes**: Manifests for container orchestration (`/k8s`)
 - **Monitoring**: Azure Log Analytics with Container Insights for comprehensive logging and metrics
+- **Load Balancing**: Azure Application Gateway (L7) with Kubernetes Ingress for advanced traffic management
+- **Security**: Azure Key Vault for SSL certificate management with HTTPS support
 
 ## Quick Start
 
@@ -234,11 +236,13 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 ├── infra/                 # Terraform infrastructure
 │   ├── acr/              # Azure Container Registry module
 │   ├── aks/              # Azure Kubernetes Service module
+│   ├── app-gateway/      # Azure Application Gateway module (NEW)
 │   ├── log-analytics/    # Azure Log Analytics Workspace module
 │   └── README.md         # Infrastructure documentation
 ├── k8s/                   # Kubernetes manifests
 │   ├── deployment.yaml   # Application deployment
-│   ├── service.yaml      # LoadBalancer service
+│   ├── service.yaml      # ClusterIP service
+│   ├── ingress.yaml      # Application Gateway Ingress (NEW)
 │   └── README.md         # Kubernetes documentation
 ├── .github/workflows/     # CI/CD pipelines
 │   └── deploy.yml        # Deployment workflow
@@ -291,12 +295,15 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 - ✅ **Containerization**: Optimized Docker images with multi-stage builds
 - ✅ **CI/CD Automation**: GitHub Actions for automated build and deployment
 - ✅ **Kubernetes Orchestration**: High-availability deployment with health checks
+- ✅ **L7 Load Balancing**: Azure Application Gateway with advanced traffic management
+- ✅ **Ingress Controller**: Application Gateway Ingress Controller (AGIC) for seamless integration
 - ✅ **Secure Authentication**: 
   - OIDC-based Azure authentication for CI/CD (no stored credentials)
   - Azure AD Workload Identity for pod-to-Azure authentication
   - `DefaultAzureCredential` for seamless Azure service access
 - ✅ **Monitoring & Logging**: Azure Log Analytics with Container Insights for comprehensive observability
-- ✅ **HTTPS Support**: NGINX Ingress with Let's Encrypt certificates
+- ✅ **HTTPS Support**: Native SSL/TLS termination at Application Gateway with Azure Key Vault certificate management
+- ✅ **SSL Certificate Management**: Azure Key Vault for secure certificate storage and automatic provisioning
 - ✅ **Comprehensive Docs**: Detailed guides for infrastructure, deployment, and operations
 
 ## Documentation
@@ -405,9 +412,11 @@ docker run -p 5100:5100 agentic-devops-starter:test
 Approximate monthly costs for Azure resources (US East region):
 - **AKS**: ~$140/month (2 x Standard_D2s_v3 nodes)
 - **ACR**: ~$20/month (Standard tier)
-- **Load Balancer**: ~$20/month
+- **Application Gateway**: ~$140-200/month (Standard_v2, 2 instances)
 - **Log Analytics**: ~$10-15/month (~5 GB data ingestion)
-- **Total**: ~$190-195/month
+- **Total**: ~$310-375/month
+
+**Note**: The Application Gateway provides L7 load balancing capabilities including WAF (Web Application Firewall), SSL termination, path-based routing, and advanced traffic management, which justify the additional cost compared to a basic L4 load balancer.
 
 See [infra/README.md](./infra/README.md) for cost optimization tips.
 
@@ -416,11 +425,11 @@ See [infra/README.md](./infra/README.md) for cost optimization tips.
 Common issues and solutions:
 
 ### General Issues
-1. **404 Not Found from Ingress**: See [INGRESS_TROUBLESHOOTING.md](./INGRESS_TROUBLESHOOTING.md) for IP-based access setup
+1. **404 Not Found from Ingress**: Check Application Gateway IP with `kubectl get ingress agentic-devops-ingress`
 2. **Build fails**: Check Dockerfile and dependencies in `pyproject.toml`
 3. **Deploy fails**: Verify GitHub Secrets and Azure permissions
 4. **Pods not starting**: Check logs with `kubectl logs -l app=agentic-devops -c backend`
-5. **Can't access service**: Wait for LoadBalancer IP assignment with `kubectl get svc`
+5. **Can't access service**: Wait for Application Gateway to be configured by AGIC
 
 ### Azure AD Workload Identity Issues
 
