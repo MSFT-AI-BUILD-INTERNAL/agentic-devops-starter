@@ -1,6 +1,8 @@
 # Agentic DevOps Starter
 
-MVP for Agentic DevOps Starter (Compass) - A complete CI/CD solution for deploying Python applications to Azure Kubernetes Service.
+![Image 1](docs/diagram_v1.png)
+
+MVP for Agentic DevOps Starter - A complete CI/CD solution for deploying Python applications to Azure Kubernetes Service.
 
 ## Overview
 
