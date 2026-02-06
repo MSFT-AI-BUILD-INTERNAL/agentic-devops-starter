@@ -9,6 +9,7 @@ export function useChat() {
   const messages = useChatStore((state) => state.messages);
   const currentThread = useChatStore((state) => state.currentThread);
   const isInputDisabled = useChatStore((state) => state.isInputDisabled);
+  const streamingState = useChatStore((state) => state.streamingState);
   const addMessage = useChatStore((state) => state.addMessage);
   const createThread = useChatStore((state) => state.createThread);
   const clearThread = useChatStore((state) => state.clearThread);
@@ -129,5 +130,8 @@ export function useChat() {
     newConversation,
     retry,
     isInputDisabled,
+    // Streaming state
+    isStreaming: streamingState.isStreaming,
+    streamingText: streamingState.buffer,
   };
 }

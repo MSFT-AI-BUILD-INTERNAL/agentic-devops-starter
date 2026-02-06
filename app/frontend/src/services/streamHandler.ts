@@ -1,5 +1,6 @@
 // SSE stream handler service
 import { logger } from '../utils/logger';
+import { getApiBaseUrl, buildApiUrl } from '../config/api';
 import type { AGUIEvent, AGUIEventUnion } from '../types/agui';
 
 export type EventHandler = (event: AGUIEventUnion) => void;
@@ -10,8 +11,7 @@ class StreamHandler {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    // Use provided baseUrl, fallback to env var, or default to /api for production
-    this.baseUrl = baseUrl || import.meta.env.VITE_AGUI_ENDPOINT || '/api';
+    this.baseUrl = baseUrl || getApiBaseUrl();
     logger.info('StreamHandler initialized', { baseUrl: this.baseUrl });
   }
 
@@ -63,19 +63,9 @@ class StreamHandler {
     // Close existing connection
     this.disconnect();
 
-    // Build URL - handle both absolute and relative URLs
-    let urlString: string;
-    if (this.baseUrl.startsWith('http://') || this.baseUrl.startsWith('https://')) {
-      // Absolute URL
-      const url = new URL(this.baseUrl);
-      if (threadId) {
-        url.searchParams.set('thread_id', threadId);
-      }
-      urlString = url.toString();
-    } else {
-      // Relative URL - construct path with leading slash
-      urlString = threadId ? `${this.baseUrl}/?thread_id=${threadId}` : `${this.baseUrl}/`;
-    }
+    // Build URL using shared utility
+    const params = threadId ? { thread_id: threadId } : undefined;
+    const urlString = buildApiUrl('/', params);
 
     try {
       this.eventSource = new EventSource(urlString);
