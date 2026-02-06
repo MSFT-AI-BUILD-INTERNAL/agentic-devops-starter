@@ -1,6 +1,6 @@
 # Agentic DevOps Starter
 
-![Image 1](docs/diagram_v1.png)
+![High-level architecture and CI/CD pipeline for the Agentic DevOps Starter on Azure Kubernetes Service](docs/diagram_v1.png)
 
 MVP for Agentic DevOps Starter - A complete CI/CD solution for deploying Python applications to Azure Kubernetes Service.
 
