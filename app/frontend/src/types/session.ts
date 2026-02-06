@@ -1,5 +1,6 @@
 // Thread/Session entity types
 import type { Message } from './message';
+import type { ValidationResult } from './common';
 
 export type ThreadStatus = 'active' | 'idle' | 'error';
 
@@ -17,11 +18,6 @@ export interface Thread {
   messages: Message[];
   status: ThreadStatus;
   metadata?: ThreadMetadata;
-}
-
-export interface ValidationResult {
-  valid: boolean;
-  errors: string[];
 }
 
 /**

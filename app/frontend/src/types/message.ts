@@ -1,4 +1,6 @@
 // Message entity types
+import type { ValidationResult } from './common';
+
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
 
 export interface MessageMetadata {
@@ -16,11 +18,6 @@ export interface Message {
   threadId: string;
   toolCalls?: import('./agui').ToolCall[];
   metadata?: MessageMetadata;
-}
-
-export interface ValidationResult {
-  valid: boolean;
-  errors: string[];
 }
 
 /**

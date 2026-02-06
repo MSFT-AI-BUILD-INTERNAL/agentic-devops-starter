@@ -1,5 +1,6 @@
 // AG-UI client service for HTTP requests
 import { logger } from '../utils/logger';
+import { getApiBaseUrl } from '../config/api';
 
 export interface ChatRequest {
   messages: Array<{ role: string; content: string }>;
@@ -35,8 +36,7 @@ class AGUIClient {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    // Use provided baseUrl, fallback to env var, or default to /api for production
-    this.baseUrl = baseUrl || import.meta.env.VITE_AGUI_ENDPOINT || '/api';
+    this.baseUrl = baseUrl || getApiBaseUrl();
     logger.info('AGUIClient initialized', { baseUrl: this.baseUrl });
   }
 

@@ -4,12 +4,10 @@ import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { ThemeSelector } from './ThemeSelector';
 import { useChat } from '../hooks/useChat';
-import { useStreaming } from '../hooks/useStreaming';
 import { logger } from '../utils/logger';
 
 export function ChatInterface() {
-  const { messages, sendMessage, newConversation, isInputDisabled, currentThreadId } = useChat();
-  const { isStreaming, streamingText } = useStreaming();
+  const { messages, sendMessage, newConversation, isInputDisabled, currentThreadId, isStreaming, streamingText } = useChat();
 
   /**
    * Handle sending a message
