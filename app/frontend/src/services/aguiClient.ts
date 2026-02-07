@@ -1,6 +1,17 @@
 // AG-UI client service for HTTP requests
 import { logger } from '../utils/logger';
 import { getApiBaseUrl } from '../config/api';
+import { processSSEStream } from '../utils/sseProcessor';
+import { generateUUID } from '../utils/uuid';
+
+// Simple event interface for streaming events
+export interface StreamEvent {
+  type: string;
+  delta?: string;
+  message?: string;
+  threadId?: string;
+  [key: string]: unknown;
+}
 
 export interface ChatRequest {
   messages: Array<{ role: string; content: string }>;
@@ -46,7 +57,7 @@ class AGUIClient {
   async sendMessage(
     message: string,
     threadId?: string | null,
-    onEvent?: (event: any) => void
+    onEvent?: (event: StreamEvent) => void
   ): Promise<ChatResponse> {
     const correlationId = logger.generateCorrelationId();
     logger.setCorrelationId(correlationId);
@@ -82,55 +93,14 @@ class AGUIClient {
 
       // Handle SSE stream from response body
       if (response.body && onEvent) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let threadIdFromStream: string | undefined;
-
         // Process stream in background with proper cleanup
         const processStream = async () => {
-          let streamDone = false;
-          
           try {
-            while (!streamDone) {
-              const { done, value } = await reader.read();
-              
-              if (done) {
-                streamDone = true;
-                logger.info('Stream reading completed');
-                break;
-              }
-
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || '';
-
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const data = line.slice(6);
-                  if (data.trim()) {
-                    try {
-                      const event = JSON.parse(data);
-                      if (event.threadId && !threadIdFromStream) {
-                        threadIdFromStream = event.threadId;
-                      }
-                      onEvent(event);
-                    } catch (e) {
-                      logger.error('Failed to parse SSE event', e);
-                    }
-                  }
-                }
-              }
-            }
+            const threadIdFromStream = await processSSEStream(response, onEvent);
+            return threadIdFromStream;
           } catch (error) {
-            logger.error('Stream reading error', error);
-          } finally {
-            // Ensure reader is properly released
-            try {
-              reader.releaseLock();
-            } catch (e) {
-              // Reader may already be released, ignore error
-            }
+            logger.error('Stream processing failed', error);
+            throw error;
           }
         };
 
@@ -140,7 +110,7 @@ class AGUIClient {
         });
 
         // Return immediately with thread_id (will be updated from stream)
-        return { thread_id: threadId || threadIdFromStream || crypto.randomUUID() };
+        return { thread_id: threadId || generateUUID() };
       }
 
       // Fallback for non-streaming

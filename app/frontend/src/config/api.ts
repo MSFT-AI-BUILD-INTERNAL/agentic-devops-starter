@@ -13,28 +13,22 @@ export function getApiBaseUrl(): string {
  */
 export function buildApiUrl(path: string, params?: Record<string, string>): string {
   const baseUrl = getApiBaseUrl();
-  let url: string;
-
-  if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
-    // Absolute URL
-    const urlObj = new URL(path, baseUrl);
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        urlObj.searchParams.set(key, value);
-      });
-    }
-    url = urlObj.toString();
-  } else {
-    // Relative URL
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    const fullPath = `${baseUrl}${cleanPath}`;
-    if (params) {
-      const queryString = new URLSearchParams(params).toString();
-      url = queryString ? `${fullPath}?${queryString}` : fullPath;
-    } else {
-      url = fullPath;
-    }
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // Build URL using URL API for consistency
+  const url = new URL(cleanPath, baseUrl.startsWith('http') ? baseUrl : `http://placeholder${baseUrl}`);
+  
+  // Add query parameters if provided
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      url.searchParams.set(key, value);
+    });
   }
-
-  return url;
+  
+  // Return relative URL if baseUrl was relative, otherwise return absolute
+  if (!baseUrl.startsWith('http')) {
+    return url.pathname + url.search;
+  }
+  
+  return url.toString();
 }
