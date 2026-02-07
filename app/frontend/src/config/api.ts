@@ -13,28 +13,25 @@ export function getApiBaseUrl(): string {
  */
 export function buildApiUrl(path: string, params?: Record<string, string>): string {
   const baseUrl = getApiBaseUrl();
-  let url: string;
-
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // Handle absolute URLs
   if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
-    // Absolute URL
-    const urlObj = new URL(path, baseUrl);
+    const url = new URL(cleanPath, baseUrl);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        urlObj.searchParams.set(key, value);
+        url.searchParams.set(key, value);
       });
     }
-    url = urlObj.toString();
-  } else {
-    // Relative URL
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    const fullPath = `${baseUrl}${cleanPath}`;
-    if (params) {
-      const queryString = new URLSearchParams(params).toString();
-      url = queryString ? `${fullPath}?${queryString}` : fullPath;
-    } else {
-      url = fullPath;
-    }
+    return url.toString();
   }
-
-  return url;
+  
+  // Handle relative URLs
+  const fullPath = `${baseUrl}${cleanPath}`;
+  if (params) {
+    const queryString = new URLSearchParams(params).toString();
+    return queryString ? `${fullPath}?${queryString}` : fullPath;
+  }
+  
+  return fullPath;
 }

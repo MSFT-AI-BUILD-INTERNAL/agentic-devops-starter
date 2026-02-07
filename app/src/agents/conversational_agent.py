@@ -5,6 +5,10 @@ from ..config import LLMConfig
 from ..logging_utils import set_correlation_id
 from .base_agent import BaseAgent
 
+# Response validation constants
+MIN_RESPONSE_LENGTH = 3
+MAX_RESPONSE_MULTIPLIER = 4
+
 
 class ConversationalAgent(BaseAgent):
     """Conversational agent that processes messages and generates responses."""
@@ -50,9 +54,9 @@ class ConversationalAgent(BaseAgent):
 
     def validate_response(self, response: str) -> tuple[bool, str | None]:
         """Validate response before delivery."""
-        if not response or len(response.strip()) < 3:
+        if not response or len(response.strip()) < MIN_RESPONSE_LENGTH:
             return False, "Response is too short"
-        if len(response) > self.llm_config.max_tokens * 4:
+        if len(response) > self.llm_config.max_tokens * MAX_RESPONSE_MULTIPLIER:
             return False, "Response is too long"
         return True, None
 
