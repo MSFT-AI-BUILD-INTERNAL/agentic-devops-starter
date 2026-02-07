@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { useChatStore } from '../stores/chatStore';
 import { aguiClient } from '../services/aguiClient';
 import { logger } from '../utils/logger';
+import { generateUUID } from '../utils/uuid';
 import type { Message } from '../types/message';
 
 export function useChat() {
@@ -34,7 +35,7 @@ export function useChat() {
 
       // Create user message
       const userMessage: Message = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         role: 'user',
         content: content.trim(),
         timestamp: new Date(),
@@ -45,7 +46,7 @@ export function useChat() {
       addMessage(userMessage);
 
       // Prepare assistant message
-      const assistantMessageId = crypto.randomUUID();
+      const assistantMessageId = generateUUID();
       let assistantContent = '';
 
       try {

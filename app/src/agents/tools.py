@@ -1,8 +1,17 @@
 """Tool definitions for agent framework demonstration."""
 
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Any
 from pydantic import BaseModel, Field
+
+
+class ArithmeticOperation(str, Enum):
+    """Supported arithmetic operations."""
+    ADD = "add"
+    SUBTRACT = "subtract"
+    MULTIPLY = "multiply"
+    DIVIDE = "divide"
 
 
 class ToolDefinition(BaseModel):
@@ -32,7 +41,10 @@ class CalculatorTool(Tool):
             name="calculator",
             description="Perform basic arithmetic operations",
             parameters={
-                "operation": {"type": "string", "enum": ["add", "subtract", "multiply", "divide"]},
+                "operation": {
+                    "type": "string",
+                    "enum": [op.value for op in ArithmeticOperation]
+                },
                 "a": {"type": "number"},
                 "b": {"type": "number"},
             },
@@ -40,14 +52,19 @@ class CalculatorTool(Tool):
 
     def execute(self, operation: str, a: float, b: float) -> dict[str, Any]:
         ops = {
-            "add": lambda x, y: x + y,
-            "subtract": lambda x, y: x - y,
-            "multiply": lambda x, y: x * y,
-            "divide": lambda x, y: x / y if y != 0 else None,
+            ArithmeticOperation.ADD: lambda x, y: x + y,
+            ArithmeticOperation.SUBTRACT: lambda x, y: x - y,
+            ArithmeticOperation.MULTIPLY: lambda x, y: x * y,
+            ArithmeticOperation.DIVIDE: lambda x, y: x / y if y != 0 else None,
         }
-        if operation not in ops:
+        
+        # Normalize operation to enum
+        try:
+            op_enum = ArithmeticOperation(operation)
+        except ValueError:
             raise ValueError(f"Invalid operation: {operation}")
-        result = ops[operation](a, b)
+            
+        result = ops[op_enum](a, b)
         if result is None:
             raise ValueError("Division by zero")
         return {"operation": operation, "operands": [a, b], "result": result}
