@@ -15,20 +15,23 @@ export function buildApiUrl(path: string, params?: Record<string, string>): stri
   const baseUrl = getApiBaseUrl();
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   
-  // Build URL using URL API for consistency
-  const url = new URL(cleanPath, baseUrl.startsWith('http') ? baseUrl : `http://placeholder${baseUrl}`);
+  // Handle absolute URLs
+  if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
+    const url = new URL(cleanPath, baseUrl);
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        url.searchParams.set(key, value);
+      });
+    }
+    return url.toString();
+  }
   
-  // Add query parameters if provided
+  // Handle relative URLs
+  const fullPath = `${baseUrl}${cleanPath}`;
   if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      url.searchParams.set(key, value);
-    });
+    const queryString = new URLSearchParams(params).toString();
+    return queryString ? `${fullPath}?${queryString}` : fullPath;
   }
   
-  // Return relative URL if baseUrl was relative, otherwise return absolute
-  if (!baseUrl.startsWith('http')) {
-    return url.pathname + url.search;
-  }
-  
-  return url.toString();
+  return fullPath;
 }

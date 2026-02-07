@@ -96,6 +96,8 @@ class AGUIClient {
         // Process stream in background with proper cleanup
         const processStream = async () => {
           try {
+            // Note: threadIdFromStream is returned but not used here since we return immediately
+            // The threadId is passed to the event handler if present in the stream
             const threadIdFromStream = await processSSEStream(response, onEvent);
             return threadIdFromStream;
           } catch (error) {
@@ -109,7 +111,8 @@ class AGUIClient {
           logger.error('Stream processing failed', err);
         });
 
-        // Return immediately with thread_id (will be updated from stream)
+        // Return immediately with thread_id (stream processing continues in background)
+        // If no threadId provided, generate a new one - stream may provide one later via events
         return { thread_id: threadId || generateUUID() };
       }
 
