@@ -25,6 +25,9 @@ ENDPOINT = os.environ.get("AZURE_AI_PROJECT_ENDPOINT")
 DEPLOYMENT = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
 API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-08-07")
 
+# Default CORS origins for development
+DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
 
 @ai_function(description="Get the time zone for a location.")
 def get_time_zone(location: Annotated[str, "The city or location name"]) -> str:
@@ -79,7 +82,7 @@ def create_app() -> FastAPI:
     # CORS configuration
     cors_origins = os.environ.get("CORS_ORIGINS", "").split(",")
     if not cors_origins or cors_origins == [""]:
-        cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+        cors_origins = DEFAULT_CORS_ORIGINS
 
     app.add_middleware(
         CORSMiddleware,
