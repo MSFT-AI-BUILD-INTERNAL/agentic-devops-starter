@@ -41,19 +41,3 @@ output "aks_identity_principal_id" {
   description = "The principal ID of the system assigned identity"
   value       = try(azurerm_kubernetes_cluster.aks.identity[0].principal_id, null)
 }
-
-# AGIC Identity (created by AKS addon)
-output "agic_identity_principal_id" {
-  description = "The principal ID of the AGIC identity created by AKS addon"
-  value       = try(azurerm_kubernetes_cluster.aks.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id, null)
-}
-
-output "agic_identity_object_id" {
-  description = "The object ID of the AGIC identity created by AKS addon (same as principal_id)"
-  value       = try(azurerm_kubernetes_cluster.aks.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id, null)
-}
-
-output "agic_identity_client_id" {
-  description = "The client ID of the AGIC identity created by AKS addon"
-  value       = try(azurerm_kubernetes_cluster.aks.ingress_application_gateway[0].ingress_application_gateway_identity[0].client_id, null)
-}

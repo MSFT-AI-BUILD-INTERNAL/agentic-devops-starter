@@ -88,12 +88,6 @@ variable "aks_subnet_id" {
   default     = null
 }
 
-variable "app_gateway_id" {
-  description = "ID of the Application Gateway for AGIC integration"
-  type        = string
-  default     = null
-}
-
 variable "network_plugin" {
   description = "Network plugin to use (azure or kubenet)"
   type        = string
@@ -153,12 +147,6 @@ variable "tags" {
 
 variable "log_analytics_workspace_id" {
   description = "ID of the Log Analytics Workspace for monitoring and logging"
-  type        = string
-  default     = null
-}
-
-variable "resource_group_id" {
-  description = "ID of the resource group (for AGIC role assignment)"
   type        = string
   default     = null
 }
