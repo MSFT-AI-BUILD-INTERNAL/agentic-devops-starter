@@ -236,7 +236,6 @@ The deployment typically takes 10-15 minutes. Terraform will create:
 1. Resource Group (1-2 minutes)
 2. Log Analytics Workspace (2-3 minutes)
 3. Container Insights Solution (1-2 minutes)
-3. Log Analytics Workspace (1-2 minutes)
 4. Azure Container Registry (2-3 minutes)
 5. Virtual Network and Subnet (1-2 minutes)
 6. Azure Kubernetes Service (8-12 minutes)
