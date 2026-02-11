@@ -2,52 +2,46 @@
 
 This directory contains Kubernetes manifests for deploying the Agentic DevOps Starter application to Azure Kubernetes Service (AKS).
 
-## Quick Access via Application Gateway
+## Quick Access with HTTPS
 
-🚀 **Access your application through Azure Application Gateway (L7 Load Balancer) with HTTPS**
+🚀 **Access your application with HTTPS using Let's Encrypt certificates**
 
-After deploying, get the Application Gateway IP:
-```bash
-kubectl get ingress agentic-devops-ingress
-```
+The application supports HTTPS through NGINX Ingress Controller with automatic Let's Encrypt certificate provisioning.
 
-Access your application:
-- **HTTPS (Recommended)**: `https://<APPLICATION-GATEWAY-IP>` or `https://agentic-devops.local` (if DNS configured)
-- **HTTP**: Automatically redirects to HTTPS
+**Setup Options:**
 
-**Note:** By default, the infrastructure provisions HTTPS with a self-signed certificate from Azure Key Vault. For production, import your own certificate.
+1. **HTTP Only (Default)**: Service exposed via LoadBalancer on port 80
+2. **HTTPS with Let's Encrypt** (Recommended for production): Follow the [HTTPS Setup Guide](HTTPS_SETUP.md)
 
 ## Files
 
 - **deployment.yaml**: Defines the Kubernetes Deployment for the application with 2 replicas
-- **service.yaml**: Defines a ClusterIP Service for internal pod communication
-- **ingress.yaml**: Defines Application Gateway Ingress with AGIC annotations and HTTPS support
+- **service.yaml**: Defines a ClusterIP Service (when using Ingress) or LoadBalancer Service (for direct access)
+- **ingress.yaml**: Defines NGINX Ingress with Let's Encrypt TLS certificates
 - **service-account.yaml**: ServiceAccount for Azure AD Workload Identity
+- **cert-issuer.yaml**: ClusterIssuer for Let's Encrypt certificate automation
+- **setup-https.sh**: Automated script to install NGINX Ingress Controller and cert-manager
+- **HTTPS_SETUP.md**: Complete guide for configuring HTTPS with Let's Encrypt
 
-**Note:** The infrastructure now uses Azure Application Gateway with SSL certificates from Azure Key Vault:
-- SSL certificate is stored in Key Vault and automatically provisioned
-- HTTP traffic is automatically redirected to HTTPS
-- Self-signed certificate is created by default (can be replaced with your own certificate)
+## HTTPS Setup with Let's Encrypt
 
-## HTTPS Setup with Application Gateway
+### Quick Start
 
-### Automatic HTTPS with Azure Key Vault (Default) ⭐
+For detailed instructions, see [HTTPS_SETUP.md](HTTPS_SETUP.md)
 
-The infrastructure is pre-configured for HTTPS with SSL certificate management via Azure Key Vault:
+**Summary:**
+1. Run `./setup-https.sh` to install NGINX Ingress Controller and cert-manager
+2. Point your domain to the NGINX Ingress LoadBalancer IP
+3. Update `ingress.yaml` with your domain name
+4. Apply cert-issuer: `envsubst < cert-issuer.yaml | kubectl apply -f -`
+5. Deploy ingress: `kubectl apply -f ingress.yaml`
 
-✅ **What's Already Configured:**
-- Azure Key Vault is provisioned with access policies
-- Self-signed SSL certificate is automatically created for testing
-- Application Gateway has a managed identity with Key Vault access
-- HTTPS listener (port 443) is configured on Application Gateway
-- HTTP to HTTPS redirect is enabled
-- Kubernetes Ingress has TLS configuration
-
-**Default Setup:**
-```bash
-# After running terraform apply, HTTPS is automatically enabled
-# Access your application:
-https://<APPLICATION-GATEWAY-IP>
+**Benefits:**
+- ✅ Free SSL/TLS certificates from Let's Encrypt
+- ✅ Automatic certificate renewal
+- ✅ HTTPS on port 443
+- ✅ HTTP to HTTPS redirect
+- ✅ Production-ready security
 
 # Check certificate details:
 terraform output certificate_secret_id

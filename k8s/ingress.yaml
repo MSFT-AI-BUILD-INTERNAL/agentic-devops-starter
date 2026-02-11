@@ -1,0 +1,33 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentic-devops-ingress
+  annotations:
+    # Use NGINX Ingress Controller
+    kubernetes.io/ingress.class: nginx
+    # Enable cert-manager to automatically provision Let's Encrypt certificates
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Redirect HTTP to HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Force HTTPS
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  # TLS configuration for HTTPS
+  tls:
+    - hosts:
+        # IMPORTANT: Replace with your actual domain name
+        - your-domain.com
+      secretName: agentic-devops-tls
+  rules:
+    # IMPORTANT: Replace with your actual domain name
+    - host: your-domain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentic-devops-service
+                port:
+                  number: 80

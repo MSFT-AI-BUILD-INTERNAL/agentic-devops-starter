@@ -111,8 +111,10 @@ jobs:
           envsubst < k8s/service-account.yaml | kubectl apply -f -
           envsubst < k8s/deployment.yaml | kubectl apply -f -
           kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/ingress.yaml
           
-          echo "✅ Deployment complete. Kubernetes LoadBalancer service will provision an Azure Load Balancer."
+          echo "✅ Deployment complete. NGINX Ingress Controller will handle HTTPS with Let's Encrypt certificates."
+          echo "⚠️  Note: You need to configure cert-manager and NGINX Ingress Controller first. See k8s/setup-https.sh"
 
       - name: Wait for deployment rollout
         id: wait_for_rollout
@@ -169,7 +171,13 @@ jobs:
           echo "=== Frontend Container Logs ==="
           kubectl logs -l app=agentic-devops -c frontend --tail=100 || echo "No frontend logs available"
 
-      - name: Get LoadBalancer IP
+      - name: Get Ingress Information
         run: |
-          echo "Fetching LoadBalancer service external IP..."
-          kubectl get service agentic-devops-service
+          echo "Fetching Ingress information..."
+          kubectl get ingress agentic-devops-ingress
+          echo ""
+          echo "Note: HTTPS will be available once you:"
+          echo "1. Run k8s/setup-https.sh to install cert-manager and NGINX Ingress Controller"
+          echo "2. Update k8s/ingress.yaml with your domain name"
+          echo "3. Apply cert-issuer: envsubst < k8s/cert-issuer.yaml | kubectl apply -f -"
+          echo "4. Point your domain DNS to the NGINX Ingress LoadBalancer IP"
