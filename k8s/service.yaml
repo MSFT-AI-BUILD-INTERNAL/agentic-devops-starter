@@ -6,8 +6,9 @@ metadata:
   labels:
     app: agentic-devops
 spec:
-  # Use LoadBalancer type for direct access (L4 load balancing)
-  type: LoadBalancer
+  # Use ClusterIP for Istio Ingress Gateway routing
+  # External access is handled by Istio Ingress Gateway with Azure Load Balancer
+  type: ClusterIP
   selector:
     app: agentic-devops
   ports:
