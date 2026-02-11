@@ -111,9 +111,8 @@ jobs:
           envsubst < k8s/service-account.yaml | kubectl apply -f -
           envsubst < k8s/deployment.yaml | kubectl apply -f -
           kubectl apply -f k8s/service.yaml
-          kubectl apply -f k8s/ingress.yaml
           
-          echo "✅ Deployment complete. Application Gateway Ingress Controller will configure the Application Gateway."
+          echo "✅ Deployment complete. Kubernetes LoadBalancer service will provision an Azure Load Balancer."
 
       - name: Wait for deployment rollout
         id: wait_for_rollout
@@ -170,7 +169,7 @@ jobs:
           echo "=== Frontend Container Logs ==="
           kubectl logs -l app=agentic-devops -c frontend --tail=100 || echo "No frontend logs available"
 
-      - name: Get Application Gateway IP
+      - name: Get LoadBalancer IP
         run: |
-          echo "Fetching Application Gateway public IP..."
-          kubectl get ingress agentic-devops-ingress
+          echo "Fetching LoadBalancer service external IP..."
+          kubectl get service agentic-devops-service

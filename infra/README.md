@@ -13,21 +13,21 @@ infra/
 │   ├── variables.tf       # ACR input variables
 │   └── outputs.tf         # ACR outputs
 ├── aks/                    # Azure Kubernetes Service module
-│   ├── main.tf            # AKS resource definition with AGIC addon
+│   ├── main.tf            # AKS resource definition
 │   ├── variables.tf       # AKS input variables
 │   └── outputs.tf         # AKS outputs
-├── app-gateway/            # Azure Application Gateway module
-│   ├── main.tf            # Application Gateway and network resources
-│   ├── variables.tf       # Application Gateway input variables
-│   └── outputs.tf         # Application Gateway outputs
-├── key-vault/              # Azure Key Vault module (NEW)
-│   ├── main.tf            # Key Vault for SSL certificate management
-│   ├── variables.tf       # Key Vault input variables
-│   └── outputs.tf         # Key Vault outputs
+├── network/                # Azure Virtual Network module
+│   ├── main.tf            # VNet and subnet resources
+│   ├── variables.tf       # Network input variables
+│   └── outputs.tf         # Network outputs
 ├── log-analytics/          # Azure Log Analytics module
 │   ├── main.tf            # Log Analytics Workspace and Container Insights
 │   ├── variables.tf       # Log Analytics input variables
 │   └── outputs.tf         # Log Analytics outputs
+├── managed-identity/       # Workload Identity module
+│   ├── main.tf            # Managed identity for workload identity
+│   ├── variables.tf       # Identity input variables
+│   └── outputs.tf         # Identity outputs
 ├── main.tf                # Root configuration orchestrating modules
 ├── variables.tf           # Root input variables
 ├── outputs.tf             # Root outputs
@@ -39,41 +39,31 @@ infra/
 The infrastructure provisions the following resources:
 
 1. **Resource Group**: Container for all Azure resources
-2. **Virtual Network**: Isolated network for Application Gateway and AKS
-   - Application Gateway Subnet (10.1.0.0/24)
+2. **Virtual Network**: Isolated network for AKS
    - AKS Subnet (10.1.1.0/24)
-3. **Azure Key Vault**: Secure storage for SSL certificates (NEW)
-   - Managed identity integration with Application Gateway
-   - Self-signed certificate generation for testing
-   - Access policies for secure certificate management
-4. **Azure Application Gateway**: L7 load balancer with advanced traffic management
+3. **Azure Container Registry (ACR)**: Private container registry for storing Docker images
+4. **Azure Kubernetes Service (AKS)**: Managed Kubernetes cluster for running containerized applications
+   - Kubernetes LoadBalancer Service for L4 load balancing
+   - Auto-scaling node pool (1-5 nodes by default)
+5. **Azure Load Balancer**: Automatically provisioned by AKS LoadBalancer service
    - Public IP for external access
-   - WAF capabilities (optional with WAF_v2 SKU)
-   - SSL/TLS termination with Key Vault integration
-   - HTTPS listener on port 443
-   - HTTP to HTTPS redirect
-   - Path-based routing
-5. **Application Gateway Ingress Controller (AGIC)**: Manages Application Gateway from Kubernetes
-6. **Azure Container Registry (ACR)**: Private container registry for storing Docker images
-7. **Azure Kubernetes Service (AKS)**: Managed Kubernetes cluster for running containerized applications
-8. **Azure Log Analytics Workspace**: Centralized logging and monitoring solution for AKS
-9. **Container Insights**: Azure Monitor solution for collecting logs and metrics from AKS clusters
-10. **Role Assignments**: 
-    - AKS to pull images from ACR using managed identity
-    - AGIC to manage Application Gateway
-    - Application Gateway managed identity to access Key Vault certificates
+   - Layer 4 (TCP/UDP) load balancing
+6. **Azure Log Analytics Workspace**: Centralized logging and monitoring solution for AKS
+7. **Container Insights**: Azure Monitor solution for collecting logs and metrics from AKS clusters
+8. **Workload Identity**: Managed identity for secure pod authentication to Azure services
+9. **Role Assignments**: 
+   - AKS to pull images from ACR using managed identity
 
 ### Key Features
 
-- **Modular Design**: Separate modules for ACR, AKS, Application Gateway, Key Vault, and Log Analytics for reusability
-- **Managed Identity**: Uses user-assigned managed identities for secure authentication
-- **SSL Certificate Management**: Azure Key Vault securely stores and manages SSL certificates
-- **HTTPS Support**: Native HTTPS support with automatic certificate management
+- **Modular Design**: Separate modules for ACR, AKS, Network, and Log Analytics for reusability
+- **Managed Identity**: Uses system-assigned managed identities for secure authentication
+- **L4 Load Balancing**: Azure Load Balancer for simple, efficient traffic distribution
+- **Service Mesh Ready**: Uses standard LoadBalancer type service, ready for Istio Ingress Gateway integration
 - **ACR Integration**: AKS is automatically configured with AcrPull role to pull images from ACR
 - **Auto-scaling**: Node pool configured with auto-scaling (1-5 nodes by default)
-- **Network Isolation**: Dedicated VNet with separate subnets for Application Gateway and AKS
-- **L7 Load Balancing**: Application Gateway provides advanced traffic management capabilities
-- **AGIC**: Application Gateway Ingress Controller for seamless Kubernetes integration
+- **Network Isolation**: Dedicated VNet with subnet for AKS
+- **Workload Identity**: Secure, federated authentication for pods to access Azure services
 - **Centralized Logging**: Log Analytics Workspace collects logs and metrics from AKS
 - **Container Insights**: Pre-configured monitoring solution for containerized workloads
 - **Tagging**: Comprehensive tagging for resource organization and cost tracking
@@ -180,22 +170,14 @@ log_analytics_workspace_name = "log-agentic-devops"
 log_analytics_sku            = "PerGB2018"
 log_analytics_retention_days = 30
 
-# Application Gateway Configuration
-app_gateway_name            = "appgw-agentic-devops"
-vnet_name                   = "vnet-agentic-devops"
-vnet_address_space          = "10.1.0.0/16"
-app_gateway_sku_name        = "Standard_v2"
-app_gateway_capacity        = 2
-
-# Key Vault Configuration for SSL Certificates (NEW)
-enable_https                         = true                      # Enable HTTPS
-key_vault_name                       = "kv-agentic-devops"       # Globally unique
-create_self_signed_cert              = true                      # For testing
-certificate_subject                  = "agentic-devops.local"
-certificate_dns_names                = ["agentic-devops.local", "*.agentic-devops.local"]
+# Network Configuration
+vnet_name          = "vnet-agentic-devops"
+vnet_address_space = "10.1.0.0/16"
+aks_subnet_name    = "aks-subnet"
+aks_subnet_prefix  = "10.1.1.0/24"
 ```
 
-**Important**: The `acr_name` and `key_vault_name` must be globally unique across all of Azure.
+**Important**: The `acr_name` must be globally unique across all of Azure.
 
 ### Step 3: Review Available Variables
 
@@ -208,7 +190,7 @@ certificate_dns_names                = ["agentic-devops.local", "*.agentic-devop
 | `acr_admin_enabled` | Enable ACR admin user | `false` | No |
 | `aks_cluster_name` | AKS cluster name | `aks-agentic-devops` | No |
 | `aks_dns_prefix` | DNS prefix for AKS | `aks-agentic-devops` | No |
-| `kubernetes_version` | Kubernetes version | `1.28` | No |
+| `kubernetes_version` | Kubernetes version | `1.32` | No |
 | `node_count` | Initial node count | `2` | No |
 | `vm_size` | VM size for nodes | `Standard_D2s_v3` | No |
 | `enable_auto_scaling` | Enable auto-scaling | `true` | No |
@@ -217,24 +199,10 @@ certificate_dns_names                = ["agentic-devops.local", "*.agentic-devop
 | `log_analytics_workspace_name` | Log Analytics Workspace name | `log-agentic-devops` | No |
 | `log_analytics_sku` | Log Analytics SKU | `PerGB2018` | No |
 | `log_analytics_retention_days` | Log retention period (days) | `30` | No |
-| `app_gateway_name` | Application Gateway name | `appgw-agentic-devops` | No |
-| `app_gateway_public_ip_name` | Public IP name for App Gateway | `pip-appgw-agentic-devops` | No |
 | `vnet_name` | Virtual network name | `vnet-agentic-devops` | No |
 | `vnet_address_space` | VNet address space | `10.1.0.0/16` | No |
-| `appgw_subnet_prefix` | App Gateway subnet prefix | `10.1.0.0/24` | No |
+| `aks_subnet_name` | AKS subnet name | `aks-subnet` | No |
 | `aks_subnet_prefix` | AKS subnet prefix | `10.1.1.0/24` | No |
-| `app_gateway_sku_name` | App Gateway SKU name | `Standard_v2` | No |
-| `app_gateway_sku_tier` | App Gateway SKU tier | `Standard_v2` | No |
-| `app_gateway_capacity` | App Gateway instance count | `2` | No |
-| `waf_firewall_mode` | WAF mode (Detection/Prevention) | `Detection` | No |
-| `enable_https` | Enable HTTPS with SSL certificate | `true` | No |
-| `key_vault_name` | Key Vault name (globally unique) | `kv-agentic-devops` | Yes* |
-| `key_vault_sku` | Key Vault SKU (standard/premium) | `standard` | No |
-| `create_self_signed_cert` | Create self-signed cert for testing | `true` | No |
-| `certificate_name` | Certificate name in Key Vault | `app-gateway-ssl-cert` | No |
-| `ssl_certificate_name` | Certificate name in App Gateway | `appgw-ssl-certificate` | No |
-| `certificate_subject` | Certificate subject (CN) | `agentic-devops.local` | No |
-| `certificate_dns_names` | Certificate SANs | `["agentic-devops.local"]` | No |
 
 \* Must be customized to ensure global uniqueness
 
@@ -269,35 +237,9 @@ The deployment typically takes 10-15 minutes. Terraform will create:
 2. Log Analytics Workspace (2-3 minutes)
 3. Container Insights Solution (1-2 minutes)
 4. Azure Container Registry (2-3 minutes)
-5. Virtual Network and Subnets (1-2 minutes)
-6. Application Gateway with Public IP and Managed Identity (3-5 minutes)
-7. Azure Key Vault with SSL Certificate (2-3 minutes)
-8. Azure Kubernetes Service with AGIC addon (8-12 minutes)
-9. Role Assignments and Access Policies (< 1 minute)
-
-**Important Note on HTTPS Setup:**
-
-Due to Terraform resource dependencies, the initial deployment creates the Application Gateway without the SSL certificate. After the first deployment:
-
-1. **Option A: Two-Step Terraform Apply (Recommended)**
-   ```bash
-   # First apply creates all resources
-   terraform apply
-   
-   # Second apply adds the certificate to Application Gateway
-   # (The certificate secret ID is now available from Key Vault)
-   terraform apply -refresh-only  # Refresh state
-   terraform apply                # Apply certificate configuration
-   ```
-
-2. **Option B: Manual Certificate Configuration**
-   ```bash
-   # After terraform apply, add certificate via Azure Portal:
-   # Azure Portal → Application Gateway → Listeners → Add HTTPS listener
-   # Select certificate from Key Vault
-   ```
-
-The self-signed certificate will be created in Key Vault during the first apply. The Application Gateway can be updated to use it in the second apply or manually via the portal.
+5. Virtual Network and Subnet (1-2 minutes)
+6. Azure Kubernetes Service (8-12 minutes)
+7. Workload Identity and Role Assignments (< 1 minute)
 
 ### Step 3: Retrieve Outputs
 
@@ -309,7 +251,6 @@ terraform output
 
 # View specific output
 terraform output acr_login_server
-terraform output app_gateway_public_ip
 terraform output configure_kubectl_command
 ```
 
@@ -326,6 +267,21 @@ az aks get-credentials --resource-group rg-agentic-devops --name aks-agentic-dev
 # Verify connection
 kubectl get nodes
 kubectl cluster-info
+```
+
+### Verify LoadBalancer Service
+
+After deploying your application, verify the LoadBalancer service:
+
+```bash
+# Check service status
+kubectl get service agentic-devops-service
+
+# Get external IP (may take a few minutes to provision)
+kubectl get service agentic-devops-service -w
+
+# Once EXTERNAL-IP is available, access your application
+curl http://<EXTERNAL-IP>
 ```
 
 ### Test ACR Access
@@ -699,30 +655,23 @@ Approximate monthly costs (US East region):
 | AKS | 2 x Standard_D2s_v3 nodes | ~$140/month |
 | AKS Management | Free | $0 |
 | ACR | Standard tier | ~$20/month |
-| Application Gateway | Standard_v2, 2 instances | ~$140-200/month |
+| Load Balancer | Standard SKU with public IP | ~$20-30/month |
 | VNet | Standard | ~$5/month |
-| Key Vault | Standard tier | ~$0.03/10k operations |
-| SSL Certificate | Self-signed (free) or purchased | $0-50/year |
 | Log Analytics | ~5 GB/month data ingestion | ~$10-15/month |
 | Container Insights | Included with Log Analytics | $0 |
-| **Total** | | **~$315-380/month** |
+| **Total** | | **~$195-210/month** |
 
-**Note**: Key Vault costs are minimal (~$0.03 per 10,000 operations). SSL certificates can be free (self-signed) or purchased from a CA.
-
-**Application Gateway Benefits:**
-- L7 load balancing with path-based routing
-- SSL/TLS termination
-- Web Application Firewall (WAF) capabilities (with WAF_v2 SKU)
-- Cookie-based session affinity
-- Health probing and automatic failover
-- Integration with Azure services
+**Azure Load Balancer Benefits:**
+- Simple, cost-effective L4 load balancing
+- Low latency, high throughput
+- Automatic health probes
+- Support for TCP and UDP protocols
+- Ready for service mesh integration (Istio)
 
 To reduce costs:
 - Use `Basic` ACR SKU (~$5/month)
 - Use smaller VM sizes (e.g., `Standard_B2s`)
 - Reduce minimum node count to 1
-- Use `Standard_v2` instead of `WAF_v2` for Application Gateway
-- Reduce Application Gateway capacity to 1 instance
 - Reduce Log Analytics retention period (minimum 7 days)
 - Use free tier Log Analytics for development (500 MB/day limit)
 - Delete resources when not in use

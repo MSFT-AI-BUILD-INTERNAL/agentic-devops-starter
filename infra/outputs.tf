@@ -78,50 +78,13 @@ output "oidc_issuer_url" {
   value       = module.aks.oidc_issuer_url
 }
 
-# Application Gateway Outputs
-output "app_gateway_id" {
-  description = "ID of the Application Gateway"
-  value       = module.app_gateway.app_gateway_id
-}
-
-output "app_gateway_name" {
-  description = "Name of the Application Gateway"
-  value       = module.app_gateway.app_gateway_name
-}
-
-output "app_gateway_public_ip" {
-  description = "Public IP address of the Application Gateway"
-  value       = module.app_gateway.app_gateway_public_ip
-}
-
-output "agic_identity_client_id" {
-  description = "Client ID of the AGIC managed identity"
-  value       = module.app_gateway.agic_identity_client_id
+# Network Outputs
+output "vnet_id" {
+  description = "ID of the virtual network"
+  value       = module.network.vnet_id
 }
 
 output "vnet_name" {
   description = "Name of the virtual network"
-  value       = module.app_gateway.vnet_name
-}
-
-# Key Vault Outputs
-output "key_vault_id" {
-  description = "ID of the Key Vault (if HTTPS is enabled)"
-  value       = var.enable_https ? module.key_vault[0].key_vault_id : null
-}
-
-output "key_vault_name" {
-  description = "Name of the Key Vault (if HTTPS is enabled)"
-  value       = var.enable_https ? module.key_vault[0].key_vault_name : null
-}
-
-output "key_vault_uri" {
-  description = "URI of the Key Vault (if HTTPS is enabled)"
-  value       = var.enable_https ? module.key_vault[0].key_vault_uri : null
-}
-
-output "certificate_secret_id" {
-  description = "Secret ID of the SSL certificate (if HTTPS is enabled)"
-  value       = var.enable_https ? module.key_vault[0].certificate_secret_id : null
-  sensitive   = true
+  value       = module.network.vnet_name
 }
