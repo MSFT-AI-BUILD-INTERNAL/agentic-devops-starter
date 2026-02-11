@@ -1,0 +1,22 @@
+---
+# Certificate resource for Let's Encrypt with Istio
+# This will be automatically issued and renewed by cert-manager
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: agentic-devops-tls
+  namespace: istio-system
+spec:
+  # Secret name that will be created in istio-system namespace
+  # This must match the credentialName in the Istio Gateway
+  secretName: agentic-devops-tls
+  issuerRef:
+    name: letsencrypt-prod-istio
+    kind: ClusterIssuer
+  # Replace with your actual domain name
+  # For testing without a domain, you can use the LoadBalancer IP with nip.io
+  # Example: 20.10.30.40.nip.io
+  dnsNames:
+    - ${DOMAIN_NAME:-agentic-devops.local}
+  # Alternative: Use the LoadBalancer IP with nip.io for testing
+  # - ${INGRESS_IP}.nip.io

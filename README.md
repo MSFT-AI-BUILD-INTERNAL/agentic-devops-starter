@@ -13,8 +13,8 @@ This repository provides a full-stack DevOps solution for deploying a Python-bas
 - **CI/CD**: GitHub Actions workflow for automated deployment (`.github/workflows/deploy.yml`)
 - **Kubernetes**: Manifests for container orchestration (`/k8s`)
 - **Monitoring**: Azure Log Analytics with Container Insights for comprehensive logging and metrics
-- **Load Balancing**: Azure Application Gateway (L7) with Kubernetes Ingress for advanced traffic management
-- **Security**: Azure Key Vault for SSL certificate management with HTTPS support
+- **Load Balancing**: Istio Ingress Gateway with Azure Load Balancer for advanced traffic management and service mesh capabilities
+- **Security**: HTTPS support with Let's Encrypt certificates managed by cert-manager
 
 ## Quick Start
 
@@ -90,8 +90,11 @@ AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-endpoint>
 AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment>
 AZURE_OPENAI_API_VERSION: <api-version>
 
-# HTTPS Configuration (Optional, for Let's Encrypt)
+# HTTPS Configuration (Optional, for Let's Encrypt with Istio)
 LETSENCRYPT_EMAIL: <your-email@example.com>
+
+# Custom Domain (Optional, for HTTPS with custom domain)
+DOMAIN_NAME: <yourdomain.com>
 ```
 
 **How to get WORKLOAD_IDENTITY_CLIENT_ID:**
@@ -271,13 +274,34 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
          └─────────────────────────────────────┘
                            │
                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Internet Traffic                           │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+         ┌─────────────────────────────────────┐
+         │    Azure Load Balancer (L4)          │
+         │    - Public IP                       │
+         │    - Port 80 (HTTP), 443 (HTTPS)    │
+         └─────────────────────────────────────┘
+                           │
+                           ▼
+         ┌─────────────────────────────────────┐
+         │    Istio Ingress Gateway             │
+         │    - TLS termination                 │
+         │    - L7 routing                      │
+         │    - Service mesh capabilities       │
+         └─────────────────────────────────────┘
+                           │
+                           ▼
          ┌─────────────────────────────────────┐
          │  Azure Kubernetes Service (AKS)      │
          │  ┌─────────────┐  ┌─────────────┐   │
          │  │   Pod 1     │  │   Pod 2     │   │
-         │  │  (app:5100) │  │  (app:5100) │   │
+         │  │  Frontend   │  │  Frontend   │   │
+         │  │  + Backend  │  │  + Backend  │   │
          │  └─────────────┘  └─────────────┘   │
-         │          LoadBalancer :80             │
+         │     ClusterIP Service                │
          └─────────────────────────────────────┘
                            │
                            ▼
@@ -297,24 +321,24 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for detailed deployment documentation.
 - ✅ **Containerization**: Optimized Docker images with multi-stage builds
 - ✅ **CI/CD Automation**: GitHub Actions for automated build and deployment
 - ✅ **Kubernetes Orchestration**: High-availability deployment with health checks
-- ✅ **L7 Load Balancing**: Azure Application Gateway with advanced traffic management
-- ✅ **Ingress Controller**: Application Gateway Ingress Controller (AGIC) for seamless integration
+- ✅ **Istio Service Mesh**: Istio Ingress Gateway for advanced L7 load balancing and traffic management
+- ✅ **Azure Load Balancer**: Cost-effective L4 load balancing with public IP
+- ✅ **HTTPS Support**: Automatic TLS certificate management with Let's Encrypt and cert-manager
 - ✅ **Secure Authentication**: 
   - OIDC-based Azure authentication for CI/CD (no stored credentials)
   - Azure AD Workload Identity for pod-to-Azure authentication
   - `DefaultAzureCredential` for seamless Azure service access
 - ✅ **Monitoring & Logging**: Azure Log Analytics with Container Insights for comprehensive observability
-- ✅ **HTTPS Support**: Native SSL/TLS termination at Application Gateway with Azure Key Vault certificate management
-- ✅ **SSL Certificate Management**: Azure Key Vault for secure certificate storage and automatic provisioning
 - ✅ **Comprehensive Docs**: Detailed guides for infrastructure, deployment, and operations
 
 ## Documentation
 
 - **[Infrastructure Setup](./infra/README.md)**: Terraform configuration and Azure resources
 - **[Deployment Guide](./DEPLOYMENT.md)**: Complete deployment workflow and troubleshooting
+- **[Istio Setup Guide](./docs/ISTIO_SETUP.md)**: Istio Ingress Gateway with HTTPS configuration (NEW)
 - **[Kubernetes Config](./k8s/README.md)**: Kubernetes manifests and operations
 - **[Backend API Docs](./app/README.md)**: Python application architecture and usage
-- **[Frontend Chatbot UI](./app/frontend/README.md)**: Web interface setup and development (NEW)
+- **[Frontend Chatbot UI](./app/frontend/README.md)**: Web interface setup and development
 - **[Feature Specification](./specs/003-copilotkit-frontend/spec.md)**: Chatbot frontend requirements
 - **[Quickstart Guide](./specs/003-copilotkit-frontend/quickstart.md)**: 5-minute setup for chat UI
 
@@ -414,11 +438,11 @@ docker run -p 5100:5100 agentic-devops-starter:test
 Approximate monthly costs for Azure resources (US East region):
 - **AKS**: ~$140/month (2 x Standard_D2s_v3 nodes)
 - **ACR**: ~$20/month (Standard tier)
-- **Application Gateway**: ~$140-200/month (Standard_v2, 2 instances)
+- **Azure Load Balancer**: ~$20-30/month (Standard SKU)
 - **Log Analytics**: ~$10-15/month (~5 GB data ingestion)
-- **Total**: ~$310-375/month
+- **Total**: ~$190-205/month
 
-**Note**: The Application Gateway provides L7 load balancing capabilities including WAF (Web Application Firewall), SSL termination, path-based routing, and advanced traffic management, which justify the additional cost compared to a basic L4 load balancer.
+**Cost Savings with Istio**: By using Istio Ingress Gateway with Azure Load Balancer instead of Application Gateway, you save ~$120-170/month (60-85% cost reduction on ingress). Istio provides L7 load balancing, advanced traffic management, and service mesh capabilities while using the more cost-effective Azure Load Balancer for L4 routing.
 
 See [infra/README.md](./infra/README.md) for cost optimization tips.
 
@@ -427,11 +451,17 @@ See [infra/README.md](./infra/README.md) for cost optimization tips.
 Common issues and solutions:
 
 ### General Issues
-1. **404 Not Found from Ingress**: Check Application Gateway IP with `kubectl get ingress agentic-devops-ingress`
+1. **404 Not Found**: Check Istio Ingress Gateway IP with `kubectl get svc istio-ingressgateway -n istio-system`
 2. **Build fails**: Check Dockerfile and dependencies in `pyproject.toml`
 3. **Deploy fails**: Verify GitHub Secrets and Azure permissions
 4. **Pods not starting**: Check logs with `kubectl logs -l app=agentic-devops -c backend`
-5. **Can't access service**: Wait for Application Gateway to be configured by AGIC
+5. **Can't access service**: Wait for Istio Ingress Gateway LoadBalancer IP assignment
+
+### Istio Issues
+1. **No Istio Ingress Gateway IP**: Check service status with `kubectl get svc istio-ingressgateway -n istio-system`
+2. **Certificate not issued**: Check cert-manager logs with `kubectl logs -n cert-manager -l app=cert-manager`
+3. **HTTPS not working**: Verify certificate with `kubectl get certificate -n istio-system`
+4. **For detailed Istio troubleshooting**: See [ISTIO_SETUP.md](./docs/ISTIO_SETUP.md)
 
 ### Azure AD Workload Identity Issues
 
@@ -500,7 +530,7 @@ This usually means the Workload Identity webhook didn't inject the token. Check:
 - Workload Identity addon is enabled on AKS
 
 For detailed troubleshooting guides, see:
-- [INGRESS_TROUBLESHOOTING.md](./INGRESS_TROUBLESHOOTING.md) - Fix 404 errors and Ingress issues
+- [ISTIO_SETUP.md](./docs/ISTIO_SETUP.md) - Istio Ingress Gateway setup and troubleshooting
 - [DEPLOYMENT.md](./DEPLOYMENT.md#troubleshooting) - Deployment workflow issues
 - [infra/README.md](./infra/README.md#troubleshooting) - Infrastructure problems
 - [k8s/README.md](./k8s/README.md#troubleshooting) - Kubernetes operations
