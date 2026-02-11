@@ -93,7 +93,6 @@ The workflow runs:
 3. **Traceability**: Images tagged with both git SHA and 'latest'
 4. **Reliability**: Health checks and rollout status monitoring
 5. **Scalability**: 2 replicas with LoadBalancer for high availability
-6. **HTTPS Support**: Optional Let's Encrypt integration for production-grade TLS (see [k8s/HTTPS_SETUP.md](k8s/HTTPS_SETUP.md))
 
 ## Image Tag Strategy
 

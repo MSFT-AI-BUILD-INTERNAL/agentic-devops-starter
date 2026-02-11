@@ -6,9 +6,8 @@ metadata:
   labels:
     app: agentic-devops
 spec:
-  # Use ClusterIP when using Ingress for HTTPS/TLS termination
-  # NGINX Ingress Controller will handle external access with Let's Encrypt certificates
-  type: ClusterIP
+  # Use LoadBalancer type for direct access (L4 load balancing)
+  type: LoadBalancer
   selector:
     app: agentic-devops
   ports:
