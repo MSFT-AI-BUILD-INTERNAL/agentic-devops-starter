@@ -1,0 +1,312 @@
+---
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+  AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
+  AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
+  LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}
+  DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
+  BACKEND_IMAGE_NAME: agentic-devops-starter-backend
+  FRONTEND_IMAGE_NAME: agentic-devops-starter-frontend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to Azure Container Registry
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./app/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.BACKEND_IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.BACKEND_IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Frontend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app/frontend
+          file: ./app/frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.FRONTEND_IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          # OIDC requires federated identity credentials configured in Azure AD
+          # See .github/AZURE_SETUP.md for setup instructions
+
+      - name: Set AKS context
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Create Kubernetes secret for Azure configuration
+        run: |
+          kubectl create secret generic azure-config \
+            --from-literal=endpoint="${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" \
+            --from-literal=deployment-name="${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" \
+            --from-literal=api-version="${{ secrets.AZURE_OPENAI_API_VERSION }}" \
+            --from-literal=tenant-id="${{ secrets.AZURE_TENANT_ID }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Install Istio (if not already installed)
+        run: |
+          # Check if Istio is already installed
+          if ! kubectl get namespace istio-system &> /dev/null; then
+            echo "📦 Installing Istio..."
+            
+            # Download and install istioctl (match deploy.sh version)
+            ISTIO_VERSION=1.24.3
+            curl -sL https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
+            cd istio-$ISTIO_VERSION
+            export PATH=$PWD/bin:$PATH
+            
+            # Install Istio with default profile and ingress gateway
+            istioctl install --set profile=default \
+              --set components.ingressGateways[0].enabled=true \
+              --set components.ingressGateways[0].name=istio-ingressgateway \
+              --set meshConfig.accessLogFile=/dev/stdout \
+              -y
+            
+            # Wait for Istio components
+            kubectl wait --for=condition=available --timeout=300s deployment/istiod -n istio-system
+            kubectl wait --for=condition=available --timeout=300s deployment/istio-ingressgateway -n istio-system
+            
+            echo "✅ Istio installed successfully"
+          else
+            echo "✅ Istio already installed, skipping..."
+          fi
+          
+          # Ensure istio-ingressgateway service is properly annotated for external Azure Load Balancer
+          # This runs every time to ensure the annotation is present, not just during initial install
+          echo "🔧 Configuring Istio Ingress Gateway for external access..."
+          kubectl annotate svc istio-ingressgateway -n istio-system \
+            "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
+            --overwrite
+          echo "✅ Istio Ingress Gateway configured for external access"
+          
+          # Wait for Istio CRDs to be established
+          echo "⏳ Waiting for Istio CRDs..."
+          kubectl wait --for=condition=Established crd/virtualservices.networking.istio.io --timeout=60s
+          kubectl wait --for=condition=Established crd/gateways.networking.istio.io --timeout=60s
+          kubectl wait --for=condition=Established crd/destinationrules.networking.istio.io --timeout=60s
+          echo "✅ Istio CRDs are ready"
+
+      - name: Enable Istio sidecar injection
+        run: |
+          kubectl label namespace default istio-injection=enabled --overwrite
+          echo "✅ Sidecar injection enabled for default namespace"
+
+      - name: Install cert-manager (if not already installed)
+        run: |
+          # Check if cert-manager is already installed
+          if ! kubectl get namespace cert-manager &> /dev/null; then
+            echo "📦 Installing cert-manager..."
+            kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+            
+            # Wait for cert-manager to be ready
+            kubectl wait --namespace cert-manager \
+              --for=condition=ready pod \
+              --selector=app.kubernetes.io/instance=cert-manager \
+              --timeout=300s
+            
+            echo "✅ cert-manager installed successfully"
+          else
+            echo "✅ cert-manager already installed, skipping..."
+          fi
+
+      - name: Deploy to AKS
+        run: |
+          # Replace placeholders in deployment manifest
+          export ACR_NAME=${{ env.ACR_NAME }}
+          export IMAGE_TAG=${{ github.sha }}
+          
+          # Get Workload Identity Client ID from GitHub Secrets
+          # This should be set to the managed identity's client ID created by Terraform
+          export AZURE_CLIENT_ID=${{ secrets.WORKLOAD_IDENTITY_CLIENT_ID }}
+
+          # Apply Kubernetes manifests with variable substitution
+          envsubst < k8s/service-account.yaml | kubectl apply -f -
+          envsubst < k8s/deployment.yaml | kubectl apply -f -
+          kubectl apply -f k8s/service.yaml
+          
+          # Apply Istio Gateway and VirtualService
+          kubectl apply -f k8s/istio-gateway.yaml
+          kubectl apply -f k8s/istio-virtualservice.yaml
+          kubectl apply -f k8s/istio-destinationrule.yaml
+          
+          # Restart pods to ensure sidecar injection
+          SIDECAR_COUNT=$(kubectl get pods -l app=agentic-devops -o jsonpath='{range .items[*]}{.spec.containers[*].name}{"\n"}{end}' 2>/dev/null | grep -c "istio-proxy" || echo "0")
+          if [ "$SIDECAR_COUNT" -eq 0 ]; then
+            echo "⚠️ Pods missing sidecar, restarting deployment..."
+            kubectl rollout restart deployment/agentic-devops-app
+          fi
+          
+          echo "✅ Deployment complete. Traffic routing handled by Istio Ingress Gateway with Azure Load Balancer."
+
+      - name: Wait for deployment rollout
+        id: wait_for_rollout
+        run: |
+          kubectl rollout status deployment/agentic-devops-app --timeout=5m
+
+      - name: Debug deployment status (if rollout fails)
+        if: always() && steps.wait_for_rollout.outcome == 'failure'
+        run: |
+          echo "=== Deployment Status ==="
+          kubectl get deployment agentic-devops-app -o wide
+          
+          echo ""
+          echo "=== Pod Status ==="
+          kubectl get pods -l app=agentic-devops -o wide
+          
+          echo ""
+          echo "=== Pod Describe ==="
+          kubectl describe pods -l app=agentic-devops
+          
+          echo ""
+          echo "=== Recent Events ==="
+          kubectl get events --sort-by='.lastTimestamp' | tail -20
+          
+          echo ""
+          echo "=== Backend Container Logs ==="
+          kubectl logs -l app=agentic-devops -c backend --tail=100 || echo "No backend logs available"
+          
+          echo ""
+          echo "=== Frontend Container Logs ==="
+          kubectl logs -l app=agentic-devops -c frontend --tail=100 || echo "No frontend logs available"
+          
+          echo ""
+          echo "=== ServiceAccount Status ==="
+          kubectl get serviceaccount agentic-devops-sa -o yaml
+          
+          echo ""
+          echo "=== Secret Status ==="
+          kubectl get secret azure-config || echo "azure-config secret not found"
+
+      - name: Verify API endpoint health
+        if: always() && steps.wait_for_rollout.outcome == 'success'
+        run: |
+          echo "=== Verifying API endpoint via Istio Ingress ==="
+          INGRESS_IP=$(kubectl get service istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          
+          if [ -n "$INGRESS_IP" ]; then
+            echo "Testing health endpoint..."
+            curl -sv --max-time 10 "http://$INGRESS_IP/api/health" 2>&1 || echo "⚠️ Health check via Ingress failed"
+            
+            echo ""
+            echo "Checking response headers..."
+            curl -sI --max-time 10 "http://$INGRESS_IP/api/health" 2>&1 | head -20 || true
+          fi
+          
+          echo ""
+          echo "=== Istio Proxy Logs (last 30 lines) ==="
+          kubectl logs -l app=agentic-devops -c istio-proxy --tail=30 2>/dev/null || echo "No sidecar logs"
+          
+          echo ""
+          echo "=== Backend Logs (last 30 lines) ==="
+          kubectl logs -l app=agentic-devops -c backend --tail=30 2>/dev/null || echo "No backend logs"
+
+      - name: Setup HTTPS with Let's Encrypt
+        run: |
+          # Get Istio Ingress Gateway IP
+          echo "⏳ Waiting for Istio Ingress Gateway IP..."
+          sleep 15
+          INGRESS_IP=$(kubectl get service istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          
+          if [ -z "$INGRESS_IP" ]; then
+            echo "⚠️  LoadBalancer IP not yet assigned, skipping HTTPS setup"
+            exit 0
+          fi
+          
+          echo "✅ Istio Ingress Gateway IP: $INGRESS_IP"
+          
+          # Use nip.io domain for testing or custom domain if provided
+          if [ -n "$DOMAIN_NAME" ]; then
+            export DOMAIN_NAME
+          else
+            export DOMAIN_NAME="${INGRESS_IP}.nip.io"
+          fi
+          
+          echo "📝 Setting up HTTPS for domain: $DOMAIN_NAME"
+          
+          if [ -z "$LETSENCRYPT_EMAIL" ]; then
+            echo "⚠️  LETSENCRYPT_EMAIL secret is not set, skipping HTTPS setup"
+            exit 0
+          fi
+          export LETSENCRYPT_EMAIL
+          
+          # Apply cert-issuer
+          envsubst < k8s/cert-issuer-istio.yaml | kubectl apply -f -
+          
+          # Apply certificate
+          envsubst < k8s/istio-certificate.yaml | kubectl apply -f -
+          
+          echo "✅ HTTPS setup initiated. Certificate will be issued automatically."
+
+      - name: Get Istio Ingress Gateway IP
+        run: |
+          echo "Fetching Istio Ingress Gateway LoadBalancer IP..."
+          kubectl get service istio-ingressgateway -n istio-system
+          
+          INGRESS_IP=$(kubectl get service istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -n "$INGRESS_IP" ]; then
+            echo "✅ Access your application at: http://$INGRESS_IP"
+            if [ -n "$DOMAIN_NAME" ]; then
+              echo "✅ HTTPS will be available at: https://$DOMAIN_NAME"
+            else
+              echo "✅ HTTPS will be available at: https://${INGRESS_IP}.nip.io"
+            fi
+          else
+            echo "⚠️  LoadBalancer IP not yet assigned"
+          fi
