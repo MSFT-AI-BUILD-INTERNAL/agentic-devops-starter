@@ -131,6 +131,13 @@ jobs:
           else
             echo "✅ Istio already installed, skipping..."
           fi
+          
+          # Wait for Istio CRDs to be established
+          echo "⏳ Waiting for Istio CRDs..."
+          kubectl wait --for=condition=Established crd/virtualservices.networking.istio.io --timeout=60s
+          kubectl wait --for=condition=Established crd/gateways.networking.istio.io --timeout=60s
+          kubectl wait --for=condition=Established crd/destinationrules.networking.istio.io --timeout=60s
+          echo "✅ Istio CRDs are ready"
 
       - name: Enable Istio sidecar injection
         run: |
@@ -245,6 +252,11 @@ jobs:
           fi
           
           echo "📝 Setting up HTTPS for domain: $DOMAIN_NAME"
+          
+          if [ -z "$LETSENCRYPT_EMAIL" ]; then
+            echo "⚠️  LETSENCRYPT_EMAIL secret is not set, skipping HTTPS setup"
+            exit 0
+          fi
           export LETSENCRYPT_EMAIL
           
           # Apply cert-issuer
