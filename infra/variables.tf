@@ -128,3 +128,9 @@ variable "aks_subnet_prefix" {
   default     = "10.1.1.0/24"
 }
 
+variable "ai_foundry_resource_id" {
+  description = "Resource ID of the Azure AI Foundry (Cognitive Services) account for role assignment. Leave empty to skip."
+  type        = string
+  default     = ""
+}
+

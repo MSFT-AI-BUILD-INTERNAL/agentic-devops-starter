@@ -103,9 +103,9 @@ jobs:
           if ! kubectl get namespace istio-system &> /dev/null; then
             echo "📦 Installing Istio..."
             
-            # Download and install istioctl
-            ISTIO_VERSION=1.21.0
-            curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
+            # Download and install istioctl (match deploy.sh version)
+            ISTIO_VERSION=1.24.3
+            curl -sL https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
             cd istio-$ISTIO_VERSION
             export PATH=$PWD/bin:$PATH
             
@@ -113,7 +113,6 @@ jobs:
             istioctl install --set profile=default \
               --set components.ingressGateways[0].enabled=true \
               --set components.ingressGateways[0].name=istio-ingressgateway \
-              --set components.ingressGateways[0].k8s.service.type=LoadBalancer \
               --set meshConfig.accessLogFile=/dev/stdout \
               -y
             
@@ -121,10 +120,20 @@ jobs:
             kubectl wait --for=condition=available --timeout=300s deployment/istiod -n istio-system
             kubectl wait --for=condition=available --timeout=300s deployment/istio-ingressgateway -n istio-system
             
+            # Annotate for external Azure Load Balancer
+            kubectl annotate svc istio-ingressgateway -n istio-system \
+              "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
+              --overwrite
+            
             echo "✅ Istio installed successfully"
           else
             echo "✅ Istio already installed, skipping..."
           fi
+
+      - name: Enable Istio sidecar injection
+        run: |
+          kubectl label namespace default istio-injection=enabled --overwrite
+          echo "✅ Sidecar injection enabled for default namespace"
 
       - name: Install cert-manager (if not already installed)
         run: |
@@ -162,6 +171,13 @@ jobs:
           # Apply Istio Gateway and VirtualService
           kubectl apply -f k8s/istio-gateway.yaml
           kubectl apply -f k8s/istio-virtualservice.yaml
+          
+          # Restart pods to ensure sidecar injection
+          SIDECAR_COUNT=$(kubectl get pods -l app=agentic-devops -o jsonpath='{range .items[*]}{.spec.containers[*].name}{"\n"}{end}' 2>/dev/null | grep -c "istio-proxy" || echo "0")
+          if [ "$SIDECAR_COUNT" -eq 0 ]; then
+            echo "⚠️ Pods missing sidecar, restarting deployment..."
+            kubectl rollout restart deployment/agentic-devops-app
+          fi
           
           echo "✅ Deployment complete. Traffic routing handled by Istio Ingress Gateway with Azure Load Balancer."
 

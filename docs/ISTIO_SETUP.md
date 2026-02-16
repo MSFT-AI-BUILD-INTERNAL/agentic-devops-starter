@@ -104,8 +104,8 @@ This script will:
 #### 1. Install Istio
 
 ```bash
-# Download and install Istio
-./k8s/install-istio.sh
+# Full deployment (Istio + app + networking)
+./k8s/deploy.sh
 
 # Verify installation
 kubectl get pods -n istio-system

@@ -10,16 +10,14 @@ spec:
   gateways:
     - agentic-devops-gateway
   http:
-    # Route for backend API
+    # Route for backend API — rewrite /api/* to /* since backend serves at /
     - match:
         - uri:
-            prefix: /api
+            exact: /api
         - uri:
-            prefix: /health
-        - uri:
-            prefix: /docs
-        - uri:
-            prefix: /openapi.json
+            prefix: /api/
+      rewrite:
+        uri: /
       route:
         - destination:
             host: agentic-devops-service
@@ -37,6 +35,19 @@ spec:
         allowHeaders:
           - "*"
         allowCredentials: true
+    # Backend direct routes (health, docs, openapi)
+    - match:
+        - uri:
+            prefix: /health
+        - uri:
+            prefix: /docs
+        - uri:
+            prefix: /openapi.json
+      route:
+        - destination:
+            host: agentic-devops-service
+            port:
+              number: 5100
     # Default route for frontend (catch-all)
     - match:
         - uri:

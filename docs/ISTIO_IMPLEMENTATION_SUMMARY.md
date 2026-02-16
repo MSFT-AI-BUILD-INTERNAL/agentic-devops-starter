@@ -103,7 +103,7 @@ This implementation adds **Istio Ingress Gateway** as the ingress solution for t
 ### Scripts
 | File | Description |
 |------|-------------|
-| `k8s/install-istio.sh` | Automated Istio installation |
+| `k8s/deploy.sh` | Full deployment (Istio + app + Gateway/VirtualService + verification) |
 | `k8s/setup-istio-https.sh` | Complete Istio + HTTPS setup |
 
 ### Documentation

@@ -17,12 +17,12 @@ if [ -z "$LETSENCRYPT_EMAIL" ]; then
     export LETSENCRYPT_EMAIL
 fi
 
-# Step 1: Install Istio
+# Step 1: Install Istio (handled by deploy.sh)
 echo ""
 echo "========================================="
 echo "Step 1: Installing Istio"
 echo "========================================="
-./k8s/install-istio.sh
+./k8s/deploy.sh
 
 # Step 2: Install cert-manager (if not already installed)
 echo ""

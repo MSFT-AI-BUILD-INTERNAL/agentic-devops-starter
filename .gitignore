@@ -74,5 +74,14 @@ coverage/
 playwright-report/
 test-results/
 
+# Istio binary downloads
+k8s/istio-*/
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
+infra/.terraform.lock.hcl
+
 # Build artifacts
 *.tsbuildinfo

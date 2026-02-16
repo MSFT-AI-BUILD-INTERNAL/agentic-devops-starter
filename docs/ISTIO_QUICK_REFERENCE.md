@@ -6,7 +6,7 @@ This is a quick reference guide for the Istio Ingress Gateway implementation. Fo
 
 ### New Files Added
 
-1. **k8s/install-istio.sh** - Automated Istio installation script
+1. **k8s/deploy.sh** - Full deployment script (Istio + app + Gateway/VirtualService + verification)
 2. **k8s/setup-istio-https.sh** - Complete Istio + HTTPS setup script
 3. **k8s/istio-gateway.yaml** - Istio Gateway configuration (HTTP/HTTPS)
 4. **k8s/istio-virtualservice.yaml** - Traffic routing rules
@@ -46,10 +46,8 @@ az aks get-credentials --resource-group <RG> --name <AKS-NAME>
 export LETSENCRYPT_EMAIL=your-email@example.com
 ./k8s/setup-istio-https.sh
 
-# Option 2: Install Istio only (without HTTPS)
-./k8s/install-istio.sh
-kubectl apply -f k8s/istio-gateway.yaml
-kubectl apply -f k8s/istio-virtualservice.yaml
+# Option 2: Full deployment (Istio + app + networking)
+./k8s/deploy.sh
 ```
 
 ## Accessing Your Application

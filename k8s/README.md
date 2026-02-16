@@ -32,7 +32,7 @@ Access your application:
 - **cert-issuer-istio.yaml**: ClusterIssuer for Let's Encrypt certificate management
 
 ### Setup Scripts
-- **install-istio.sh**: Automated Istio installation script
+- **deploy.sh**: Full deployment script (Istio install → app deploy → Gateway/VirtualService → connectivity verification)
 - **setup-istio-https.sh**: Complete setup script for Istio with HTTPS
 - **setup-https.sh**: Legacy NGINX Ingress setup script (deprecated)
 - **cert-issuer.yaml**: Legacy cert-issuer for NGINX (deprecated)
