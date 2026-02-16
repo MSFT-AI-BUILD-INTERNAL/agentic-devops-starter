@@ -1,0 +1,47 @@
+# ============================================================================
+# Dockerfile.frontend — Frontend container for Azure App Service (Main)
+# React SPA (Node 20 build) + Nginx reverse proxy
+# Sidecar mode Main container that receives external traffic and proxies /api/ → localhost:5100
+# ============================================================================
+
+# ----- Stage 1: Build React SPA -----
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files for layer caching
+COPY app/frontend/package.json app/frontend/package-lock.json* ./
+
+# Install dependencies
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+# Copy frontend source
+COPY app/frontend/ ./
+
+# Build-time env: API endpoint = /api (same-origin proxy)
+ARG VITE_AGUI_ENDPOINT=/api
+ENV VITE_AGUI_ENDPOINT=$VITE_AGUI_ENDPOINT
+
+# Build production bundle
+RUN npm run build
+
+# ----- Stage 2: Nginx serving -----
+FROM nginx:alpine
+
+# Remove default config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy custom nginx config (/api/ → localhost:5100 via sidecar network)
+COPY docker-appservice/nginx-appservice.conf /etc/nginx/conf.d/default.conf
+
+# Copy built SPA
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Expose port (Main container — receives external traffic)
+EXPOSE 80
+
+# Health check (wget is available in alpine; curl is not)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost:80/health || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

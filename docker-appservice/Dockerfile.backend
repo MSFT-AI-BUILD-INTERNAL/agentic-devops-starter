@@ -1,0 +1,48 @@
+# ============================================================================
+# Dockerfile.backend — Backend container for Azure App Service (Sidecar)
+# FastAPI + AG-UI + uvicorn (Python 3.12)
+# Sidecar container that shares localhost with Frontend, serving on port 5100
+# ============================================================================
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies (git required for git-based pip/uv dependencies)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    gcc \
+    g++ \
+    libffi-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv (fast Python package manager)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Copy dependency files
+COPY app/pyproject.toml app/uv.lock* ./
+
+# Install Python dependencies
+# If uv.lock exists it is reused; otherwise uv lock regenerates it.
+RUN uv sync --frozen --no-dev || uv sync --no-dev
+
+# Copy application code
+COPY app/ .
+
+# Non-root user for security
+RUN useradd -m -r appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port (sidecar — frontend Nginx proxies to localhost:5100)
+EXPOSE 5100
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:5100/health || exit 1
+
+# Run FastAPI server
+CMD ["uv", "run", "agui_server.py"]

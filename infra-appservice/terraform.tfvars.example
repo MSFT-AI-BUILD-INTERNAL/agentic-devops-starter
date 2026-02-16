@@ -1,0 +1,27 @@
+# Azure Container Registry name (must be globally unique)
+acr_name = "acragenticdevopsXXXX"  # Replace XXXX with unique value
+
+# Azure AI Configuration (optional - leave empty if not using Azure AI)
+azure_ai_project_endpoint      = ""
+azure_ai_model_deployment_name = "gpt-4o"
+
+# Location and environment
+location     = "eastus"
+environment  = "dev"
+project_name = "agenticdevops"
+
+# App Service SKU (B1, B2, S1, S2, P1v3, etc.)
+app_service_sku = "B1"
+
+# ACR SKU
+acr_sku = "Standard"
+
+# Monitoring
+log_retention_days = 30
+
+# Tags
+tags = {
+  Project     = "agentic-devops"
+  Environment = "dev"
+  ManagedBy   = "terraform"
+}
