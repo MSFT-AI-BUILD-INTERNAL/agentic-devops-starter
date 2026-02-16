@@ -529,6 +529,22 @@ This usually means the Workload Identity webhook didn't inject the token. Check:
 - ServiceAccount has annotation `azure.workload.identity/client-id`
 - Workload Identity addon is enabled on AKS
 
+**Symptom**: `WorkloadIdentityCredential: Microsoft Entra ID error 'AADSTS700016: Application with identifier was not found'` (after Istio migration)
+
+This occurs when Istio's sidecar proxy intercepts traffic to Azure's Instance Metadata Service (IMDS), breaking workload identity authentication.
+
+**Solution**: The deployment has been configured with the following annotation to exclude Azure IMDS from Istio's traffic interception:
+```yaml
+traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32"
+```
+
+If you still see this error:
+1. Verify the annotation is present: `kubectl get pod -l app=agentic-devops -o yaml | grep excludeOutboundIPRanges`
+2. Ensure `AZURE_TENANT_ID` environment variable is set in the pod
+3. Restart the deployment: `kubectl rollout restart deployment/agentic-devops-app`
+
+For more details, see the [ISTIO_SETUP.md](./docs/ISTIO_SETUP.md#5-azure-workload-identity-authentication-failures) troubleshooting guide.
+
 For detailed troubleshooting guides, see:
 - [ISTIO_SETUP.md](./docs/ISTIO_SETUP.md) - Istio Ingress Gateway setup and troubleshooting
 - [DEPLOYMENT.md](./DEPLOYMENT.md#troubleshooting) - Deployment workflow issues

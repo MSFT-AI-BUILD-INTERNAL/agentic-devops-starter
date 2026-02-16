@@ -243,7 +243,8 @@ az aks get-credentials \
 kubectl create secret generic azure-config \
   --from-literal=endpoint="your-azure-endpoint" \
   --from-literal=deployment-name="your-deployment-name" \
-  --from-literal=openai-api-key="your-openai-key"
+  --from-literal=api-version="2025-08-07" \
+  --from-literal=tenant-id="your-tenant-id"
 
 # Deploy application
 envsubst < k8s/deployment.yaml | kubectl apply -f -
