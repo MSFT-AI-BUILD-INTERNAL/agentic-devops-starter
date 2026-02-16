@@ -12,3 +12,8 @@ output "aks_subnet_id" {
   description = "ID of the AKS subnet"
   value       = azurerm_subnet.aks.id
 }
+
+output "aks_nsg_id" {
+  description = "ID of the AKS subnet NSG (auto-created by Azure)"
+  value       = data.azurerm_network_security_group.aks.id
+}
