@@ -44,25 +44,10 @@ RUN echo 'server { \
         return 405; \
     } \
     \
-    # Proxy API requests to backend on localhost:5100 (same pod) \
-    # IMPORTANT: This must come BEFORE the location / block \
-    location /api/ { \
-        proxy_pass http://127.0.0.1:5100/; \
-        proxy_http_version 1.1; \
-        proxy_set_header Upgrade $http_upgrade; \
-        proxy_set_header Connection "upgrade"; \
-        proxy_set_header Host $host; \
-        proxy_set_header X-Real-IP $remote_addr; \
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; \
-        proxy_set_header X-Forwarded-Proto $scheme; \
-        proxy_cache_bypass $http_upgrade; \
-        proxy_read_timeout 90s; \
-        proxy_send_timeout 90s; \
-        proxy_buffering off; \
-    } \
+    # API routing is handled by Istio VirtualService (not nginx proxy) \
+    # Istio routes /api/* directly to backend:5100 at the ingress layer \
     \
     # SPA routing - serve index.html for all routes \
-    # This must come AFTER /api/ to avoid catching API requests \
     location / { \
         try_files $uri $uri/ /index.html; \
     } \

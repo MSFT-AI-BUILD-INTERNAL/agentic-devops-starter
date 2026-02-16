@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { ChatInterface } from './components/ChatInterface';
 import { logger } from './utils/logger';
 import { useTheme } from './hooks/useTheme';
+import { getApiBaseUrl } from './config/api';
 
 function App() {
   // Initialize theme system
@@ -10,7 +11,7 @@ function App() {
   useEffect(() => {
     logger.info('Application started', {
       environment: import.meta.env.MODE,
-      endpoint: import.meta.env.VITE_AGUI_ENDPOINT || '/api',
+      endpoint: getApiBaseUrl(),
       theme: currentTheme,
     });
   }, [currentTheme]);

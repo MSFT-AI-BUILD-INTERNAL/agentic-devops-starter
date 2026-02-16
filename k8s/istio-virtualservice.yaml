@@ -26,18 +26,8 @@ spec:
             host: agentic-devops-service
             port:
               number: 5100
-      corsPolicy:
-        allowOrigins:
-          - regex: ".*"
-        allowMethods:
-          - GET
-          - POST
-          - PUT
-          - DELETE
-          - OPTIONS
-        allowHeaders:
-          - "*"
-        allowCredentials: true
+      # CORS is handled by FastAPI CORSMiddleware to avoid duplicate headers
+      # that break SSE chunked encoding streams
     # Backend direct routes (health, docs, openapi)
     - match:
         - uri:
