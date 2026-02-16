@@ -14,6 +14,8 @@ env:
   ACR_NAME: ${{ secrets.ACR_NAME }}
   AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
   AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
+  LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}
+  DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
   BACKEND_IMAGE_NAME: agentic-devops-starter-backend
   FRONTEND_IMAGE_NAME: agentic-devops-starter-frontend
 
@@ -181,40 +183,6 @@ jobs:
           
           echo "✅ Deployment complete. Traffic routing handled by Istio Ingress Gateway with Azure Load Balancer."
 
-      - name: Setup HTTPS with Let's Encrypt (if configured)
-        if: ${{ secrets.LETSENCRYPT_EMAIL != '' }}
-        run: |
-          export LETSENCRYPT_EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
-          
-          # Get Istio Ingress Gateway IP
-          echo "⏳ Waiting for Istio Ingress Gateway IP..."
-          sleep 15
-          INGRESS_IP=$(kubectl get service istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          
-          if [ -z "$INGRESS_IP" ]; then
-            echo "⚠️  LoadBalancer IP not yet assigned, skipping HTTPS setup"
-            exit 0
-          fi
-          
-          echo "✅ Istio Ingress Gateway IP: $INGRESS_IP"
-          
-          # Use nip.io domain for testing or custom domain if provided
-          if [ -n "${{ secrets.DOMAIN_NAME }}" ]; then
-            export DOMAIN_NAME="${{ secrets.DOMAIN_NAME }}"
-          else
-            export DOMAIN_NAME="${INGRESS_IP}.nip.io"
-          fi
-          
-          echo "📝 Setting up HTTPS for domain: $DOMAIN_NAME"
-          
-          # Apply cert-issuer
-          envsubst < k8s/cert-issuer-istio.yaml | kubectl apply -f -
-          
-          # Apply certificate
-          envsubst < k8s/istio-certificate.yaml | kubectl apply -f -
-          
-          echo "✅ HTTPS setup initiated. Certificate will be issued automatically."
-
       - name: Wait for deployment rollout
         id: wait_for_rollout
         run: |
@@ -225,30 +193,6 @@ jobs:
         run: |
           echo "=== Deployment Status ==="
           kubectl get deployment agentic-devops-app -o wide
-          
-          echo ""
-          echo "=== Pod Status ==="
-          kubectl get pods -l app=agentic-devops -o wide
-          
-          echo ""
-          echo "=== Pod Events ==="
-          kubectl describe pods -l app=agentic-devops | grep -A 20 "Events:"
-          
-          echo ""
-          echo "=== Backend Container Logs ==="
-          kubectl logs -l app=agentic-devops -c backend --tail=50 || echo "No backend logs available"
-          
-          echo ""
-          echo "=== Frontend Container Logs ==="
-          kubectl logs -l app=agentic-devops -c frontend --tail=30 || echo "No frontend logs available"
-          
-          echo ""
-          echo "=== ServiceAccount Status ==="
-          kubectl get serviceaccount agentic-devops-sa -o yaml
-          
-          echo ""
-          echo "=== Secret Status ==="
-          kubectl get secret azure-config || echo "azure-config secret not found"
           
           echo ""
           echo "=== Pod Status ==="
@@ -269,6 +213,46 @@ jobs:
           echo ""
           echo "=== Frontend Container Logs ==="
           kubectl logs -l app=agentic-devops -c frontend --tail=100 || echo "No frontend logs available"
+          
+          echo ""
+          echo "=== ServiceAccount Status ==="
+          kubectl get serviceaccount agentic-devops-sa -o yaml
+          
+          echo ""
+          echo "=== Secret Status ==="
+          kubectl get secret azure-config || echo "azure-config secret not found"
+
+      - name: Setup HTTPS with Let's Encrypt
+        run: |
+          # Get Istio Ingress Gateway IP
+          echo "⏳ Waiting for Istio Ingress Gateway IP..."
+          sleep 15
+          INGRESS_IP=$(kubectl get service istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          
+          if [ -z "$INGRESS_IP" ]; then
+            echo "⚠️  LoadBalancer IP not yet assigned, skipping HTTPS setup"
+            exit 0
+          fi
+          
+          echo "✅ Istio Ingress Gateway IP: $INGRESS_IP"
+          
+          # Use nip.io domain for testing or custom domain if provided
+          if [ -n "$DOMAIN_NAME" ]; then
+            export DOMAIN_NAME
+          else
+            export DOMAIN_NAME="${INGRESS_IP}.nip.io"
+          fi
+          
+          echo "📝 Setting up HTTPS for domain: $DOMAIN_NAME"
+          export LETSENCRYPT_EMAIL
+          
+          # Apply cert-issuer
+          envsubst < k8s/cert-issuer-istio.yaml | kubectl apply -f -
+          
+          # Apply certificate
+          envsubst < k8s/istio-certificate.yaml | kubectl apply -f -
+          
+          echo "✅ HTTPS setup initiated. Certificate will be issued automatically."
 
       - name: Get Istio Ingress Gateway IP
         run: |
@@ -278,12 +262,10 @@ jobs:
           INGRESS_IP=$(kubectl get service istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
           if [ -n "$INGRESS_IP" ]; then
             echo "✅ Access your application at: http://$INGRESS_IP"
-            if [ -n "${{ secrets.LETSENCRYPT_EMAIL }}" ]; then
-              if [ -n "${{ secrets.DOMAIN_NAME }}" ]; then
-                echo "✅ HTTPS will be available at: https://${{ secrets.DOMAIN_NAME }}"
-              else
-                echo "✅ HTTPS will be available at: https://${INGRESS_IP}.nip.io"
-              fi
+            if [ -n "$DOMAIN_NAME" ]; then
+              echo "✅ HTTPS will be available at: https://$DOMAIN_NAME"
+            else
+              echo "✅ HTTPS will be available at: https://${INGRESS_IP}.nip.io"
             fi
           else
             echo "⚠️  LoadBalancer IP not yet assigned"
