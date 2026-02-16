@@ -123,15 +123,18 @@ jobs:
             kubectl wait --for=condition=available --timeout=300s deployment/istiod -n istio-system
             kubectl wait --for=condition=available --timeout=300s deployment/istio-ingressgateway -n istio-system
             
-            # Annotate for external Azure Load Balancer
-            kubectl annotate svc istio-ingressgateway -n istio-system \
-              "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
-              --overwrite
-            
             echo "✅ Istio installed successfully"
           else
             echo "✅ Istio already installed, skipping..."
           fi
+          
+          # Ensure istio-ingressgateway service is properly annotated for external Azure Load Balancer
+          # This runs every time to ensure the annotation is present, not just during initial install
+          echo "🔧 Configuring Istio Ingress Gateway for external access..."
+          kubectl annotate svc istio-ingressgateway -n istio-system \
+            "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
+            --overwrite
+          echo "✅ Istio Ingress Gateway configured for external access"
           
           # Wait for Istio CRDs to be established
           echo "⏳ Waiting for Istio CRDs..."

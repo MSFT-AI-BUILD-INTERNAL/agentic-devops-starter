@@ -342,14 +342,54 @@ kubectl logs -n cert-manager -l app=cert-manager
 - Verify service exists: `kubectl get svc agentic-devops-service`
 - Check Gateway configuration: `kubectl describe gateway agentic-devops-gateway`
 
-#### 3. Connection Refused
+#### 3. Connection Refused or Timeout (ERR_CONNECTION_TIMED_OUT)
 
-**Problem**: Cannot connect to Ingress IP
+**Problem**: Cannot connect to Ingress IP, or connection times out
+
+**Root Causes**:
+1. Missing or incorrect Azure Load Balancer annotation on istio-ingressgateway service
+2. Azure Load Balancer IP not yet assigned
+3. Network security groups blocking traffic
 
 **Solutions**:
-- Verify LoadBalancer IP is assigned: `kubectl get svc istio-ingressgateway -n istio-system`
-- Check Azure Load Balancer in Azure Portal
-- Verify network security groups allow traffic on ports 80 and 443
+
+**Step 1: Verify LoadBalancer annotation**
+```bash
+# Check if the service has the correct annotation
+kubectl get svc istio-ingressgateway -n istio-system -o yaml | grep azure-load-balancer
+
+# Should show:
+#   service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+```
+
+If the annotation is missing or set to "true", apply it:
+```bash
+kubectl annotate svc istio-ingressgateway -n istio-system \
+  "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
+  --overwrite
+```
+
+**Step 2: Verify LoadBalancer IP is assigned**
+```bash
+kubectl get svc istio-ingressgateway -n istio-system
+
+# Should show an EXTERNAL-IP (e.g., 20.249.160.90)
+# If <pending>, wait a few minutes for Azure to provision the Load Balancer
+```
+
+**Step 3: Check Azure Load Balancer in Azure Portal**
+- Navigate to: Resource Groups → AKS cluster resource group → Load Balancers
+- Verify a Load Balancer exists with a public IP
+- Check frontend IP configuration has a public IP address
+
+**Step 4: Verify network security groups**
+```bash
+# Check NSG rules in Azure Portal
+# Resource Groups → AKS RG → Network security groups → Inbound security rules
+# Ensure ports 80 and 443 are allowed from Internet
+```
+
+**Note**: The GitHub Actions deployment workflow now automatically ensures the correct annotation is applied on every deployment (as of this fix).
 
 #### 4. TLS Certificate Errors
 

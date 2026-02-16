@@ -529,6 +529,28 @@ This usually means the Workload Identity webhook didn't inject the token. Check:
 - ServiceAccount has annotation `azure.workload.identity/client-id`
 - Workload Identity addon is enabled on AKS
 
+**Symptom**: `ERR_CONNECTION_TIMED_OUT` when accessing the application via external IP
+
+This indicates the Istio Ingress Gateway is not accessible from the internet, usually due to incorrect Azure Load Balancer configuration.
+
+**Solution**: The deployment workflow automatically configures the istio-ingressgateway service for external access. If you still see this error:
+
+1. Verify the LoadBalancer annotation is present:
+   ```bash
+   kubectl get svc istio-ingressgateway -n istio-system -o yaml | grep azure-load-balancer-internal
+   # Should show: service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+   ```
+
+2. Check if LoadBalancer IP is assigned:
+   ```bash
+   kubectl get svc istio-ingressgateway -n istio-system
+   # EXTERNAL-IP should show a public IP, not <pending>
+   ```
+
+3. Verify network security groups in Azure Portal allow inbound traffic on ports 80 and 443
+
+For more details, see the [ISTIO_SETUP.md](./docs/ISTIO_SETUP.md#3-connection-refused-or-timeout-err_connection_timed_out) troubleshooting guide.
+
 **Symptom**: `WorkloadIdentityCredential: Microsoft Entra ID error 'AADSTS700016: Application with identifier was not found'` (after Istio migration)
 
 This occurs when Istio's sidecar proxy intercepts traffic to Azure's Instance Metadata Service (IMDS), breaking workload identity authentication.
