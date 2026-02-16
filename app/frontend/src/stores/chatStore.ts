@@ -1,6 +1,7 @@
 // Zustand chat store with initial state
 import { create } from 'zustand';
 import { generateUUID } from '../utils/uuid';
+import { getApiBaseUrl } from '../config/api';
 import type { Message } from '../types/message';
 import type { Thread, ThreadStatus } from '../types/session';
 import type { Connection, ConnectionStatus, StreamingState, ToolCall } from '../types/agui';
@@ -33,7 +34,7 @@ const initialState = {
   messages: [],
   connection: {
     status: 'disconnected' as ConnectionStatus,
-    endpoint: import.meta.env.VITE_AGUI_ENDPOINT || '/api',
+    endpoint: getApiBaseUrl(),
     reconnectAttempts: 0,
   },
   streamingState: {

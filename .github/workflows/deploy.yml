@@ -230,6 +230,29 @@ jobs:
           echo "=== Secret Status ==="
           kubectl get secret azure-config || echo "azure-config secret not found"
 
+      - name: Verify API endpoint health
+        if: always() && steps.wait_for_rollout.outcome == 'success'
+        run: |
+          echo "=== Verifying API endpoint via Istio Ingress ==="
+          INGRESS_IP=$(kubectl get service istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          
+          if [ -n "$INGRESS_IP" ]; then
+            echo "Testing health endpoint..."
+            curl -sv --max-time 10 "http://$INGRESS_IP/api/health" 2>&1 || echo "⚠️ Health check via Ingress failed"
+            
+            echo ""
+            echo "Checking response headers..."
+            curl -sI --max-time 10 "http://$INGRESS_IP/api/health" 2>&1 | head -20 || true
+          fi
+          
+          echo ""
+          echo "=== Istio Proxy Logs (last 30 lines) ==="
+          kubectl logs -l app=agentic-devops -c istio-proxy --tail=30 2>/dev/null || echo "No sidecar logs"
+          
+          echo ""
+          echo "=== Backend Logs (last 30 lines) ==="
+          kubectl logs -l app=agentic-devops -c backend --tail=30 2>/dev/null || echo "No backend logs"
+
       - name: Setup HTTPS with Let's Encrypt
         run: |
           # Get Istio Ingress Gateway IP
