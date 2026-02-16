@@ -31,7 +31,7 @@ resource "azurerm_linux_web_app" "main" {
   # Application settings (environment variables)
   app_settings = merge(
     {
-      "WEBSITES_PORT"                         = "5100"
+      "WEBSITES_PORT"                         = "8080"  # nginx listens on 8080
       "WEBSITES_ENABLE_APP_SERVICE_STORAGE"   = "false"
       "DOCKER_ENABLE_CI"                      = "true"
       "DOCKER_REGISTRY_SERVER_URL"            = var.docker_registry_url

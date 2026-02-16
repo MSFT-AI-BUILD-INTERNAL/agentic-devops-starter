@@ -15,6 +15,7 @@ RUN npm ci
 COPY app/frontend/ .
 
 # Set API endpoint to use backend service on localhost
+# This must match the nginx proxy location configured below (location /api/)
 ARG VITE_AGUI_ENDPOINT=/api
 
 # Build the frontend application
