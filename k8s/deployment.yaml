@@ -15,6 +15,9 @@ spec:
       labels:
         app: agentic-devops
         azure.workload.identity/use: "true"
+      annotations:
+        # Exclude Azure IMDS endpoint from Istio sidecar to allow workload identity
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32"
     spec:
       serviceAccountName: agentic-devops-sa
       containers:
@@ -26,6 +29,12 @@ spec:
             - containerPort: 5100
               name: http-backend
           env:
+            - name: AZURE_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: azure-config
+                  key: tenant-id
+                  optional: true
             - name: AZURE_AI_PROJECT_ENDPOINT
               valueFrom:
                 secretKeyRef:
