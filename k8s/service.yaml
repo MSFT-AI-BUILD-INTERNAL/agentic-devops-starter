@@ -15,8 +15,8 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 80
-      name: frontend
+      name: http-frontend
     - protocol: TCP
       port: 5100
       targetPort: 5100
-      name: backend
+      name: http-backend
