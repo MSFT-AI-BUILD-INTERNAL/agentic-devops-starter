@@ -106,7 +106,11 @@ step "Step 4: Testing Connectivity"
 echo "🔍 Testing HTTP connectivity to ${INGRESS_IP}..."
 sleep 10  # Give Azure Load Balancer time to propagate
 
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "http://${INGRESS_IP}" 2>/dev/null || echo "000")
+# Capture both HTTP code and any error messages
+CURL_OUTPUT=$(mktemp)
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "http://${INGRESS_IP}" 2>"$CURL_OUTPUT" || echo "000")
+CURL_ERROR=$(cat "$CURL_OUTPUT")
+rm -f "$CURL_OUTPUT"
 
 if [ "$HTTP_CODE" != "000" ]; then
     info "HTTP response: ${HTTP_CODE}"
@@ -117,6 +121,9 @@ if [ "$HTTP_CODE" != "000" ]; then
     fi
 else
     warn "Connection still timing out after fix."
+    if [ -n "$CURL_ERROR" ]; then
+        echo "   Error details: $CURL_ERROR"
+    fi
     echo ""
     echo "Additional troubleshooting steps:"
     echo "1. Check Azure Network Security Group rules:"

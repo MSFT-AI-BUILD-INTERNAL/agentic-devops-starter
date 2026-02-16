@@ -445,7 +445,7 @@ kubectl exec -n istio-system deploy/istio-ingressgateway -- curl -s http://local
    - Azure resource provider registration issues
    - Check: `kubectl describe svc istio-ingressgateway -n istio-system`
 
-**Note**: The GitHub Actions deployment workflow now automatically ensures the correct annotations are applied on every deployment (as of PR #81 and this fix).
+**Note**: The GitHub Actions deployment workflow now automatically ensures the correct annotations are applied on every deployment.
 
 #### 4. TLS Certificate Errors
 

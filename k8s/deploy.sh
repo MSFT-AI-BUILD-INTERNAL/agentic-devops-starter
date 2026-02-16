@@ -74,7 +74,8 @@ kubectl annotate svc istio-ingressgateway -n istio-system \
   "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
   --overwrite
 
-# Configure Azure Load Balancer health probe
+# Configure Azure Load Balancer health probe path
+# Istio provides health checks at /healthz/ready on port 15021 (status-port)
 kubectl annotate svc istio-ingressgateway -n istio-system \
   "service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path=/healthz/ready" \
   --overwrite

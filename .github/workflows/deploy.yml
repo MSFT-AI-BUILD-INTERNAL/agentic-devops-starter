@@ -135,8 +135,9 @@ jobs:
             "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
             --overwrite
           
-          # Configure Azure Load Balancer health probe to use the correct port
-          # Istio ingress gateway listens on port 15021 for health checks
+          # Configure Azure Load Balancer health probe path for Istio
+          # Istio provides health checks at /healthz/ready on port 15021 (status-port)
+          # Azure Load Balancer will automatically discover the port from the service configuration
           kubectl annotate svc istio-ingressgateway -n istio-system \
             "service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path=/healthz/ready" \
             --overwrite
