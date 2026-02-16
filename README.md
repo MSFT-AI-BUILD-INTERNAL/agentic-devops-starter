@@ -198,6 +198,7 @@ See architecture comparison in [`/infra-aks-archived/README_ARCHIVED.md`](./infr
 ## Documentation
 
 - **[Azure App Service Deployment Guide](./docs/AZURE_APPSERVICE_DEPLOYMENT.md)**: Complete App Service deployment workflow
+- **[Migration Guide](./docs/MIGRATION_GUIDE.md)**: Step-by-step guide for migrating from AKS to App Service
 - **[Infrastructure Setup](./infra-appservice/README.md)**: Terraform configuration and Azure resources
 - **[Backend API Docs](./app/README.md)**: Python application architecture and usage
 - **[Frontend Chatbot UI](./app/frontend/README.md)**: Web interface setup and development
