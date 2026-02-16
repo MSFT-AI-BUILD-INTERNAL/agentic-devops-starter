@@ -173,6 +173,7 @@ jobs:
           # Apply Istio Gateway and VirtualService
           kubectl apply -f k8s/istio-gateway.yaml
           kubectl apply -f k8s/istio-virtualservice.yaml
+          kubectl apply -f k8s/istio-destinationrule.yaml
           
           # Restart pods to ensure sidecar injection
           SIDECAR_COUNT=$(kubectl get pods -l app=agentic-devops -o jsonpath='{range .items[*]}{.spec.containers[*].name}{"\n"}{end}' 2>/dev/null | grep -c "istio-proxy" || echo "0")

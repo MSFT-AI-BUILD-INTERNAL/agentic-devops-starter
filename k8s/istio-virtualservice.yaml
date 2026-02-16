@@ -18,6 +18,7 @@ spec:
             prefix: /api/
       rewrite:
         uri: /
+      timeout: 0s  # Disable timeout for SSE/streaming responses
       route:
         - destination:
             host: agentic-devops-service
@@ -43,6 +44,7 @@ spec:
             prefix: /docs
         - uri:
             prefix: /openapi.json
+      timeout: 30s
       route:
         - destination:
             host: agentic-devops-service

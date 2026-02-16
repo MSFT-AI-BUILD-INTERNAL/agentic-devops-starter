@@ -24,7 +24,7 @@ spec:
           image: ${ACR_NAME}.azurecr.io/agentic-devops-starter-backend:${IMAGE_TAG}
           ports:
             - containerPort: 5100
-              name: backend
+              name: http-backend
           env:
             - name: AZURE_AI_PROJECT_ENDPOINT
               valueFrom:
@@ -76,7 +76,7 @@ spec:
           image: ${ACR_NAME}.azurecr.io/agentic-devops-starter-frontend:${IMAGE_TAG}
           ports:
             - containerPort: 80
-              name: frontend
+              name: http-frontend
           resources:
             requests:
               memory: "128Mi"
