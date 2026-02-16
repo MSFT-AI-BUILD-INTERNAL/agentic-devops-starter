@@ -361,6 +361,45 @@ kubectl logs -n cert-manager -l app=cert-manager
 - Verify domain name matches certificate
 - Check if using staging issuer (not trusted by browsers)
 
+#### 5. Azure Workload Identity Authentication Failures
+
+**Problem**: Backend shows Azure AD authentication errors like:
+```
+WorkloadIdentityCredential: Microsoft Entra ID error '(unauthorized_client) AADSTS700016: Application with identifier '...' was not found in the directory'
+```
+
+**Root Cause**: Istio's sidecar proxy intercepts traffic to Azure's Instance Metadata Service (IMDS), preventing workload identity token exchange.
+
+**Solution**: Add Istio traffic exclusion annotation to the deployment:
+
+```yaml
+spec:
+  template:
+    metadata:
+      annotations:
+        # Exclude Azure IMDS endpoint from Istio sidecar
+        traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32"
+```
+
+This annotation tells Istio to bypass the sidecar proxy for requests to the Azure IMDS endpoint (169.254.169.254), allowing workload identity authentication to work correctly.
+
+**Verification**:
+```bash
+# Check if annotation is present
+kubectl get pod -l app=agentic-devops -o yaml | grep -A 2 excludeOutboundIPRanges
+
+# Check environment variables are set
+kubectl exec -it deployment/agentic-devops-app -c backend -- env | grep AZURE
+
+# Check workload identity configuration
+kubectl describe serviceaccount agentic-devops-sa
+```
+
+**Additional Requirements**:
+- Ensure `AZURE_TENANT_ID` is set in the pod's environment (from azure-config secret)
+- Verify the service account has the correct `azure.workload.identity/client-id` annotation
+- Confirm the pod has the label `azure.workload.identity/use: "true"`
+
 ## CI/CD Integration
 
 The GitHub Actions workflow automatically:
