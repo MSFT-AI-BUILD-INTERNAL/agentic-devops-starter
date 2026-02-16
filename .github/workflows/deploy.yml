@@ -182,7 +182,7 @@ jobs:
           echo "✅ Deployment complete. Traffic routing handled by Istio Ingress Gateway with Azure Load Balancer."
 
       - name: Setup HTTPS with Let's Encrypt (if configured)
-        if: secrets.LETSENCRYPT_EMAIL != ''
+        if: ${{ secrets.LETSENCRYPT_EMAIL != '' }}
         run: |
           export LETSENCRYPT_EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
           
