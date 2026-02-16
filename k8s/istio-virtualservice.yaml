@@ -1,5 +1,5 @@
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: agentic-devops-virtualservice
@@ -18,7 +18,9 @@ spec:
             prefix: /api/
       rewrite:
         uri: /
-      timeout: 0s  # Disable timeout for SSE/streaming responses
+      timeout: 3600s  # 1 hour — long timeout for SSE/streaming responses
+      retries:
+        attempts: 0  # Disable retries for SSE streaming to prevent duplicate/broken responses
       route:
         - destination:
             host: agentic-devops-service
