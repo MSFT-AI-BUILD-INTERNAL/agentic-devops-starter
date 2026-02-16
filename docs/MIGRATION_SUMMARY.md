@@ -80,8 +80,10 @@ Container (port 8080)
 - `README.md` - New architecture and quick start
 - `terraform.tfvars.example` - App Service variables
 
-**Preserved:**
-- Old configs in `.bak` files for reference
+**Removed:**
+- All AKS, network, and managed identity infrastructure modules
+- k8s/ directory with all Kubernetes manifests
+- Istio documentation (no longer applicable)
 
 ## Benefits Achieved
 
@@ -201,7 +203,7 @@ All feedback addressed:
 
 ## Files Changed
 
-### Created (13 files)
+### Created (8 files)
 - `app/Dockerfile.appservice`
 - `infra/app-service/main.tf`
 - `infra/app-service/variables.tf`
@@ -210,14 +212,10 @@ All feedback addressed:
 - `infra/app-service-plan/variables.tf`
 - `infra/app-service-plan/outputs.tf`
 - `docs/APPSERVICE_DEPLOYMENT.md`
-- `.github/workflows/deploy-aks.yml.bak`
-- `README-AKS.md.bak`
-- `infra/README-AKS.md.bak`
-- `infra/outputs.tf.bak`
 - `docs/MIGRATION_SUMMARY.md` (this file)
 
 ### Modified (7 files)
-- `infra/main.tf` - Commented out AKS, added App Service
+- `infra/main.tf` - Removed AKS modules, added App Service
 - `infra/variables.tf` - Updated for App Service
 - `infra/outputs.tf` - App Service outputs
 - `infra/terraform.tfvars.example` - New variables
@@ -225,30 +223,23 @@ All feedback addressed:
 - `README.md` - Updated architecture
 - `.github/workflows/deploy.yml` - App Service deployment
 
-### Removed (0 files)
-- No files deleted (all preserved as .bak)
+### Removed (31 files)
+- `infra/aks/` - Kubernetes cluster module (no longer needed)
+- `infra/network/` - VNET/subnet module (not required for App Service)
+- `infra/managed-identity/` - Workload identity module (replaced by system-assigned)
+- `k8s/` - All Kubernetes manifests and deployment scripts (no longer needed)
+- `docs/ISTIO_*.md` - Istio documentation (not applicable to App Service)
 
 ## Rollback Plan
 
-If needed, to rollback to AKS:
+The migration is complete and all AKS/Kubernetes infrastructure has been removed from the repository. If rollback to AKS is needed:
 
-```bash
-# 1. Restore old files
-mv .github/workflows/deploy-aks.yml.bak .github/workflows/deploy.yml
-mv README-AKS.md.bak README.md
-mv infra/README-AKS.md.bak infra/README.md
-mv infra/outputs.tf.bak infra/outputs.tf
+1. Restore from git history (before this migration):
+   ```bash
+   git checkout <pre-migration-commit>
+   ```
 
-# 2. Uncomment AKS modules in infra/main.tf
-# Restore commented sections
-
-# 3. Destroy App Service infrastructure
-terraform destroy -target=module.app_service
-terraform destroy -target=module.app_service_plan
-
-# 4. Deploy AKS infrastructure
-terraform apply
-```
+2. Or manually recreate the infrastructure using the AKS Terraform modules from the git history
 
 ## Next Steps
 
