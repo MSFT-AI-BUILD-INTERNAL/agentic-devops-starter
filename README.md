@@ -533,21 +533,40 @@ This usually means the Workload Identity webhook didn't inject the token. Check:
 
 This indicates the Istio Ingress Gateway is not accessible from the internet, usually due to incorrect Azure Load Balancer configuration.
 
-**Solution**: The deployment workflow automatically configures the istio-ingressgateway service for external access. If you still see this error:
+**Quick Fix**: Run the automated remediation script:
+```bash
+./k8s/fix-connectivity.sh
+```
 
-1. Verify the LoadBalancer annotation is present:
+**Manual Fix**: The deployment workflow automatically configures the istio-ingressgateway service for external access. If you still see this error:
+
+1. Verify the LoadBalancer annotations are present:
    ```bash
-   kubectl get svc istio-ingressgateway -n istio-system -o yaml | grep azure-load-balancer-internal
-   # Should show: service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+   kubectl get svc istio-ingressgateway -n istio-system -o yaml | grep azure-load-balancer
+   # Should show:
+   #   service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+   #   service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /healthz/ready
    ```
 
-2. Check if LoadBalancer IP is assigned:
+2. If annotations are missing, apply them:
+   ```bash
+   kubectl annotate svc istio-ingressgateway -n istio-system \
+     "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
+     --overwrite
+   kubectl annotate svc istio-ingressgateway -n istio-system \
+     "service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path=/healthz/ready" \
+     --overwrite
+   ```
+   
+   Wait 2-3 minutes for Azure Load Balancer to reconfigure.
+
+3. Check if LoadBalancer IP is assigned:
    ```bash
    kubectl get svc istio-ingressgateway -n istio-system
    # EXTERNAL-IP should show a public IP, not <pending>
    ```
 
-3. Verify network security groups in Azure Portal allow inbound traffic on ports 80 and 443
+4. Verify network security groups in Azure Portal allow inbound traffic on ports 80 and 443
 
 For more details, see the [ISTIO_SETUP.md](./docs/ISTIO_SETUP.md#3-connection-refused-or-timeout-err_connection_timed_out) troubleshooting guide.
 

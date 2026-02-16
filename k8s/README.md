@@ -33,6 +33,7 @@ Access your application:
 
 ### Setup Scripts
 - **deploy.sh**: Full deployment script (Istio install → app deploy → Gateway/VirtualService → connectivity verification)
+- **fix-connectivity.sh**: Manual remediation script for connection timeout issues (fixes ERR_CONNECTION_TIMED_OUT)
 - **setup-istio-https.sh**: Complete setup script for Istio with HTTPS
 - **setup-https.sh**: Legacy NGINX Ingress setup script (deprecated)
 - **cert-issuer.yaml**: Legacy cert-issuer for NGINX (deprecated)
@@ -288,6 +289,38 @@ kubectl get ingress agentic-devops-ingress
 The application will be accessible at `http://<APP-GATEWAY-PUBLIC-IP>/` (or `https://` if SSL is configured)
 
 ## Troubleshooting
+
+### Connection Timeout (ERR_CONNECTION_TIMED_OUT)
+
+If you cannot access the application via the external IP and get a connection timeout error:
+
+**Quick Fix**: Run the automated remediation script:
+```bash
+./k8s/fix-connectivity.sh
+```
+
+This script will:
+1. Apply correct Azure Load Balancer annotations
+2. Configure health probe paths
+3. Wait for Azure to reconfigure the Load Balancer
+4. Verify connectivity
+
+**Manual Steps**:
+```bash
+# Check current annotations
+kubectl get svc istio-ingressgateway -n istio-system -o yaml | grep azure-load-balancer
+
+# Apply required annotations
+kubectl annotate svc istio-ingressgateway -n istio-system \
+  "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
+  --overwrite
+
+kubectl annotate svc istio-ingressgateway -n istio-system \
+  "service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path=/healthz/ready" \
+  --overwrite
+```
+
+Wait 2-3 minutes for Azure Load Balancer to reconfigure, then test connectivity.
 
 ### Quick Diagnostics
 

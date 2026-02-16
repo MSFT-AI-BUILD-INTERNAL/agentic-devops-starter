@@ -348,26 +348,43 @@ kubectl logs -n cert-manager -l app=cert-manager
 
 **Root Causes**:
 1. Missing or incorrect Azure Load Balancer annotation on istio-ingressgateway service
-2. Azure Load Balancer IP not yet assigned
-3. Network security groups blocking traffic
+2. Azure Load Balancer health probe configuration issues
+3. Azure Load Balancer IP not yet assigned
+4. Network security groups blocking traffic
 
-**Solutions**:
-
-**Step 1: Verify LoadBalancer annotation**
+**Quick Fix**: Run the automated remediation script:
 ```bash
-# Check if the service has the correct annotation
+./k8s/fix-connectivity.sh
+```
+
+This script will automatically apply all necessary annotations and verify connectivity.
+
+**Manual Fix Steps**:
+
+**Step 1: Verify and apply LoadBalancer annotations**
+```bash
+# Check if the service has the correct annotations
 kubectl get svc istio-ingressgateway -n istio-system -o yaml | grep azure-load-balancer
 
 # Should show:
 #   service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+#   service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /healthz/ready
 ```
 
-If the annotation is missing or set to "true", apply it:
+If annotations are missing or incorrect, apply them:
 ```bash
+# Set Load Balancer to external (public)
 kubectl annotate svc istio-ingressgateway -n istio-system \
   "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
   --overwrite
+
+# Configure health probe path for Istio
+kubectl annotate svc istio-ingressgateway -n istio-system \
+  "service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path=/healthz/ready" \
+  --overwrite
 ```
+
+**Important**: After applying annotations, Azure Load Balancer needs 1-3 minutes to reconfigure. The service will be briefly unavailable during this process.
 
 **Step 2: Verify LoadBalancer IP is assigned**
 ```bash
@@ -377,19 +394,58 @@ kubectl get svc istio-ingressgateway -n istio-system
 # If <pending>, wait a few minutes for Azure to provision the Load Balancer
 ```
 
-**Step 3: Check Azure Load Balancer in Azure Portal**
+**Step 3: Test connectivity**
+```bash
+INGRESS_IP=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+curl -v http://$INGRESS_IP
+
+# Should return HTTP response (200, 404, or other)
+# If timeout persists, proceed to Step 4
+```
+
+**Step 4: Check Azure Load Balancer in Azure Portal**
 - Navigate to: Resource Groups → AKS cluster resource group → Load Balancers
 - Verify a Load Balancer exists with a public IP
 - Check frontend IP configuration has a public IP address
+- Check backend pool has healthy targets
+- Verify health probe is configured and showing healthy status
 
-**Step 4: Verify network security groups**
+**Step 5: Verify network security groups**
 ```bash
 # Check NSG rules in Azure Portal
 # Resource Groups → AKS RG → Network security groups → Inbound security rules
 # Ensure ports 80 and 443 are allowed from Internet
 ```
 
-**Note**: The GitHub Actions deployment workflow now automatically ensures the correct annotation is applied on every deployment (as of this fix).
+**Step 6: Check Istio Gateway Pod Health**
+```bash
+# Verify Istio gateway pods are running
+kubectl get pods -n istio-system -l app=istio-ingressgateway
+
+# Check gateway logs for errors
+kubectl logs -n istio-system -l app=istio-ingressgateway --tail=50
+
+# Test health endpoint directly on the pod
+kubectl exec -n istio-system deploy/istio-ingressgateway -- curl -s http://localhost:15021/healthz/ready
+# Should return "HTTP/1.1 200 OK"
+```
+
+**Common Issues**:
+
+1. **"Connection timed out" immediately after deployment**
+   - Azure Load Balancer is still provisioning (wait 2-5 minutes)
+   - Health probes are failing (check backend pool health in Azure Portal)
+
+2. **"Connection timed out" after annotations applied**
+   - NSG rules blocking traffic (verify inbound rules allow ports 80/443)
+   - Wrong annotation value (ensure `azure-load-balancer-internal` is set to "false")
+
+3. **External IP shows as `<pending>`**
+   - Azure subscription quota exceeded
+   - Azure resource provider registration issues
+   - Check: `kubectl describe svc istio-ingressgateway -n istio-system`
+
+**Note**: The GitHub Actions deployment workflow now automatically ensures the correct annotations are applied on every deployment (as of PR #81 and this fix).
 
 #### 4. TLS Certificate Errors
 

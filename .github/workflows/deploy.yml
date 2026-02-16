@@ -134,6 +134,13 @@ jobs:
           kubectl annotate svc istio-ingressgateway -n istio-system \
             "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
             --overwrite
+          
+          # Configure Azure Load Balancer health probe to use the correct port
+          # Istio ingress gateway listens on port 15021 for health checks
+          kubectl annotate svc istio-ingressgateway -n istio-system \
+            "service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path=/healthz/ready" \
+            --overwrite
+          
           echo "✅ Istio Ingress Gateway configured for external access"
           
           # Wait for Istio CRDs to be established
@@ -307,6 +314,11 @@ jobs:
             else
               echo "✅ HTTPS will be available at: https://${INGRESS_IP}.nip.io"
             fi
+            
+            # Verify the service annotations
+            echo ""
+            echo "📋 Verifying LoadBalancer configuration:"
+            kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.metadata.annotations}' | grep -o 'azure-load-balancer[^,}]*' || true
           else
             echo "⚠️  LoadBalancer IP not yet assigned"
           fi

@@ -73,7 +73,13 @@ info "Istio pods are ready"
 kubectl annotate svc istio-ingressgateway -n istio-system \
   "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
   --overwrite
-info "Ingress gateway annotated for external LB"
+
+# Configure Azure Load Balancer health probe
+kubectl annotate svc istio-ingressgateway -n istio-system \
+  "service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path=/healthz/ready" \
+  --overwrite
+
+info "Ingress gateway annotated for external LB with health probes"
 
 #===============================================================================
 # Step 2: Wait for External IP
