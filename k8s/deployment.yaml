@@ -34,7 +34,6 @@ spec:
                 secretKeyRef:
                   name: azure-config
                   key: tenant-id
-                  optional: true
             - name: AZURE_AI_PROJECT_ENDPOINT
               valueFrom:
                 secretKeyRef:
