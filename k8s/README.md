@@ -1,53 +1,82 @@
 # Kubernetes Deployment Configuration
 
-This directory contains Kubernetes manifests for deploying the Agentic DevOps Starter application to Azure Kubernetes Service (AKS).
+This directory contains Kubernetes manifests for deploying the Agentic DevOps Starter application to Azure Kubernetes Service (AKS) with Istio Ingress Gateway.
 
-## Quick Access via Application Gateway
+## Quick Access via Istio Ingress Gateway
 
-🚀 **Access your application through Azure Application Gateway (L7 Load Balancer) with HTTPS**
+🚀 **Access your application through Istio Ingress Gateway with Azure Load Balancer and optional HTTPS**
 
-After deploying, get the Application Gateway IP:
+After deploying, get the Istio Ingress Gateway IP:
 ```bash
-kubectl get ingress agentic-devops-ingress
+kubectl get svc istio-ingressgateway -n istio-system
 ```
 
 Access your application:
-- **HTTPS (Recommended)**: `https://<APPLICATION-GATEWAY-IP>` or `https://agentic-devops.local` (if DNS configured)
-- **HTTP**: Automatically redirects to HTTPS
+- **HTTP**: `http://<INGRESS-IP>`
+- **HTTPS**: `https://<INGRESS-IP>.nip.io` (if Let's Encrypt is configured)
+- **Custom Domain**: `https://yourdomain.com` (if custom domain is configured)
 
-**Note:** By default, the infrastructure provisions HTTPS with a self-signed certificate from Azure Key Vault. For production, import your own certificate.
+**For detailed setup instructions, see [Istio Setup Guide](../docs/ISTIO_SETUP.md)**
 
 ## Files
 
+### Core Kubernetes Manifests
 - **deployment.yaml**: Defines the Kubernetes Deployment for the application with 2 replicas
 - **service.yaml**: Defines a ClusterIP Service for internal pod communication
-- **ingress.yaml**: Defines Application Gateway Ingress with AGIC annotations and HTTPS support
 - **service-account.yaml**: ServiceAccount for Azure AD Workload Identity
 
-**Note:** The infrastructure now uses Azure Application Gateway with SSL certificates from Azure Key Vault:
-- SSL certificate is stored in Key Vault and automatically provisioned
-- HTTP traffic is automatically redirected to HTTPS
-- Self-signed certificate is created by default (can be replaced with your own certificate)
+### Istio Configuration
+- **istio-gateway.yaml**: Defines the Istio Gateway for HTTP and HTTPS traffic
+- **istio-virtualservice.yaml**: Defines routing rules for frontend and backend services
+- **istio-certificate.yaml**: Certificate resource for Let's Encrypt TLS certificates
+- **cert-issuer-istio.yaml**: ClusterIssuer for Let's Encrypt certificate management
 
-## HTTPS Setup with Application Gateway
+### Setup Scripts
+- **deploy.sh**: Full deployment script (Istio install → app deploy → Gateway/VirtualService → connectivity verification)
+- **setup-istio-https.sh**: Complete setup script for Istio with HTTPS
+- **setup-https.sh**: Legacy NGINX Ingress setup script (deprecated)
+- **cert-issuer.yaml**: Legacy cert-issuer for NGINX (deprecated)
 
-### Automatic HTTPS with Azure Key Vault (Default) ⭐
+## Architecture
 
-The infrastructure is pre-configured for HTTPS with SSL certificate management via Azure Key Vault:
+The application uses **Istio Ingress Gateway** for traffic management:
 
-✅ **What's Already Configured:**
-- Azure Key Vault is provisioned with access policies
-- Self-signed SSL certificate is automatically created for testing
-- Application Gateway has a managed identity with Key Vault access
-- HTTPS listener (port 443) is configured on Application Gateway
-- HTTP to HTTPS redirect is enabled
-- Kubernetes Ingress has TLS configuration
+```
+Internet → Azure Load Balancer → Istio Ingress Gateway → VirtualService → ClusterIP Service → Pods
+           (L4, Port 80/443)    (L7 Routing, TLS)      (Routing Rules)
+```
 
-**Default Setup:**
+### Why Istio?
+
+- **Cost-Effective**: Uses Azure Load Balancer (~$20-30/month) vs Application Gateway (~$140-200/month)
+- **Advanced Traffic Management**: Traffic splitting, canary deployments, circuit breaking
+- **Service Mesh Ready**: Can extend to full service mesh capabilities
+- **Cloud Native**: Kubernetes-native configuration
+- **Better Observability**: Built-in metrics, tracing, and access logs
+
+## Quick Setup
+
+### Option 1: Automated Setup (Recommended)
+
 ```bash
-# After running terraform apply, HTTPS is automatically enabled
-# Access your application:
-https://<APPLICATION-GATEWAY-IP>
+# Set your email for Let's Encrypt (optional)
+export LETSENCRYPT_EMAIL=your-email@example.com
+
+# Run the complete setup
+./k8s/setup-istio-https.sh
+```
+
+This will:
+1. Install Istio with Ingress Gateway
+2. Install cert-manager
+3. Deploy Gateway and VirtualService
+4. Set up HTTPS with Let's Encrypt
+
+### Option 2: Manual Setup
+
+See the [Istio Setup Guide](../docs/ISTIO_SETUP.md) for detailed manual setup instructions.
+
+## HTTPS Setup with Let's Encrypt
 
 # Check certificate details:
 terraform output certificate_secret_id

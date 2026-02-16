@@ -97,6 +97,62 @@ jobs:
             --from-literal=api-version="${{ secrets.AZURE_OPENAI_API_VERSION }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Install Istio (if not already installed)
+        run: |
+          # Check if Istio is already installed
+          if ! kubectl get namespace istio-system &> /dev/null; then
+            echo "📦 Installing Istio..."
+            
+            # Download and install istioctl (match deploy.sh version)
+            ISTIO_VERSION=1.24.3
+            curl -sL https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
+            cd istio-$ISTIO_VERSION
+            export PATH=$PWD/bin:$PATH
+            
+            # Install Istio with default profile and ingress gateway
+            istioctl install --set profile=default \
+              --set components.ingressGateways[0].enabled=true \
+              --set components.ingressGateways[0].name=istio-ingressgateway \
+              --set meshConfig.accessLogFile=/dev/stdout \
+              -y
+            
+            # Wait for Istio components
+            kubectl wait --for=condition=available --timeout=300s deployment/istiod -n istio-system
+            kubectl wait --for=condition=available --timeout=300s deployment/istio-ingressgateway -n istio-system
+            
+            # Annotate for external Azure Load Balancer
+            kubectl annotate svc istio-ingressgateway -n istio-system \
+              "service.beta.kubernetes.io/azure-load-balancer-internal=false" \
+              --overwrite
+            
+            echo "✅ Istio installed successfully"
+          else
+            echo "✅ Istio already installed, skipping..."
+          fi
+
+      - name: Enable Istio sidecar injection
+        run: |
+          kubectl label namespace default istio-injection=enabled --overwrite
+          echo "✅ Sidecar injection enabled for default namespace"
+
+      - name: Install cert-manager (if not already installed)
+        run: |
+          # Check if cert-manager is already installed
+          if ! kubectl get namespace cert-manager &> /dev/null; then
+            echo "📦 Installing cert-manager..."
+            kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+            
+            # Wait for cert-manager to be ready
+            kubectl wait --namespace cert-manager \
+              --for=condition=ready pod \
+              --selector=app.kubernetes.io/instance=cert-manager \
+              --timeout=300s
+            
+            echo "✅ cert-manager installed successfully"
+          else
+            echo "✅ cert-manager already installed, skipping..."
+          fi
+
       - name: Deploy to AKS
         run: |
           # Replace placeholders in deployment manifest
@@ -112,7 +168,52 @@ jobs:
           envsubst < k8s/deployment.yaml | kubectl apply -f -
           kubectl apply -f k8s/service.yaml
           
-          echo "✅ Deployment complete. Kubernetes LoadBalancer service will provision an Azure Load Balancer."
+          # Apply Istio Gateway and VirtualService
+          kubectl apply -f k8s/istio-gateway.yaml
+          kubectl apply -f k8s/istio-virtualservice.yaml
+          
+          # Restart pods to ensure sidecar injection
+          SIDECAR_COUNT=$(kubectl get pods -l app=agentic-devops -o jsonpath='{range .items[*]}{.spec.containers[*].name}{"\n"}{end}' 2>/dev/null | grep -c "istio-proxy" || echo "0")
+          if [ "$SIDECAR_COUNT" -eq 0 ]; then
+            echo "⚠️ Pods missing sidecar, restarting deployment..."
+            kubectl rollout restart deployment/agentic-devops-app
+          fi
+          
+          echo "✅ Deployment complete. Traffic routing handled by Istio Ingress Gateway with Azure Load Balancer."
+
+      - name: Setup HTTPS with Let's Encrypt (if configured)
+        if: secrets.LETSENCRYPT_EMAIL != ''
+        run: |
+          export LETSENCRYPT_EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
+          
+          # Get Istio Ingress Gateway IP
+          echo "⏳ Waiting for Istio Ingress Gateway IP..."
+          sleep 15
+          INGRESS_IP=$(kubectl get service istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          
+          if [ -z "$INGRESS_IP" ]; then
+            echo "⚠️  LoadBalancer IP not yet assigned, skipping HTTPS setup"
+            exit 0
+          fi
+          
+          echo "✅ Istio Ingress Gateway IP: $INGRESS_IP"
+          
+          # Use nip.io domain for testing or custom domain if provided
+          if [ -n "${{ secrets.DOMAIN_NAME }}" ]; then
+            export DOMAIN_NAME="${{ secrets.DOMAIN_NAME }}"
+          else
+            export DOMAIN_NAME="${INGRESS_IP}.nip.io"
+          fi
+          
+          echo "📝 Setting up HTTPS for domain: $DOMAIN_NAME"
+          
+          # Apply cert-issuer
+          envsubst < k8s/cert-issuer-istio.yaml | kubectl apply -f -
+          
+          # Apply certificate
+          envsubst < k8s/istio-certificate.yaml | kubectl apply -f -
+          
+          echo "✅ HTTPS setup initiated. Certificate will be issued automatically."
 
       - name: Wait for deployment rollout
         id: wait_for_rollout
@@ -169,7 +270,21 @@ jobs:
           echo "=== Frontend Container Logs ==="
           kubectl logs -l app=agentic-devops -c frontend --tail=100 || echo "No frontend logs available"
 
-      - name: Get LoadBalancer IP
+      - name: Get Istio Ingress Gateway IP
         run: |
-          echo "Fetching LoadBalancer service external IP..."
-          kubectl get service agentic-devops-service
+          echo "Fetching Istio Ingress Gateway LoadBalancer IP..."
+          kubectl get service istio-ingressgateway -n istio-system
+          
+          INGRESS_IP=$(kubectl get service istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -n "$INGRESS_IP" ]; then
+            echo "✅ Access your application at: http://$INGRESS_IP"
+            if [ -n "${{ secrets.LETSENCRYPT_EMAIL }}" ]; then
+              if [ -n "${{ secrets.DOMAIN_NAME }}" ]; then
+                echo "✅ HTTPS will be available at: https://${{ secrets.DOMAIN_NAME }}"
+              else
+                echo "✅ HTTPS will be available at: https://${INGRESS_IP}.nip.io"
+              fi
+            fi
+          else
+            echo "⚠️  LoadBalancer IP not yet assigned"
+          fi

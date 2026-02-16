@@ -107,3 +107,25 @@ module "managed_identity" {
 
   depends_on = [module.aks]
 }
+
+# Role assignment: Azure AI Developer on AI Foundry for Workload Identity
+resource "azurerm_role_assignment" "workload_identity_ai_developer" {
+  count                            = var.ai_foundry_resource_id != "" ? 1 : 0
+  principal_id                     = module.managed_identity.identity_principal_id
+  role_definition_name             = "Azure AI Developer"
+  scope                            = var.ai_foundry_resource_id
+  skip_service_principal_aad_check = true
+
+  depends_on = [module.managed_identity]
+}
+
+# Role assignment: Cognitive Services User on AI Foundry for Agents API data actions
+resource "azurerm_role_assignment" "workload_identity_cognitive_services_user" {
+  count                            = var.ai_foundry_resource_id != "" ? 1 : 0
+  principal_id                     = module.managed_identity.identity_principal_id
+  role_definition_name             = "Cognitive Services User"
+  scope                            = var.ai_foundry_resource_id
+  skip_service_principal_aad_check = true
+
+  depends_on = [module.managed_identity]
+}

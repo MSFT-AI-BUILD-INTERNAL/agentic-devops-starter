@@ -1,0 +1,30 @@
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: agentic-devops-gateway
+  namespace: default
+spec:
+  selector:
+    istio: ingressgateway # Use Istio default gateway
+  servers:
+    # HTTP server (will redirect to HTTPS when certificate is configured)
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+      # Uncomment below to enable HTTP to HTTPS redirect after certificate is set up
+      # tls:
+      #   httpsRedirect: true
+    # HTTPS server — uncomment after cert-manager issues the TLS certificate
+    # - port:
+    #     number: 443
+    #     name: https
+    #     protocol: HTTPS
+    #   hosts:
+    #     - "*"
+    #   tls:
+    #     mode: SIMPLE
+    #     credentialName: agentic-devops-tls # Must match the secret created by cert-manager
