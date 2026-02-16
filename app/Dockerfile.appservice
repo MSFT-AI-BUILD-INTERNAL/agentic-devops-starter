@@ -1,0 +1,140 @@
+# Multi-stage build for combined frontend + backend (sidecar pattern for Azure App Service)
+
+# Stage 1: Build Frontend
+FROM node:20-alpine AS frontend-build
+
+WORKDIR /app/frontend
+
+# Copy frontend package files
+COPY app/frontend/package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy frontend source code
+COPY app/frontend/ .
+
+# Set API endpoint to use backend service on localhost
+ARG VITE_AGUI_ENDPOINT=/api
+
+# Build the frontend application
+RUN VITE_AGUI_ENDPOINT=$VITE_AGUI_ENDPOINT npm run build
+
+# Stage 2: Build Python Backend with uv
+FROM python:3.12-slim AS backend-base
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    g++ \
+    libffi-dev \
+    libssl-dev \
+    nginx \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv package manager
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Copy backend dependency files
+COPY app/pyproject.toml app/uv.lock ./
+
+# Install Python dependencies using uv with system python
+RUN uv sync --frozen --no-dev
+
+# Copy backend application code
+COPY app/ .
+
+# Stage 3: Final combined image
+FROM backend-base AS final
+
+# Copy built frontend from frontend-build stage
+COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
+
+# Configure nginx for SPA routing and API proxy to backend
+RUN echo 'server { \
+    listen 8080; \
+    server_name _; \
+    root /usr/share/nginx/html; \
+    index index.html; \
+    \
+    # Security headers \
+    add_header X-Content-Type-Options "nosniff" always; \
+    add_header X-Frame-Options "DENY" always; \
+    add_header X-XSS-Protection "1; mode=block" always; \
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always; \
+    \
+    # Block unwanted HTTP methods \
+    if ($request_method !~ ^(GET|POST|HEAD|OPTIONS)$ ) { \
+        return 405; \
+    } \
+    \
+    # API proxy to backend on port 5100 \
+    location /api/ { \
+        proxy_pass http://127.0.0.1:5100/; \
+        proxy_http_version 1.1; \
+        proxy_set_header Upgrade $http_upgrade; \
+        proxy_set_header Connection "upgrade"; \
+        proxy_set_header Host $host; \
+        proxy_set_header X-Real-IP $remote_addr; \
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; \
+        proxy_set_header X-Forwarded-Proto $scheme; \
+        proxy_cache_bypass $http_upgrade; \
+        proxy_read_timeout 300s; \
+        proxy_connect_timeout 75s; \
+    } \
+    \
+    # Health check endpoint \
+    location /health { \
+        proxy_pass http://127.0.0.1:5100/health; \
+        proxy_http_version 1.1; \
+        access_log off; \
+    } \
+    \
+    # SPA routing - serve index.html for all other routes \
+    location / { \
+        try_files $uri $uri/ /index.html; \
+    } \
+}' > /etc/nginx/sites-available/default
+
+# Create nginx sites-enabled directory if it doesn't exist
+RUN mkdir -p /etc/nginx/sites-enabled && \
+    ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+
+# Configure supervisor to run both nginx and backend
+RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'nodaemon=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'user=root' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'logfile=/var/log/supervisor/supervisord.log' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo '[program:nginx]' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'command=/usr/sbin/nginx -g "daemon off;"' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stdout_logfile=/dev/stdout' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stderr_logfile=/dev/stderr' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo '[program:backend]' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'command=/app/.venv/bin/python agui_server.py' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'directory=/app' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stdout_logfile=/dev/stdout' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stderr_logfile=/dev/stderr' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'environment=PYTHONUNBUFFERED=1,PATH="/app/.venv/bin:%(ENV_PATH)s"' >> /etc/supervisor/conf.d/supervisord.conf
+
+# Expose port 8080 for nginx (frontend + API proxy)
+# Azure App Service will route to this port
+EXPOSE 8080
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Run supervisor to start both services
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
