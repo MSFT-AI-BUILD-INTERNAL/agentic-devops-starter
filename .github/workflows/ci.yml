@@ -28,7 +28,7 @@ jobs:
     - name: Install dependencies
       working-directory: ./app
       run: |
-        uv sync --frozen --all-groups
+        uv sync --frozen --all-extras
 
     - name: Run linting
       working-directory: ./app
