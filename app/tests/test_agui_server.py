@@ -93,33 +93,15 @@ def test_agent_creation(test_env: None) -> None:
     agent = create_agent()
     assert agent is not None
     assert agent.name == "AGUIAssistant"
-    # Note: ChatAgent stores tools internally, they're not exposed as a public attribute
-
-
-def test_agent_has_time_zone_tool(test_env: None) -> None:
-    """Test that the agent is configured with tools."""
-    from agui_server import create_agent
-
-    agent = create_agent()
-    # Note: ChatAgent stores tools internally
-    # We can verify the agent was created successfully
-    assert agent.name == "AGUIAssistant"
 
 
 def test_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that appropriate error is raised when API keys are missing."""
-    # Clear all API keys
-    monkeypatch.delenv("AZURE_AI_PROJECT_ENDPOINT", raising=False)
-    monkeypatch.delenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", raising=False)
-    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    import agui_server
 
-    # Need to reload the module to pick up the new environment
-    import sys
-    if 'agui_server' in sys.modules:
-        del sys.modules['agui_server']
-
-    from agui_server import create_agent
+    # Patch module-level constants (load_dotenv reads .env at import time)
+    monkeypatch.setattr(agui_server, "ENDPOINT", None)
+    monkeypatch.setattr(agui_server, "DEPLOYMENT", None)
 
     with pytest.raises(ValueError, match="must be set"):
-        create_agent()
+        agui_server.create_agent()

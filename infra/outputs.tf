@@ -1,3 +1,6 @@
+# Output values from infrastructure provisioning
+
+# Resource Group
 output "resource_group_name" {
   description = "Name of the resource group"
   value       = azurerm_resource_group.main.name
@@ -8,83 +11,61 @@ output "resource_group_location" {
   value       = azurerm_resource_group.main.location
 }
 
-output "acr_id" {
-  description = "The ID of the Azure Container Registry"
-  value       = module.acr.acr_id
-}
-
+# Azure Container Registry
 output "acr_name" {
-  description = "The name of the Azure Container Registry"
+  description = "Name of the Azure Container Registry"
   value       = module.acr.acr_name
 }
 
+output "acr_id" {
+  description = "ID of the Azure Container Registry"
+  value       = module.acr.acr_id
+}
+
 output "acr_login_server" {
-  description = "The login server URL for the Azure Container Registry"
+  description = "Login server URL for the Azure Container Registry"
   value       = module.acr.acr_login_server
 }
 
-output "aks_id" {
-  description = "The ID of the Azure Kubernetes Service cluster"
-  value       = module.aks.aks_id
+# App Service Plan
+output "app_service_plan_id" {
+  description = "ID of the App Service Plan"
+  value       = module.app_service_plan.service_plan_id
 }
 
-output "aks_name" {
-  description = "The name of the Azure Kubernetes Service cluster"
-  value       = module.aks.aks_name
+output "app_service_plan_name" {
+  description = "Name of the App Service Plan"
+  value       = module.app_service_plan.service_plan_name
 }
 
-output "aks_fqdn" {
-  description = "The FQDN of the Azure Kubernetes Service cluster"
-  value       = module.aks.aks_fqdn
+# App Service
+output "app_service_name" {
+  description = "Name of the App Service"
+  value       = module.app_service.app_service_name
 }
 
-output "aks_node_resource_group" {
-  description = "The resource group containing AKS nodes"
-  value       = module.aks.aks_node_resource_group
+output "app_service_default_hostname" {
+  description = "Default hostname of the App Service (access URL)"
+  value       = module.app_service.app_service_default_hostname
 }
 
-output "configure_kubectl_command" {
-  description = "Command to configure kubectl to connect to the AKS cluster"
-  value       = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${module.aks.aks_name}"
+output "app_service_url" {
+  description = "HTTPS URL of the App Service"
+  value       = "https://${module.app_service.app_service_default_hostname}"
 }
 
+output "app_service_identity_principal_id" {
+  description = "Principal ID of the App Service managed identity"
+  value       = module.app_service.app_service_identity_principal_id
+}
+
+# Log Analytics
 output "log_analytics_workspace_id" {
-  description = "The ID of the Log Analytics Workspace"
+  description = "ID of the Log Analytics Workspace"
   value       = module.log_analytics.workspace_id
 }
 
 output "log_analytics_workspace_name" {
-  description = "The name of the Log Analytics Workspace"
+  description = "Name of the Log Analytics Workspace"
   value       = module.log_analytics.workspace_name
-}
-
-output "workload_identity_name" {
-  description = "Name of the workload managed identity"
-  value       = module.managed_identity.identity_name
-}
-
-output "workload_identity_client_id" {
-  description = "Client ID of the workload managed identity"
-  value       = module.managed_identity.identity_client_id
-}
-
-output "workload_identity_principal_id" {
-  description = "Principal ID of the workload managed identity"
-  value       = module.managed_identity.identity_principal_id
-}
-
-output "oidc_issuer_url" {
-  description = "OIDC issuer URL for Workload Identity"
-  value       = module.aks.oidc_issuer_url
-}
-
-# Network Outputs
-output "vnet_id" {
-  description = "ID of the virtual network"
-  value       = module.network.vnet_id
-}
-
-output "vnet_name" {
-  description = "Name of the virtual network"
-  value       = module.network.vnet_name
 }

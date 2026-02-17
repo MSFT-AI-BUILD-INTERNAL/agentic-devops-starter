@@ -28,52 +28,96 @@ variable "acr_admin_enabled" {
   default     = false
 }
 
-variable "aks_cluster_name" {
-  description = "Name of the Azure Kubernetes Service cluster"
+# AKS variables - Commented out for App Service migration
+# variable "aks_cluster_name" {
+#   description = "Name of the Azure Kubernetes Service cluster"
+#   type        = string
+#   default     = "aks-agentic-devops"
+# }
+#
+# variable "aks_dns_prefix" {
+#   description = "DNS prefix for the AKS cluster"
+#   type        = string
+#   default     = "aks-agentic-devops"
+# }
+#
+# variable "kubernetes_version" {
+#   description = "Kubernetes version to use for the AKS cluster"
+#   type        = string
+#   default     = "1.32"
+# }
+#
+# variable "node_count" {
+#   description = "Initial number of nodes in the default node pool"
+#   type        = number
+#   default     = 2
+# }
+#
+# variable "vm_size" {
+#   description = "Size of the VMs in the default node pool"
+#   type        = string
+#   default     = "Standard_D2s_v3"
+# }
+#
+# variable "enable_auto_scaling" {
+#   description = "Enable auto-scaling for the default node pool"
+#   type        = bool
+#   default     = true
+# }
+#
+# variable "min_node_count" {
+#   description = "Minimum number of nodes when auto-scaling is enabled"
+#   type        = number
+#   default     = 1
+# }
+#
+# variable "max_node_count" {
+#   description = "Maximum number of nodes when auto-scaling is enabled"
+#   type        = number
+#   default     = 5
+# }
+
+# App Service variables
+variable "app_service_plan_name" {
+  description = "Name of the App Service Plan"
   type        = string
-  default     = "aks-agentic-devops"
+  default     = "asp-agentic-devops"
 }
 
-variable "aks_dns_prefix" {
-  description = "DNS prefix for the AKS cluster"
+variable "app_service_plan_sku" {
+  description = "SKU for the App Service Plan (P1v3, P2v3, P3v3)"
   type        = string
-  default     = "aks-agentic-devops"
+  default     = "P1v3"
 }
 
-variable "kubernetes_version" {
-  description = "Kubernetes version to use for the AKS cluster"
+variable "app_service_name" {
+  description = "Name of the App Service (must be globally unique)"
   type        = string
-  default     = "1.32"
+  default     = "app-agentic-devops"
 }
 
-variable "node_count" {
-  description = "Initial number of nodes in the default node pool"
-  type        = number
-  default     = 2
-}
-
-variable "vm_size" {
-  description = "Size of the VMs in the default node pool"
+variable "backend_image_name" {
+  description = "Name of the backend container image"
   type        = string
-  default     = "Standard_D2s_v3"
+  default     = "agentic-devops-starter"
 }
 
-variable "enable_auto_scaling" {
-  description = "Enable auto-scaling for the default node pool"
-  type        = bool
-  default     = true
+variable "azure_ai_project_endpoint" {
+  description = "Azure AI Project endpoint URL"
+  type        = string
+  default     = ""
 }
 
-variable "min_node_count" {
-  description = "Minimum number of nodes when auto-scaling is enabled"
-  type        = number
-  default     = 1
+variable "azure_ai_model_deployment_name" {
+  description = "Azure AI model deployment name"
+  type        = string
+  default     = ""
 }
 
-variable "max_node_count" {
-  description = "Maximum number of nodes when auto-scaling is enabled"
-  type        = number
-  default     = 5
+variable "azure_openai_api_version" {
+  description = "Azure OpenAI API version"
+  type        = string
+  default     = "2024-02-15-preview"
 }
 
 variable "tags" {
@@ -87,7 +131,7 @@ variable "tags" {
 }
 
 variable "log_analytics_workspace_name" {
-  description = "Name of the Log Analytics Workspace for AKS monitoring"
+  description = "Name of the Log Analytics Workspace for App Service monitoring"
   type        = string
   default     = "log-agentic-devops"
 }
@@ -104,29 +148,30 @@ variable "log_analytics_retention_days" {
   default     = 30
 }
 
-variable "vnet_name" {
-  description = "Name of the virtual network for AKS"
-  type        = string
-  default     = "vnet-agentic-devops"
-}
-
-variable "vnet_address_space" {
-  description = "Address space for the virtual network"
-  type        = string
-  default     = "10.1.0.0/16"
-}
-
-variable "aks_subnet_name" {
-  description = "Name of the AKS subnet"
-  type        = string
-  default     = "aks-subnet"
-}
-
-variable "aks_subnet_prefix" {
-  description = "Address prefix for AKS subnet"
-  type        = string
-  default     = "10.1.1.0/24"
-}
+# VNET variables - Commented out for App Service migration
+# variable "vnet_name" {
+#   description = "Name of the virtual network for AKS"
+#   type        = string
+#   default     = "vnet-agentic-devops"
+# }
+#
+# variable "vnet_address_space" {
+#   description = "Address space for the virtual network"
+#   type        = string
+#   default     = "10.1.0.0/16"
+# }
+#
+# variable "aks_subnet_name" {
+#   description = "Name of the AKS subnet"
+#   type        = string
+#   default     = "aks-subnet"
+# }
+#
+# variable "aks_subnet_prefix" {
+#   description = "Address prefix for AKS subnet"
+#   type        = string
+#   default     = "10.1.1.0/24"
+# }
 
 variable "ai_foundry_resource_id" {
   description = "Resource ID of the Azure AI Foundry (Cognitive Services) account for role assignment. Leave empty to skip."

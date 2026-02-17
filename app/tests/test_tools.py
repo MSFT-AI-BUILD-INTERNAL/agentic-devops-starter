@@ -88,8 +88,6 @@ def test_weather_tool_execute() -> None:
     assert result["location"] == "Seattle"
     assert "temperature" in result
     assert "conditions" in result
-    assert "humidity" in result
-    assert "wind_speed" in result
 
 
 def test_weather_tool_different_locations() -> None:

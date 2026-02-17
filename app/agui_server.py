@@ -12,7 +12,7 @@ from agent_framework.azure import AzureAIAgentClient
 from agent_framework_ag_ui import add_agent_framework_fastapi_endpoint
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 # Load environment and setup logging
@@ -79,6 +79,16 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
+    # Security headers middleware
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
     # CORS configuration
     cors_origins = os.environ.get("CORS_ORIGINS", "").split(",")
     if not cors_origins or cors_origins == [""]:
@@ -92,7 +102,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Health check for Kubernetes
+    # Health check endpoint for App Service and CI/CD verification
     @app.get("/health")
     async def health_check() -> dict[str, str]:
         return {"status": "healthy"}

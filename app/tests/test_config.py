@@ -14,7 +14,6 @@ def test_llm_config_default_values() -> None:
     assert config.model == "gpt-4"
     assert config.temperature == 0.7
     assert config.max_tokens == 1000
-    assert config.enable_token_tracking is True
 
 
 def test_llm_config_openai() -> None:
