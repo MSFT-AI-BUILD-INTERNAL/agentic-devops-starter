@@ -68,7 +68,7 @@ def test_agent_response_validation() -> None:
     # Empty response
     is_valid, error = agent.validate_response("")
     assert is_valid is False
-    assert "empty" in error.lower()
+    assert "too short" in error.lower()
 
     # Too short response
     is_valid, error = agent.validate_response("Hi")

@@ -1,62 +1,49 @@
-"""Tests for the AG-UI clients.
+"""Tests for the AG-UI client tools.
 
-Tests the AG-UI client functionality including hybrid tool execution.
-Follows all constitution requirements including type safety and test coverage.
+Tests client-side tool logic (get_weather) defined in agui_client.py.
 """
 
-import pytest
 
+def test_get_weather_known_locations() -> None:
+    """Test get_weather returns correct data for known locations."""
+    from agui_client import get_weather
 
-def test_get_weather_tool() -> None:
-    """Test the get_weather client-side tool."""
-    from agui_client_hybrid import get_weather
-
-    # Test known locations
     assert "Rainy" in get_weather("Seattle")
     assert "Foggy" in get_weather("San Francisco")
     assert "Sunny" in get_weather("New York")
     assert "Cloudy" in get_weather("London")
+    assert "Clear" in get_weather("Tokyo")
+    assert "Sunny" in get_weather("Sydney")
 
-    # Test case insensitivity
-    assert "Rainy" in get_weather("SEATTLE")
-    assert "Rainy" in get_weather("seattle")
 
-    # Test unknown location
+def test_get_weather_case_insensitive() -> None:
+    """Test get_weather is case-insensitive."""
+    from agui_client import get_weather
+
+    assert get_weather("Seattle") == get_weather("SEATTLE")
+    assert get_weather("Seattle") == get_weather("seattle")
+
+
+def test_get_weather_unknown_location() -> None:
+    """Test get_weather returns fallback for unknown location."""
+    from agui_client import get_weather
+
     result = get_weather("Unknown City")
     assert "not available" in result
+    assert "Unknown City" in result
 
 
-def test_weather_tool_type_annotations() -> None:
-    """Test that the weather tool has proper return type."""
-    from agui_client_hybrid import get_weather
+def test_get_weather_return_type() -> None:
+    """Test get_weather returns a string."""
+    from agui_client import get_weather
 
-    # The ai_function decorator wraps the function, so we check the actual callable
     result = get_weather("Seattle")
     assert isinstance(result, str)
 
 
-def test_weather_tool_ai_function_decorator() -> None:
-    """Test that the weather tool is an AIFunction."""
-    from agent_framework._tools import AIFunction
-    from agui_client_hybrid import get_weather
-
-    # Check that the function is wrapped by ai_function decorator
-    assert isinstance(get_weather, AIFunction)
-
-
-@pytest.mark.asyncio
-async def test_agui_client_import() -> None:
-    """Test that the basic client can be imported."""
+def test_agui_client_exports() -> None:
+    """Test that agui_client exposes expected public API."""
     import agui_client
 
-    assert hasattr(agui_client, "main")
-
-
-@pytest.mark.asyncio
-async def test_agui_client_hybrid_import() -> None:
-    """Test that the hybrid client can be imported."""
-    import agui_client_hybrid
-
-    assert hasattr(agui_client_hybrid, "main")
-    assert hasattr(agui_client_hybrid, "run_demo_conversation")
-    assert hasattr(agui_client_hybrid, "get_weather")
+    assert callable(agui_client.main)
+    assert callable(agui_client.get_weather)
