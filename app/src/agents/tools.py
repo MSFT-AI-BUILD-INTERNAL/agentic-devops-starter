@@ -1,12 +1,13 @@
 """Tool definitions for agent framework demonstration."""
 
 from abc import ABC, abstractmethod
-from enum import Enum
+from enum import StrEnum
 from typing import Any
+
 from pydantic import BaseModel, Field
 
 
-class ArithmeticOperation(str, Enum):
+class ArithmeticOperation(StrEnum):
     """Supported arithmetic operations."""
     ADD = "add"
     SUBTRACT = "subtract"
@@ -57,13 +58,13 @@ class CalculatorTool(Tool):
             ArithmeticOperation.MULTIPLY: lambda x, y: x * y,
             ArithmeticOperation.DIVIDE: lambda x, y: x / y if y != 0 else None,
         }
-        
+
         # Normalize operation to enum
         try:
             op_enum = ArithmeticOperation(operation)
-        except ValueError:
-            raise ValueError(f"Invalid operation: {operation}")
-            
+        except ValueError as err:
+            raise ValueError(f"Invalid operation: {operation}") from err
+
         result = ops[op_enum](a, b)
         if result is None:
             raise ValueError("Division by zero")

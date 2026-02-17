@@ -1,11 +1,12 @@
 """LLM configuration for agent framework."""
 
 import os
-from enum import Enum
+from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
     """Supported LLM providers."""
     OPENAI = "openai"
     AZURE_OPENAI = "azure_openai"

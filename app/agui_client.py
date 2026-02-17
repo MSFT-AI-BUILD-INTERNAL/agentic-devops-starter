@@ -1,6 +1,6 @@
 """AG-UI client for the Agentic DevOps Starter application.
 
-This client demonstrates hybrid tool execution where both client-side and 
+This client demonstrates hybrid tool execution where both client-side and
 server-side tools can execute in the same conversation.
 """
 
@@ -41,7 +41,7 @@ def get_weather(location: Annotated[str, "The city or location name"]) -> str:
 async def main() -> None:
     """Interactive chat client with hybrid tool execution."""
     server_url = os.environ.get("AGUI_SERVER_URL", "http://127.0.0.1:5100/")
-    
+
     print("=" * 60)
     print("AG-UI Chat Client")
     print("=" * 60)

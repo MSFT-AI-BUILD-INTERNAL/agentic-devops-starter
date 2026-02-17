@@ -21,7 +21,7 @@ def main() -> None:
     # Demo 1: Conversational Agent
     print("\n--- Conversational Agent ---")
     agent = ConversationalAgent(name="DemoAgent")
-    
+
     for msg in ["Hello!", "How are you?", "Can you help me?"]:
         print(f"User: {msg}")
         print(f"Agent: {agent.process_message(msg)}\n")

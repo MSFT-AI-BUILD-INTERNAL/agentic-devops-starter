@@ -1,8 +1,9 @@
 """Base agent class for demonstration purposes."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+
 from pydantic import BaseModel, Field
+
 from ..config import LLMConfig
 from ..logging_utils import get_correlation_id, setup_logging
 

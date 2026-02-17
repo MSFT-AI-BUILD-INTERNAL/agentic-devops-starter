@@ -1,6 +1,7 @@
 """Conversational agent implementation for demonstration."""
 
 import uuid
+
 from ..config import LLMConfig
 from ..logging_utils import set_correlation_id
 from .base_agent import BaseAgent
