@@ -371,30 +371,12 @@ Current configuration uses:
 
 **Total**: ~$130-135/month
 
-Compare to previous AKS setup (~$190-205/month):
-- **Savings**: ~$60-70/month (30-35% cost reduction)
-- **Simpler management**: No Kubernetes cluster to maintain
-- **Automatic SSL**: Managed certificates included
-- **Built-in auto-scaling**: No need for cluster autoscaler
-
 ### Cost Reduction Tips
 
 1. **Use B-series for development**: Change to `B2` (~$55/month)
 2. **Enable auto-scale**: Scale down during off-hours
 3. **Use Basic ACR for small projects**: ~$5/month
 4. **Reduce Log Analytics retention**: Set to 7 days
-
-## Migration from AKS
-
-If migrating from the previous AKS deployment:
-
-1. **Deploy new infrastructure**: Run `terraform apply` with new config
-2. **Test deployment**: Verify App Service works correctly
-3. **Update DNS**: Point domain to new App Service URL
-4. **Decommission AKS**: Run `terraform destroy` on old AKS modules
-5. **Clean up k8s directory**: K8s manifests no longer needed
-
-See `docs/MIGRATION_GUIDE.md` for detailed migration steps.
 
 ## Security Considerations
 

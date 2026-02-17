@@ -52,8 +52,8 @@ This repository provides a full-stack DevOps solution for deploying a Python-bas
 - ✅ **CI/CD Automation**: GitHub Actions for automated build and deployment
 - ✅ **Built-in HTTPS**: Automatic SSL/TLS with managed certificates
 - ✅ **Secure Authentication**: OIDC-based Azure auth + System-assigned managed identity
-- ✅ **Simplified Architecture**: No Kubernetes cluster to manage
-- ✅ **Cost-Effective**: ~30-35% cheaper than AKS-based deployment
+- ✅ **Simplified Architecture**: Fully managed PaaS with no cluster overhead
+- ✅ **Cost-Effective**: Predictable pricing with App Service Plan
 - ✅ **Auto-Scaling**: Built-in App Service scaling capabilities
 - ✅ **Monitoring & Logging**: Azure Log Analytics integration
 
@@ -117,7 +117,7 @@ Monthly costs (US East):
 | Log Analytics | ~$10-15 |
 | **Total** | **~$130-135** |
 
-**Savings vs AKS**: ~$60-70/month (30-35% reduction)
+**Estimated Total**: ~$130-135/month
 
 ## Documentation
 
@@ -171,10 +171,6 @@ See [APPSERVICE_DEPLOYMENT.md](./docs/APPSERVICE_DEPLOYMENT.md) for detailed tro
 - ✅ Private ACR access
 - ✅ Security headers configured
 - ✅ Role-based access control
-
-## Migration from AKS
-
-The previous AKS-based deployment has been replaced with App Service. Old configuration files are preserved in `.bak` files for reference.
 
 ## License
 

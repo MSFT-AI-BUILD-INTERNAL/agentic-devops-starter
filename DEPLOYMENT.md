@@ -1,175 +1,136 @@
-# GitHub Actions Workflow for ACR and AKS Deployment
+# GitHub Actions Workflow for Azure App Service Deployment
 
-This document describes the GitHub Actions workflow that has been created to deploy the Python application to Azure Kubernetes Service (AKS) via Azure Container Registry (ACR).
+This document describes the GitHub Actions workflow that deploys the application to Azure App Service via Azure Container Registry (ACR).
 
 ## Overview
 
 The workflow automates the following process:
-1. Builds a Docker image of the Python application using `uv` package manager
+1. Builds a combined frontend + backend Docker image
 2. Pushes the image to Azure Container Registry (ACR)
-3. Deploys the application to Azure Kubernetes Service (AKS)
+3. Deploys the container to Azure App Service
+4. Verifies the deployment health
 
-## Files Created
+## Workflow Files
 
-### 1. `/app/Dockerfile`
-- Uses Python 3.12 slim base image
-- Installs `uv` package manager from official container
-- Copies `pyproject.toml` and `uv.lock` for dependency management
-- Runs `uv sync --frozen --no-dev` to install production dependencies
-- Exposes port 5100 for the FastAPI AG-UI server
-- Runs `agui_server.py` as the main application
+### `.github/workflows/deploy.yml`
 
-### 2. `.github/workflows/deploy.yml`
 A two-job workflow:
 
 **Job 1: build-and-push**
 - Checks out code
-- Authenticates to Azure using OIDC
+- Authenticates to Azure using OIDC (Federated Credential)
 - Logs in to Azure Container Registry
 - Sets up Docker Buildx for efficient builds
-- Builds and pushes Docker image with multiple tags (SHA and latest)
-- Uses GitHub Actions cache for faster builds
+- Builds combined container image from `app/Dockerfile.appservice`
+- Pushes image with multiple tags (git SHA + latest)
+- Uses GitHub Actions cache (`type=gha`) for faster builds
 
 **Job 2: deploy**
-- Depends on build-and-push job
-- Authenticates to Azure
-- Gets AKS cluster credentials
-- Creates/updates Kubernetes secrets for Azure configuration
-- Deploys application using Kubernetes manifests
-- Waits for deployment rollout
-- Retrieves service external IP
+- Depends on `build-and-push` job
+- Authenticates to Azure via OIDC
+- Injects secrets-based app settings (AI endpoints, tenant ID)
+- Deploys the container image to App Service using `azure/webapps-deploy@v2`
+- Verifies deployment health (5 retries, 10s intervals)
+- Outputs application URL and Azure Portal link
+- On failure: fetches App Service logs for debugging
 
-### 3. `/k8s/deployment.yaml`
-Kubernetes Deployment manifest:
-- Deploys 2 replicas for high availability
-- Uses image from ACR with dynamic tag substitution
-- Configures environment variables from Kubernetes secrets
-- Sets resource requests (256Mi memory, 100m CPU) and limits (512Mi memory, 500m CPU)
-- Includes liveness and readiness probes on port 5100
+### `.github/workflows/ci.yml`
 
-### 4. `/k8s/service.yaml`
-Kubernetes Service manifest:
-- Creates a LoadBalancer service
-- Exposes the application on port 80 (external) -> 5100 (internal)
-- Routes traffic to pods with label `app: agentic-devops`
+Continuous integration workflow:
+- Triggers on push/PR to `main` and `develop` branches
+- Runs linting with `ruff`
+- Runs tests with `pytest`
+- Uses `uv` for dependency management
 
-### 5. `/k8s/README.md`
-Comprehensive documentation including:
-- Prerequisites and setup instructions
-- Required GitHub Secrets
-- Manual deployment commands
-- Troubleshooting tips
-- Configuration details
+### `app/Dockerfile.appservice`
+
+Multi-stage build creating a combined container:
+
+```
+Stage 1: Frontend build (Node.js 20)
+  → npm ci → npm run build → /dist
+
+Stage 2: Backend setup (Python 3.12)
+  → uv sync → application code
+  → Install nginx + supervisor
+
+Stage 3: Final combined image
+  → nginx (:8080) serves frontend + proxies /api/ to backend
+  → uvicorn (:5100) runs FastAPI backend
+  → supervisor manages both processes
+```
 
 ## Required GitHub Secrets
 
-Configure these secrets in your GitHub repository settings:
+Configure these secrets in your GitHub repository settings (Settings → Secrets and variables → Actions):
 
-### Azure Authentication (for OIDC)
-- `AZURE_CLIENT_ID`: Service principal client ID
-- `AZURE_TENANT_ID`: Azure AD tenant ID
-- `AZURE_SUBSCRIPTION_ID`: Azure subscription ID
+### Azure Authentication (OIDC)
+| Secret | Description |
+|--------|-------------|
+| `AZURE_CLIENT_ID` | Service principal / App Registration client ID |
+| `AZURE_TENANT_ID` | Azure AD tenant ID |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
 
-### Azure Resources
-- `ACR_NAME`: Name of your Azure Container Registry
-- `AKS_CLUSTER_NAME`: Name of your AKS cluster
-- `AKS_RESOURCE_GROUP`: Resource group containing the AKS cluster
+### Azure Resources (from Terraform outputs)
+| Secret | Description |
+|--------|-------------|
+| `ACR_NAME` | Azure Container Registry name |
+| `APP_SERVICE_NAME` | App Service name |
+| `RESOURCE_GROUP` | Resource group name |
 
 ### Application Configuration (Optional)
-- `AZURE_AI_PROJECT_ENDPOINT`: Azure AI Foundry endpoint
-- `AZURE_AI_MODEL_DEPLOYMENT_NAME`: Azure AI model deployment name
-- `OPENAI_API_KEY`: OpenAI API key (fallback if Azure AI not configured)
+| Secret | Description |
+|--------|-------------|
+| `AZURE_AI_PROJECT_ENDPOINT` | Azure AI Foundry project endpoint |
+| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | AI model deployment name |
+| `AZURE_OPENAI_API_VERSION` | Azure OpenAI API version |
 
 ## Workflow Triggers
 
-The workflow runs:
-- Automatically on push to `main` branch
-- Manually via workflow_dispatch
-
-## Key Features
-
-1. **Security**: Uses Azure OIDC authentication (no stored credentials)
-2. **Efficiency**: Docker layer caching via GitHub Actions cache
-3. **Traceability**: Images tagged with both git SHA and 'latest'
-4. **Reliability**: Health checks and rollout status monitoring
-5. **Scalability**: 2 replicas with LoadBalancer for high availability
+The deploy workflow runs:
+- **Automatically** on push to `main` branch
+- **Manually** via `workflow_dispatch` in GitHub Actions UI
 
 ## Image Tag Strategy
 
 Images are tagged with:
-- `<ACR_NAME>.azurecr.io/agentic-devops-starter:<git-sha>` - Specific version
-- `<ACR_NAME>.azurecr.io/agentic-devops-starter:latest` - Latest build
-
-The deployment uses the SHA tag for immutability and reproducibility.
+- `<ACR>.azurecr.io/agentic-devops-starter:<git-sha>` — Specific immutable version (used for deployment)
+- `<ACR>.azurecr.io/agentic-devops-starter:latest` — Latest build
 
 ## Prerequisites
 
 Before running the workflow:
 
 1. **Create Azure Resources with Terraform**:
-   
-   The repository includes Terraform infrastructure code in the `/infra` directory that automates the creation of all required Azure resources.
-   
+
    ```bash
-   # Navigate to infrastructure directory
    cd infra
-   
-   # Copy and configure variables
    cp terraform.tfvars.example terraform.tfvars
-   # Edit terraform.tfvars with your desired values
-   
-   # Initialize Terraform
+   # Edit terraform.tfvars with your values
+
    terraform init
-   
-   # Preview changes
    terraform plan
-   
-   # Create resources
    terraform apply
    ```
-   
-   The Terraform configuration creates:
-   - Resource Group
-   - Azure Container Registry (ACR)
-   - Azure Kubernetes Service (AKS) with managed identity
-   - Role assignment for AKS to pull from ACR
-   
-   After applying, Terraform will output the resource names needed for GitHub Secrets.
-   
-   **Note**: For detailed Terraform documentation, see `/infra/README.md`
 
-   Alternatively, you can create resources manually:
+   Terraform creates: Resource Group, ACR, App Service Plan, App Service, Log Analytics.
+
+   After applying, note the outputs for GitHub Secrets:
    ```bash
-   # Create resource group
-   az group create --name <resource-group> --location <location>
-   
-   # Create ACR
-   az acr create --resource-group <resource-group> --name <acr-name> --sku Basic
-   
-   # Create AKS
-   az aks create --resource-group <resource-group> --name <aks-name> --node-count 2 --attach-acr <acr-name>
-   ```
-
-2. **Set up OIDC Federation**:
-   - Create service principal
-   - Configure federated credentials for GitHub Actions
-   - Grant necessary permissions (AcrPush, AKS Contributor)
-
-3. **Configure GitHub Secrets**: 
-   
-   After creating resources with Terraform, use the output values:
-   ```bash
-   # Get resource names from Terraform
    terraform output acr_name
-   terraform output aks_name
+   terraform output app_service_name
    terraform output resource_group_name
    ```
-   
-   Add these as secrets in your GitHub repository settings (Settings → Secrets and variables → Actions):
-   - `ACR_NAME`: From `terraform output acr_name`
-   - `AKS_CLUSTER_NAME`: From `terraform output aks_name`
-   - `AKS_RESOURCE_GROUP`: From `terraform output resource_group_name`
-   - Plus Azure authentication secrets (CLIENT_ID, TENANT_ID, SUBSCRIPTION_ID)
+
+   See [`/infra/README.md`](./infra/README.md) for details.
+
+2. **Set up OIDC Federation**:
+   - Create a service principal (App Registration)
+   - Configure federated credentials for GitHub Actions
+   - Grant `AcrPush` role on the ACR
+
+3. **Configure GitHub Secrets**:
+   - Add all required secrets listed above
 
 ## Deployment Flow
 
@@ -181,8 +142,9 @@ Before running the workflow:
          v
 ┌─────────────────────────┐
 │ Build Docker Image      │
-│ - uv sync dependencies  │
-│ - Copy application code │
+│ - Frontend (React/Vite) │
+│ - Backend (FastAPI/uv)  │
+│ - Combined via nginx    │
 └────────┬────────────────┘
          │
          v
@@ -193,87 +155,82 @@ Before running the workflow:
 └────────┬────────────┘
          │
          v
-┌────────────────────────┐
-│ Deploy to AKS          │
-│ - Update secrets       │
-│ - Apply manifests      │
-│ - Wait for rollout     │
-└────────┬───────────────┘
+┌─────────────────────────┐
+│ Deploy to App Service   │
+│ - Update app settings   │
+│ - Deploy container      │
+│ - azure/webapps-deploy  │
+└────────┬────────────────┘
          │
          v
-┌────────────────────┐
-│ Get External IP    │
-│ Application Ready  │
-└────────────────────┘
+┌─────────────────────────┐
+│ Verify Health           │
+│ - curl /health (×5)     │
+│ - On failure: show logs │
+└─────────────────────────┘
 ```
 
 ## Application Details
 
 The deployed application:
-- **Port**: Exposed on port 80 externally, runs on 5100 internally
-- **Type**: FastAPI server with AG-UI protocol support
-- **Framework**: microsoft-agent-framework for conversational AI
-- **Health**: Monitored via HTTP GET on `/` endpoint
-- **Scaling**: Horizontal scaling via replica count in deployment.yaml
+- **External Port**: 8080 (nginx, set via `WEBSITES_PORT`)
+- **Internal Port**: 5100 (FastAPI backend, proxied by nginx)
+- **URL**: `https://<app-service-name>.azurewebsites.net`
+- **Health Endpoint**: `GET /health` → `{"status": "healthy"}`
+- **Framework**: FastAPI + AG-UI protocol for conversational AI
+- **SSL/TLS**: Managed automatically by Azure App Service
 
-## Next Steps
+## Configuration Management
 
-1. Configure all required GitHub Secrets
-2. Ensure Azure resources are created and accessible
-3. Push code to `main` branch or manually trigger the workflow
-4. Monitor the workflow execution in GitHub Actions tab
-5. Once deployed, access the application via the LoadBalancer IP
+Static infrastructure settings (e.g., `WEBSITES_PORT`, `CORS`) are managed by **Terraform** as the single source of truth. The deploy workflow only injects **secrets-based** settings that cannot be stored in Terraform:
+
+| Setting | Managed By | Reason |
+|---------|-----------|--------|
+| `WEBSITES_PORT` | Terraform | Static infrastructure config |
+| `CORS` | Terraform (`site_config.cors`) | Static infrastructure config |
+| `AZURE_TENANT_ID` | deploy.yml | Secret value |
+| `AZURE_AI_*` | deploy.yml | Secret values |
 
 ## Troubleshooting
 
 If the workflow fails:
 
 1. **Authentication errors**: Verify OIDC federation and service principal permissions
-2. **Build errors**: Check Dockerfile syntax and dependency installation
-3. **Push errors**: Ensure ACR permissions and network connectivity
-4. **Deploy errors**: Verify AKS access and kubectl commands
-5. **Pod errors**: Check logs with `kubectl logs -l app=agentic-devops`
-
-See `/k8s/README.md` for detailed troubleshooting commands.
+2. **Build errors**: Check `Dockerfile.appservice` syntax and dependency installation
+3. **Push errors**: Ensure ACR permissions (`AcrPush` role) and network connectivity
+4. **Deploy errors**: Verify App Service exists and `webapps-deploy` action permissions
+5. **Health check fails**: Check container logs:
+   ```bash
+   az webapp log tail --resource-group <rg> --name <app>
+   ```
 
 ## Security Considerations
 
-- Secrets are stored in Kubernetes secrets (base64 encoded)
-- Service principal has minimal required permissions
-- OIDC authentication eliminates long-lived credentials
-- Container images are scanned by ACR (if enabled)
-- Network policies can be added for additional security
+- **OIDC authentication**: No long-lived credentials stored in GitHub
+- **Managed Identity**: App Service uses system-assigned identity for ACR and AI access
+- **HTTPS enforced**: `https_only = true` on App Service
+- **Security headers**: Configured in nginx (X-Content-Type-Options, X-Frame-Options, etc.)
+- **Container scanning**: Available in ACR Premium tier
 
 ## Monitoring
 
-Monitor the deployment:
+### View logs
 ```bash
-# Watch pods
-kubectl get pods -l app=agentic-devops -w
-
-# View logs
-kubectl logs -l app=agentic-devops -f
-
-# Check service
-kubectl get service agentic-devops-service
-
-# Describe deployment
-kubectl describe deployment agentic-devops-app
+az webapp log tail --resource-group <rg> --name <app>
 ```
 
-## Customization
+### Check health
+```bash
+curl https://<app-service-name>.azurewebsites.net/health
+```
 
-To customize the deployment:
-
-- **Replicas**: Edit `replicas` in `k8s/deployment.yaml`
-- **Resources**: Adjust `requests` and `limits` in `k8s/deployment.yaml`
-- **Port**: Change `containerPort` and service `targetPort`
-- **Environment**: Add more environment variables in deployment spec
-- **Service Type**: Change from LoadBalancer to ClusterIP or NodePort
+### Azure Portal
+Navigate to: App Service → **Diagnose and solve problems** or **Log stream**
 
 ## Support
 
-For issues or questions, refer to:
-- `/k8s/README.md` for Kubernetes-specific documentation
-- `/app/README.md` for application documentation
-- GitHub Actions logs for workflow execution details
+For issues or questions:
+- Review GitHub Actions logs in the **Actions** tab
+- Check App Service logs via Azure CLI or Portal
+- See [`docs/APPSERVICE_DEPLOYMENT.md`](./docs/APPSERVICE_DEPLOYMENT.md) for detailed deployment guide
+- See [`/app/README.md`](./app/README.md) for application documentation

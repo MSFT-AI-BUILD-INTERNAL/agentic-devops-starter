@@ -290,12 +290,12 @@ Visit `http://127.0.0.1:5100/docs` when the server is running to see:
 
 ## Chat Request Flow (Production Deployment)
 
-When deployed to Kubernetes with the frontend, chat requests follow this flow:
+When deployed to Azure App Service, chat requests follow this flow:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ 1. User Input in Browser                                        │
-│    https://<loadbalancer-ip>/ or https://<domain>/              │
+│    https://<app-service-name>.azurewebsites.net                 │
 └─────────────────────────────────────────────────────────────────┘
                            │
                            ▼
@@ -316,11 +316,11 @@ When deployed to Kubernetes with the frontend, chat requests follow this flow:
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 4. NGINX (Frontend Container) - Reverse Proxy                   │
-│    File: app/frontend/Dockerfile                                │
-│    Config: location /api/ { proxy_pass http://127.0.0.1:5100/ }│
+│ 4. NGINX - Reverse Proxy (inside App Service container)         │
+│    File: app/Dockerfile.appservice                              │
+│    Config: location /api/ { proxy_pass http://127.0.0.1:5100/ } │
 │    Transform: /api/ → / (removes /api/ prefix)                  │
-│    Forwards to: Backend on localhost:5100                       │
+│    Forwards to: Backend on localhost:5100                        │
 └─────────────────────────────────────────────────────────────────┘
                            │
                            ▼
@@ -336,7 +336,7 @@ When deployed to Kubernetes with the frontend, chat requests follow this flow:
 ┌─────────────────────────────────────────────────────────────────┐
 │ 6. ChatAgent - Azure AI Invocation                              │
 │    File: app/agui_server.py (create_agent)                      │
-│    Authentication: DefaultAzureCredential (Workload Identity)   │
+│    Authentication: DefaultAzureCredential (Managed Identity)    │
 │    Model: Azure AI Foundry                                      │
 │    Response: SSE (Server-Sent Events) stream                    │
 └─────────────────────────────────────────────────────────────────┘
@@ -383,21 +383,21 @@ add_agent_framework_fastapi_endpoint(app, agent, "/")  # Root path
 - Processes AG-UI protocol messages
 - Returns SSE stream for real-time responses
 
-#### Workload Identity Authentication
-- **Service Account**: `agentic-devops-sa` (annotated with Azure Client ID)
-- **Credential**: `DefaultAzureCredential` automatically uses pod identity
-- **Token Exchange**: Kubernetes token → Azure AD token via OIDC federation
+#### Managed Identity Authentication
+- **Identity**: System-assigned managed identity on App Service
+- **Credential**: `DefaultAzureCredential` automatically uses managed identity
+- **Roles**: Azure AI Developer + Cognitive Services User
 - **Scope**: `https://ai.azure.com/.default` for Azure AI Foundry
 
 ### Local Development vs Production
 
-| Aspect | Local Development | Production (Kubernetes) |
+| Aspect | Local Development | Production (App Service) |
 |--------|-------------------|-------------------------|
-| Frontend URL | `http://localhost:5173` | `https://<loadbalancer-ip>` or domain |
-| Backend URL | `http://localhost:5100` | `http://127.0.0.1:5100` (same pod) |
+| Frontend URL | `http://localhost:5173` | `https://<app>.azurewebsites.net` |
+| Backend URL | `http://localhost:5100` | `http://127.0.0.1:5100` (same container) |
 | API Path | Direct to backend | Through NGINX `/api/` proxy |
-| Authentication | API key or local credentials | Workload Identity |
-| Containers | Separate processes | Single pod, multi-container |
+| Authentication | API key or local credentials | System-assigned Managed Identity |
+| Containers | Separate processes | Single container with supervisor |
 
 ### SSE Streaming Support
 

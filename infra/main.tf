@@ -153,8 +153,10 @@ module "app_service" {
   resource_group_name     = azurerm_resource_group.main.name
   location                = azurerm_resource_group.main.location
   service_plan_id         = module.app_service_plan.service_plan_id
+  sku_name                = var.app_service_plan_sku
   docker_registry_url     = "https://${module.acr.acr_login_server}"
-  backend_image_tag       = "${module.acr.acr_login_server}/${var.backend_image_name}:latest"
+  docker_image_name       = var.backend_image_name
+  docker_image_tag        = "latest"
   acr_id                  = module.acr.acr_id
   ai_foundry_resource_id  = var.ai_foundry_resource_id
   
@@ -163,7 +165,6 @@ module "app_service" {
     "AZURE_AI_PROJECT_ENDPOINT"       = var.azure_ai_project_endpoint
     "AZURE_AI_MODEL_DEPLOYMENT_NAME"  = var.azure_ai_model_deployment_name
     "AZURE_OPENAI_API_VERSION"        = var.azure_openai_api_version
-    "CORS_ORIGINS"                    = "*"
   }
 
   tags = var.tags

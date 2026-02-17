@@ -3,7 +3,7 @@
 
 # Resource Group Configuration
 resource_group_name = "rg-agentic-devops"
-location            = "eastus"
+location            = "koreacentral"
 
 # Azure Container Registry
 # IMPORTANT: ACR name must be globally unique and alphanumeric only (no hyphens, underscores)

@@ -26,19 +26,16 @@ jobs:
         version: "latest"
 
     - name: Install dependencies
+      working-directory: ./app
       run: |
-        uv venv
-        uv pip install -r requirements.txt || echo "No requirements.txt found"
-
-    - name: Run tests
-      run: |
-        source .venv/bin/activate
-        # Add your test commands here
-        # Example: pytest tests/
-        echo "Tests placeholder"
+        uv sync --frozen --all-groups
 
     - name: Run linting
+      working-directory: ./app
       run: |
-        source .venv/bin/activate
-        uv pip install ruff
-        ruff check . || echo "Linting skipped"
+        uv run ruff check .
+
+    - name: Run tests
+      working-directory: ./app
+      run: |
+        uv run pytest tests/ -v

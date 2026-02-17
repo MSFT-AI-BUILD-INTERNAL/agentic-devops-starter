@@ -12,18 +12,20 @@ resource "azurerm_linux_web_app" "main" {
   }
 
   site_config {
-    always_on                               = true
+    always_on                               = false
     container_registry_use_managed_identity = true
 
-    # Multi-container configuration using sidecar pattern
+    # Container image configuration
+    # docker_image_name includes tag (e.g., "myimage:latest")
+    # docker_registry_url is the ACR URL (e.g., "https://myacr.azurecr.io")
     application_stack {
-      docker_registry_url      = var.docker_registry_url
-      docker_image_and_tag     = var.backend_image_tag
+      docker_registry_url = var.docker_registry_url
+      docker_image_name   = "${var.docker_image_name}:${var.docker_image_tag}"
     }
 
-    # Enable CORS for frontend-backend communication
+    # CORS managed here as single source of truth (not in deploy.yml)
     cors {
-      allowed_origins = ["*"]
+      allowed_origins     = ["*"]
       support_credentials = false
     }
   }

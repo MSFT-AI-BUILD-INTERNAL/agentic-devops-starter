@@ -92,7 +92,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Health check for Kubernetes
+    # Health check endpoint for App Service and CI/CD verification
     @app.get("/health")
     async def health_check() -> dict[str, str]:
         return {"status": "healthy"}

@@ -69,17 +69,17 @@ jobs:
 
       - name: Update App Service configuration
         run: |
-          # Configure App Service settings
+          # Only set secrets-based settings here.
+          # WEBSITES_PORT, CORS_ORIGINS, and other static settings are managed by Terraform
+          # to maintain a single source of truth (see infra/app-service/main.tf).
           az webapp config appsettings set \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.APP_SERVICE_NAME }} \
             --settings \
-              WEBSITES_PORT=8080 \
               AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
               AZURE_AI_PROJECT_ENDPOINT="${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" \
               AZURE_AI_MODEL_DEPLOYMENT_NAME="${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" \
-              AZURE_OPENAI_API_VERSION="${{ secrets.AZURE_OPENAI_API_VERSION }}" \
-              CORS_ORIGINS="*"
+              AZURE_OPENAI_API_VERSION="${{ secrets.AZURE_OPENAI_API_VERSION }}"
 
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v2
