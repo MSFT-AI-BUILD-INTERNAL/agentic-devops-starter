@@ -1,14 +1,11 @@
-# Use Python 3.12 slim image as base
+# Backend-only Docker build for Dev-UI server
+# Dev-UI provides its own built-in web interface
+
 FROM python:3.12-slim
 
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies
-# - curl: HTTP client for health checks and API calls
-# - gcc, g++: C/C++ compilers for building Python packages with native extensions
-# - libffi-dev: Required by azure-identity and cryptography
-# - libssl-dev: SSL/TLS support for HTTPS connections
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gcc \
@@ -20,16 +17,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy dependency files
+# Copy backend dependency files
 COPY app/pyproject.toml app/uv.lock ./
 
-# Install dependencies using uv with system python
+# Install Python dependencies using uv with system python
 RUN uv sync --frozen --no-dev
 
-# Copy application code
+# Copy backend application code
 COPY app/ .
 
-# Expose port 8080 for the Dev-UI server
+# Expose port 8080 for Dev-UI
 EXPOSE 8080
 
 # Set environment variables
@@ -37,5 +34,5 @@ ENV PYTHONUNBUFFERED=1
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PORT=8080
 
-# Run the Dev-UI server
+# Run Dev-UI server
 CMD ["/app/.venv/bin/python", "devui_server.py"]
