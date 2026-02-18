@@ -6,12 +6,12 @@ MVP for Agentic DevOps Starter - A complete CI/CD solution for deploying Python 
 
 This repository provides a full-stack DevOps solution for deploying a Python-based conversational AI application to Azure:
 
-- **Application**: FastAPI backend + React frontend (`/app`)
+- **Application**: Dev-UI server with built-in web interface (`/app`)
 - **Infrastructure**: Terraform code for ACR, App Service, and Log Analytics (`/infra`)
 - **CI/CD**: GitHub Actions workflow for automated deployment (`.github/workflows/deploy.yml`)
 - **Monitoring**: Azure Log Analytics for comprehensive logging and metrics
 - **Security**: Built-in HTTPS with managed SSL/TLS certificates
-- **Deployment**: Single container with sidecar pattern (frontend + backend)
+- **Deployment**: Single container with Dev-UI's integrated frontend + backend
 
 ## Architecture
 
@@ -29,11 +29,12 @@ This repository provides a full-stack DevOps solution for deploying a Python-bas
 │       Azure App Service (HTTPS)          │
 │  ┌────────────────────────────────────┐  │
 │  │  Container (port 8080)             │  │
-│  │  ┌──────────┐  ┌──────────┐       │  │
-│  │  │  nginx   │→ │ Backend  │       │  │
-│  │  │(frontend)│  │(FastAPI) │       │  │
-│  │  └──────────┘  └──────────┘       │  │
-│  │   Managed by supervisor            │  │
+│  │  ┌──────────────────────────────┐  │  │
+│  │  │   Dev-UI Server              │  │  │
+│  │  │   - Web UI                   │  │  │
+│  │  │   - OpenAI-compatible API    │  │  │
+│  │  │   - Agent Framework          │  │  │
+│  │  └──────────────────────────────┘  │  │
 │  └────────────────────────────────────┘  │
 │  System-Assigned Managed Identity        │
 └──────────────────────────────────────────┘
@@ -47,8 +48,9 @@ This repository provides a full-stack DevOps solution for deploying a Python-bas
 
 - ✅ **Infrastructure as Code**: Terraform for reproducible Azure infrastructure
 - ✅ **Modern Python**: Uses `uv` for fast, reliable dependency management
-- ✅ **Web-Based Chat UI**: React + TypeScript frontend with real-time streaming
-- ✅ **Containerization**: Optimized multi-stage Docker build with supervisor
+- ✅ **Dev-UI Interface**: Built-in browser-based UI and OpenAI-compatible API
+- ✅ **Simplified Architecture**: Server-side rendering with integrated frontend
+- ✅ **Containerization**: Optimized single-stage Docker build
 - ✅ **CI/CD Automation**: GitHub Actions for automated build and deployment
 - ✅ **Built-in HTTPS**: Automatic SSL/TLS with managed certificates
 - ✅ **Secure Authentication**: OIDC-based Azure auth + System-assigned managed identity
@@ -131,21 +133,14 @@ Monthly costs (US East):
 ### Backend
 ```bash
 cd app
-uv run agui_server.py
-# Runs at http://127.0.0.1:5100
+uv run devui_server.py
+# Runs at http://127.0.0.1:8080
+# Web UI available at the root URL
 ```
 
-### Frontend
+### Test Container
 ```bash
-cd app/frontend
-npm install
-npm run dev
-# Runs at http://localhost:5173
-```
-
-### Test Combined Container
-```bash
-docker build -f app/Dockerfile.appservice -t test .
+docker build -f app/Dockerfile -t test .
 docker run -p 8080:8080 test
 # Open http://localhost:8080
 ```

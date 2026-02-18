@@ -1,4 +1,4 @@
-# Azure App Service with multi-container (sidecar) support
+# Azure App Service with Dev-UI backend
 resource "azurerm_linux_web_app" "main" {
   name                = var.app_service_name
   location            = var.location
@@ -33,7 +33,7 @@ resource "azurerm_linux_web_app" "main" {
   # Application settings (environment variables)
   app_settings = merge(
     {
-      "WEBSITES_PORT"                         = "8080"  # nginx listens on 8080
+      "WEBSITES_PORT"                         = "8080"  # Dev-UI server listens on 8080
       "WEBSITES_ENABLE_APP_SERVICE_STORAGE"   = "false"
       "DOCKER_ENABLE_CI"                      = "true"
       "DOCKER_REGISTRY_SERVER_URL"            = var.docker_registry_url
