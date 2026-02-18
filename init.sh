@@ -32,7 +32,7 @@ uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
 
 # Initialize specify with copilot
 echo "🤖 Initializing AI environment with copilot..."
-specify init . --ai copilot --force
+specify init . --ai copilot --script sh --force
 
 specify check
 
