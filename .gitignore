@@ -85,3 +85,8 @@ infra/.terraform.lock.hcl
 
 # Build artifacts
 *.tsbuildinfo
+
+# speckit generated
+.specify/integration.json
+.specify/init-options.json
+.specify/integrations/
