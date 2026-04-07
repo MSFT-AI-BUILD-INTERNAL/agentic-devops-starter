@@ -269,6 +269,10 @@ if [ ${#BRANCH_NAME} -gt $MAX_BRANCH_LENGTH ]; then
     # Calculate how much we need to trim from suffix
     # Account for prefix (FEATURE_NUM) + hyphen (1)
     PREFIX_LEN=$((${#FEATURE_NUM} + 1))
+    if [ $PREFIX_LEN -ge $MAX_BRANCH_LENGTH ]; then
+        >&2 echo "[specify] Error: Branch prefix '${FEATURE_NUM}' alone exceeds GitHub's 244-byte limit" >&2
+        exit 1
+    fi
     MAX_SUFFIX_LENGTH=$((MAX_BRANCH_LENGTH - PREFIX_LEN))
     
     # Truncate suffix at word boundary if possible
