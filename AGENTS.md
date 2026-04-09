@@ -5,29 +5,46 @@
 
 ---
 
+## ⚠️ Important: Two types of agents in this project
+
+This file configures the **GitHub Copilot Coding Agent** — the AI coding assistant that reads and writes source code in this repository.
+
+Do **not** confuse this with the **AI Agents** that run inside the application under `app/src/` (LLM-based conversational agents built on Microsoft Foundry). Those are application code, not coding agent configuration:
+
+| | GitHub Copilot Coding Agent | AI Agent (app/src/) |
+|---|---|---|
+| **What it is** | Coding assistant that writes/reviews source code | Conversational LLM agent powered by Microsoft Foundry |
+| **Configured by** | This file (`AGENTS.md`) | Application code: `BaseAgent`, `agui_server.py`, etc. |
+| **Harness rules apply to** | Copilot when working in this repo | Runtime agent behavior (not this file) |
+
+The harness sections below are rules **for the Copilot Coding Agent** — what it must and must not do when writing, reviewing, or modifying code in this repository. They are **not** runtime documentation for the AI Agents in `app/src/`.
+
+---
+
 ## agent-security
 
 ### Scope
 
-All agent input processing, output generation, and file system interactions across `app/src/`.
+Code that Copilot writes or modifies across `app/src/` and all agent-related modules.
 
-### Security Policy
+### What Copilot must enforce when writing code
 
-Agents **must never**:
-- Execute or suggest shell/system commands: `sudo`, `rm -rf`, `kill -9`, `chmod`, `chown`, `shutdown`, `reboot`, `mkfs`, `dd if=`, `eval()`, `exec()`, `os.system()`, `subprocess.run/call/Popen`
-- Access or reference restricted paths: `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/proc/`, `/sys/`, `/dev/`, `/boot/`, `.ssh/`, `.aws/credentials`, `.azure/`, `.env`, `.secret`
-- Expose sensitive data in responses: passwords, API keys, bearer tokens, credentials, private keys, credit card numbers
-- Attempt privilege escalation: bypass auth, request admin/root access, `grant all privileges`
-- Use backtick command execution or pipe-to-shell patterns
+When writing or modifying AI agent code, Copilot **must**:
 
-### Enforcement
+- **Use `SecurityValidator`** from `src/security/validator.py` to validate every user input and agent output. Never skip this for new agent implementations.
+- **Never generate or suggest** shell/system command patterns in agent responses: `sudo`, `rm -rf`, `kill -9`, `chmod`, `chown`, `shutdown`, `reboot`, `mkfs`, `dd if=`, `eval()`, `exec()`, `os.system()`, `subprocess.run/call/Popen`
+- **Never write code** that allows agents to access restricted paths: `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/proc/`, `/sys/`, `/dev/`, `/boot/`, `.ssh/`, `.aws/credentials`, `.azure/`, `.env`, `.secret`
+- **Never write code** that exposes sensitive data in agent responses: passwords, API keys, bearer tokens, credentials, private keys, credit card numbers
+- **Never write code** that enables privilege escalation: bypass auth, request admin/root access, `grant all privileges`
+- **Always use** the built-in security validator rather than implementing ad-hoc checks
 
-All agents inherit `SecurityValidator` from `src/security/validator.py`.
+### Enforcement implementation
 
-- `validate_input_security(text)` is called before processing every user message.
-- `validate_output_security(text)` is called on every generated response.
-- Violations are logged at `WARNING` level with category and severity.
-- `HarnessHook` (see `agent-hooks` below) provides the post-execution check.
+The `SecurityValidator` (already implemented in `src/security/validator.py`) provides:
+- `validate_input(text)` — call before processing any user message
+- `validate_output(text)` — call on any generated response
+
+`BaseAgent` exposes `validate_input_security()` and `validate_output_security()` — always use these; never bypass them.
 
 ### Commands
 
@@ -44,42 +61,33 @@ uv run pytest tests/test_security.py -v   # Run security tests
 
 All agent system prompt definitions. `app/src/prompts/`.
 
-### Convention
+### What Copilot must enforce when writing code
 
-**Prompts must never be hardcoded in application code.**
-All system prompts are centrally defined in `app/src/prompts/system_prompts.yaml`
-and loaded at runtime via `PromptManager`.
+When Copilot writes or modifies agent code, it **must**:
 
-#### Key schema
-
-```
-<agent_name>.<prompt_type>
-```
-
-Examples:
-- `agui_assistant.system` — system prompt for the production AG-UI assistant
-- `conversational.system` — system prompt for the demo ConversationalAgent
-- `devops.system` — system prompt for a DevOps-focused agent
-- `default.system` — fallback used when no specific key is found
+- **Never hardcode system prompts** inside Python source files or application code. Hardcoded prompt strings in `.py` files are not permitted.
+- **Always add new prompts** to `app/src/prompts/system_prompts.yaml` using YAML block scalar syntax (`|`).
+- **Always load prompts** via `PromptManager` — never construct prompt strings inline.
+- **Always use the key schema** `<agent_name>.<prompt_type>` (e.g. `my_agent.system`).
 
 #### How to add a prompt
 
 1. Open `app/src/prompts/system_prompts.yaml`.
-2. Add a new key under the `prompts:` mapping using YAML block scalar syntax (`|`):
+2. Add a new key under the `prompts:` mapping:
    ```yaml
    prompts:
      my_agent.system: |
        You are a specialized AI assistant for <task>.
        ...
    ```
-3. Load it in your agent via `PromptManager().get("my_agent.system")`.
+3. Load it in the agent via `PromptManager().get("my_agent.system")`.
 
-#### How agents load prompts
+#### How `BaseAgent` resolves prompts
 
-`BaseAgent.__init__` automatically resolves the system prompt:
+`BaseAgent.__init__` auto-resolves the system prompt — Copilot must not override this pattern:
 
-1. If an explicit `system_prompt=` argument is provided, it is used.
-2. Otherwise, `PromptManager.get(f"{name.lower()}.system")` is tried.
+1. Explicit `system_prompt=` argument (only for tests or special cases).
+2. `PromptManager.get(f"{name.lower()}.system")` — the default path.
 3. Falls back to `default.system` if no matching key exists.
 
 ### Commands
@@ -97,35 +105,33 @@ uv run pytest tests/test_prompts.py -v   # Run prompt manager tests
 
 `app/src/agents/tools.py` — skill definitions and `SkillRegistry`.
 
-### Convention
+### What Copilot must enforce when writing code
 
-Agent capabilities are expressed as **AgentSkills**, not ad-hoc tool functions.  Every skill:
+When Copilot adds new AI agent capabilities, it **must**:
 
-1. Inherits from `AgentSkill` (replaces the legacy `Tool` base class).
-2. Implements `get_definition() -> SkillDefinition` with:
-   - `name` — unique identifier
-   - `description` — human-readable purpose
-   - `parameters` — JSON-schema-style parameter spec
-   - `examples` — ≥1 example invocations to help agents decide when to use this skill
-3. Implements `execute(**kwargs)` with typed arguments.
-4. Is registered in `SkillRegistry` (default registry built by `build_default_registry()`).
+- **Use `AgentSkill`** as the base class — never implement a bare function or a class that doesn't inherit `AgentSkill`.
+- **Implement `get_definition() -> SkillDefinition`** with a `name`, `description`, `parameters`, and at least **one** `examples` entry that helps the agent decide when to use the skill.
+- **Register the skill** in `build_default_registry()` in `tools.py`.
+- **Route skill-relevant requests** through `self.describe_skills()` in `_generate_response()` so the agent actively uses available skills.
+- **Never duplicate** functionality already covered by an existing registered skill — look up `SkillRegistry.list_skills()` first.
 
-#### Skill-aware response generation
-
-Agents must check `self.describe_skills()` (which calls `SkillRegistry.describe()`) when
-generating responses so they actively route applicable requests through skills:
+#### Adding a new skill (required pattern)
 
 ```python
-# Route arithmetic queries to the calculator skill
-if "calculate" in message.lower():
-    return f"I can help. {self.describe_skills()}\nPlease provide operands."
+class MySkill(AgentSkill):
+    def get_definition(self) -> SkillDefinition:
+        return SkillDefinition(
+            name="my_skill",
+            description="...",
+            parameters={"param": {"type": "string"}},
+            examples=["my_skill(param='value') → result"],
+        )
+
+    def execute(self, param: str) -> dict[str, Any]:  # type: ignore[override]
+        ...
 ```
 
-#### Adding a new skill
-
-1. Create a class inheriting `AgentSkill` in `app/src/agents/tools.py` (or a sibling module).
-2. Add it to `build_default_registry()`.
-3. Document at least one example in `SkillDefinition.examples`.
+Then add `registry.register(MySkill())` in `build_default_registry()`.
 
 ### Built-in skills
 
@@ -149,38 +155,32 @@ uv run pytest tests/test_hooks.py -v -k "skill"  # Run skill registry tests
 
 `app/src/hooks/harness_hook.py` — post-execution harness compliance validation.
 
-### Convention
+### What Copilot must enforce when writing code
 
-After every agent message processing cycle, `HarnessHook.run(user_input, agent_output)` **must be called**.
+When Copilot writes or modifies `process_message()` in any AI agent class, it **must**:
 
-#### What it checks
+- **Always call `self.run_harness_hook(user_input, agent_output)`** at the end of the method — this is mandatory, not optional.
+- **Never remove or skip** the harness hook call.
+- **Never catch and suppress** `HarnessViolationError` silently — let it propagate or handle it explicitly with a logged fallback response.
 
-- Applies all security rules from `SecurityValidator` to both the input and the output.
-- Produces a `HarnessViolationReport` with:
-  - `input_violations` — violations found in user input
-  - `output_violations` — violations found in agent output
-  - `has_violations` — True when any violation exists
-  - `critical_violations` — violations with `severity='critical'`
-
-#### Enforcement modes
-
-| Mode | Setting | Behavior |
-|------|---------|---------|
-| Observe (default) | `fail_on_violation=False` | Violations are logged; execution continues |
-| Enforce | `fail_on_violation=True` | `HarnessViolationError` raised on critical violations |
-
-#### Integration in BaseAgent
-
-`BaseAgent.run_harness_hook(user_input, agent_output)` provides the hook call point.
-Concrete agents **must** call it at the end of `process_message()`:
+#### Required pattern for `process_message()`
 
 ```python
 def process_message(self, message: str) -> str:
-    ...
-    response = self._generate_response(message)
-    self.run_harness_hook(user_input=message, agent_output=response)
+    # 1. Validate input is non-empty
+    # 2. Call validate_input_security(message)
+    # 3. Generate response
+    # 4. Call validate_response(response)
+    # 5. Call run_harness_hook(message, response)  ← mandatory
     return response
 ```
+
+#### Enforcement modes
+
+| Mode | Setting | When to use |
+|------|---------|-------------|
+| Observe (default) | `fail_on_violation=False` | Development and staging |
+| Enforce | `fail_on_violation=True` | Production or high-security contexts |
 
 ### Commands
 
