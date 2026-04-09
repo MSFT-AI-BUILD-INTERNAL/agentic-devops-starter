@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.prompts import PromptManager
+
 # Load environment and setup logging
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -27,6 +29,9 @@ API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-08-07")
 
 # Default CORS origins for development
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+# Centralized prompt manager — prompts are defined in src/prompts/system_prompts.yaml
+_prompt_manager = PromptManager()
 
 
 @ai_function(description="Get the time zone for a location.")
@@ -60,12 +65,12 @@ def create_agent() -> ChatAgent:
         api_version=API_VERSION,
     )
 
+    # Load system instructions from centralized prompt manager
+    instructions = _prompt_manager.get("agui_assistant.system")
+
     return ChatAgent(
         name="AGUIAssistant",
-        instructions=(
-            "You are a helpful AI assistant. "
-            "Use get_time_zone for time zone information about locations."
-        ),
+        instructions=instructions,
         chat_client=chat_client,
         tools=[get_time_zone],
     )

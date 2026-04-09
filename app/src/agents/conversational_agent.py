@@ -12,7 +12,13 @@ MAX_RESPONSE_MULTIPLIER = 4
 
 
 class ConversationalAgent(BaseAgent):
-    """Conversational agent that processes messages and generates responses."""
+    """Conversational agent that processes messages and generates responses.
+
+    Uses the centralized :class:`~src.prompts.PromptManager` for its system
+    prompt, the built-in :class:`~src.agents.tools.SkillRegistry` for skill
+    discovery, and runs the :class:`~src.hooks.HarnessHook` after every
+    message to ensure harness compliance.
+    """
 
     def __init__(
         self,
@@ -24,32 +30,67 @@ class ConversationalAgent(BaseAgent):
         self.initialize_state()
 
     def process_message(self, message: str) -> str:
-        """Process a user message and generate a response."""
+        """Process a user message and generate a response.
+
+        Steps:
+        1. Validate input is non-empty.
+        2. Run security check on the input.
+        3. Generate a response (with skill awareness).
+        4. Validate the response quality.
+        5. Run post-execution harness hook.
+        6. Return the response.
+        """
         if not message or not message.strip():
             raise ValueError("Message cannot be empty")
 
+        # Security check on input
+        input_violations = self.validate_input_security(message)
+        if input_violations:
+            self.logger.warning(
+                "Input security violations detected (%d); continuing with caution",
+                len(input_violations),
+            )
+
         self.add_to_history("user", message)
 
-        # Generate response (mock implementation for demo)
+        # Generate response (mock implementation with skill awareness)
         response = self._generate_response(message)
 
-        # Validate before delivery
+        # Validate response quality before delivery
         is_valid, _ = self.validate_response(response)
         if not is_valid:
             response = "I apologize, but I cannot provide a response at this time."
 
         self.add_to_history("assistant", response)
+
+        # Post-execution harness compliance hook
+        self.run_harness_hook(user_input=message, agent_output=response)
+
         return response
 
     def _generate_response(self, message: str) -> str:
-        """Generate a mock response based on message patterns."""
+        """Generate a response with skill-aware routing."""
         msg = message.lower()
+
+        # Skill-aware: route arithmetic queries to the calculator skill
+        if any(w in msg for w in ("calculate", "compute", "math", "add", "subtract", "multiply", "divide")):
+            skill_hint = self.describe_skills()
+            return (
+                f"I can help with calculations. {skill_hint}\n"
+                "Please provide the operation and operands."
+            )
+
+        # Skill-aware: route weather queries to the weather skill
+        if "weather" in msg or "temperature" in msg:
+            return "I can check the weather for you using the get_weather skill. Which location?"
+
         if "hello" in msg or "hi" in msg:
             return "Hello! How can I assist you today?"
         elif "how are you" in msg:
             return "I'm functioning well, thank you! Ready to help."
         elif "help" in msg:
-            return "I'm an AI assistant. I can answer questions and assist with tasks."
+            skills_summary = self.describe_skills()
+            return f"I'm an AI assistant. I can answer questions and assist with tasks.\n{skills_summary}"
         else:
             return f"I understand: '{message}'. This is a demo response."
 
