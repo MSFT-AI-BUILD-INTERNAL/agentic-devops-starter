@@ -1,6 +1,7 @@
 // MessageBubble component for individual message display
 import { memo } from 'react';
 import type { Message } from '../types/message';
+import { MarkdownContent } from './MarkdownContent';
 
 interface MessageBubbleProps {
   message: Message;
@@ -30,7 +31,11 @@ export const MessageBubble = memo(({ message }: MessageBubbleProps) => {
         )}
 
         {/* Message content */}
-        <div className="whitespace-pre-wrap break-words">{message.content}</div>
+        {isAssistant ? (
+          <MarkdownContent content={message.content} />
+        ) : (
+          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+        )}
 
         {/* Metadata footer */}
         <div className="text-xs mt-2 opacity-60">
@@ -39,7 +44,7 @@ export const MessageBubble = memo(({ message }: MessageBubbleProps) => {
             minute: '2-digit',
           })}
           {message.metadata?.tokenCount && (
-            <span className="ml-2">• {message.metadata.tokenCount} tokens</span>
+            <span className="ml-2">• ~{message.metadata.tokenCount} tokens</span>
           )}
           {message.metadata?.executionTimeMs && (
             <span className="ml-2">• {(message.metadata.executionTimeMs / 1000).toFixed(1)}s</span>

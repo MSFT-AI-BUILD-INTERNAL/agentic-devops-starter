@@ -1,6 +1,7 @@
 // MessageList component with auto-scroll
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { MessageBubble } from './MessageBubble';
+import { MarkdownContent } from './MarkdownContent';
 import type { Message } from '../types/message';
 
 interface MessageListProps {
@@ -88,16 +89,45 @@ export function MessageList({ messages, isStreaming, streamingText }: MessageLis
             ))}
 
             {/* Streaming message preview */}
-            {isStreaming && streamingText && (
+            {isStreaming && (
               <div className="flex justify-start mb-4">
                 <div className="max-w-[70%] rounded-lg px-4 py-2 bg-message-assistant text-message-assistant-text shadow-sm mr-auto">
                   <div className="text-xs font-semibold mb-1 opacity-70">Assistant</div>
-                  <div className="whitespace-pre-wrap break-words">{streamingText}</div>
-                  <div className="typing-indicator mt-2 flex space-x-1">
-                    <span className="w-2 h-2 bg-text-secondary rounded-full"></span>
-                    <span className="w-2 h-2 bg-text-secondary rounded-full"></span>
-                    <span className="w-2 h-2 bg-text-secondary rounded-full"></span>
-                  </div>
+                  {streamingText ? (
+                    <MarkdownContent content={streamingText} />
+                  ) : (
+                    /* Loading animation while waiting for first token */
+                    <div className="flex items-center space-x-2 py-1">
+                      <svg
+                        className="animate-spin h-4 w-4 opacity-60"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                      <span className="text-sm opacity-60">Thinking…</span>
+                    </div>
+                  )}
+                  {streamingText && (
+                    <div className="typing-indicator mt-2 flex space-x-1">
+                      <span className="w-2 h-2 bg-text-secondary rounded-full"></span>
+                      <span className="w-2 h-2 bg-text-secondary rounded-full"></span>
+                      <span className="w-2 h-2 bg-text-secondary rounded-full"></span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
