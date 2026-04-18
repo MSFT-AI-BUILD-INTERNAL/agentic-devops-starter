@@ -786,3 +786,147 @@ All application code work — new features, refactors, bug fixes, and enhancemen
 - **Single Responsibility**: Each module, class, and function should have one clear purpose. Split anything doing too much.
 - **Minimize surface area**: Avoid exporting or exposing internals that consumers don't need. Keep public APIs small.
 - Always aim for the smallest correct implementation that satisfies the spec.
+
+---
+
+## code-review-criteria
+
+### Scope
+
+All code that Copilot writes or modifies across the entire repository.
+
+### Purpose
+
+This harness defines the mandatory code review criteria that Copilot **must** apply when generating or modifying any code. These criteria serve as the evaluation baseline for the Generation & Evaluation Pattern described in `code-generation-evaluation`.
+
+### Review Criteria
+
+Copilot **must** evaluate every code change against all five criteria below before finalizing output:
+
+#### 1. Code Stability and Compatibility
+
+- Generated code must not introduce breaking changes to existing public APIs, interfaces, or data contracts.
+- New code must be compatible with the declared language versions and dependency versions in the project (Python ≥3.12, Node.js as specified in `package.json`, Terraform ≥1.5.0).
+- Avoid language features or library APIs marked as unstable, experimental, or scheduled for removal.
+- Side-effects that change persistent state (database writes, file mutations, network calls) must be explicit and intentional — never implicit or accidental.
+
+#### 2. Prevention of Unnecessary Over-Engineering
+
+- Implement only what the current requirement demands. Do not pre-emptively build abstractions, extension points, or configurability that is not yet needed.
+- Prefer straightforward, readable code over clever or highly abstract code when both solve the problem equally well.
+- A new class, interface, or layer of indirection must justify its existence — if a plain function or inline logic suffices, use it.
+- Do not add optional parameters, feature flags, or plugin hooks unless explicitly required by the spec.
+
+#### 3. Removal of Duplicate Code and Refactoring
+
+- Before writing new logic, check whether equivalent logic already exists in the codebase. Reuse it rather than duplicating it.
+- If the same pattern appears in two or more places as a result of this change, extract it into a shared function, utility, or base class.
+- Remove any dead, unreachable, or commented-out code introduced by — or exposed by — the current change.
+- Refactoring that is required to avoid duplication is in scope; refactoring unrelated code is out of scope.
+
+#### 4. Prevention of Incorrect Logic via Fallback and Error Hiding
+
+- Fallback paths (e.g., `except Exception`, default return values, silent `None` checks) must not silently swallow errors or produce misleading results.
+- Every fallback must either re-raise, log with full context, or return a clearly typed error value — never an empty string, `None`, or a hardcoded default that masks the real failure.
+- Do not convert a hard error into a soft warning merely to keep the application running; if a component is broken, propagate that signal upward.
+- Avoid broad `try/except` blocks that catch unrelated exceptions and obscure the root cause.
+
+#### 5. Root-Cause Orientation in All Fixes
+
+- Every bug fix or defensive change must address the underlying root cause, not only the symptom.
+- Do not add workarounds, patches, or compensating logic that suppresses a symptom while leaving the root cause in place.
+- If the root cause cannot be fixed in the current scope, document it explicitly with a `# TODO(root-cause):` comment, a linked issue reference, and the reason it is deferred — never silently defer.
+- Changes that introduce new complexity solely to work around a known defect in an upstream dependency must be accompanied by a comment and an issue tracking the proper fix.
+
+### Enforcement
+
+These criteria are enforced through the Generation & Evaluation Pattern defined in `code-generation-evaluation`. Copilot **must not** mark a code change as complete until it has passed a self-evaluation against all five criteria.
+
+---
+
+## code-generation-evaluation
+
+### Scope
+
+All code written or modified by Copilot across the entire repository.
+
+### Purpose
+
+This harness defines the **Generation & Evaluation Pattern** — a mandatory self-review loop that Copilot must execute for every non-trivial code change. The pattern ensures that generated code is critically assessed against the `code-review-criteria` before it is presented as final output.
+
+### The Pattern
+
+Every code generation task follows three sequential phases:
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  Phase 1 — GENERATE                                            │
+│  Write the initial implementation based on the requirement.    │
+├────────────────────────────────────────────────────────────────┤
+│  Phase 2 — EVALUATE                                            │
+│  Critically review the generated code against all five         │
+│  code-review-criteria. Produce a scored finding per criterion. │
+├────────────────────────────────────────────────────────────────┤
+│  Phase 3 — REVISE                                              │
+│  Apply targeted fixes for every finding raised in Phase 2.     │
+│  Repeat Phase 2 → Phase 3 until all criteria pass.             │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### Phase 1 — Generate
+
+- Produce a complete, working initial implementation.
+- Do not self-censor or over-iterate at this stage; the goal is a functionally correct first draft.
+- Apply all harness rules (security, prompts, hooks, etc.) from the outset — do not defer them to the evaluation phase.
+
+### Phase 2 — Evaluate
+
+After generating the initial implementation, Copilot **must** perform an internal evaluation by scoring the code against each of the five `code-review-criteria`. For each criterion, assign one of:
+
+| Score | Meaning |
+|-------|---------|
+| ✅ Pass | No issues found. |
+| ⚠️ Warning | A minor issue that should be improved but does not break correctness. |
+| ❌ Fail | A material issue that must be fixed before the output is final. |
+
+A code change may only be marked complete when **all five criteria score ✅ Pass** or **⚠️ Warning with documented justification**. Any ❌ Fail must trigger Phase 3.
+
+#### Evaluation checklist (apply in order)
+
+1. **Stability & Compatibility** — Does this code break any existing contract or require a version not available in the project?
+2. **Over-Engineering** — Is every abstraction, parameter, and layer of indirection justified by the current requirement?
+3. **Duplicate Code** — Is there any logic that already exists in the codebase and should be reused instead of re-implemented?
+4. **Fallback & Error Hiding** — Do all error paths propagate or log the failure explicitly? Are there any silent swallows?
+5. **Root-Cause Orientation** — Does every fix address the root cause, or does it introduce a workaround that defers the underlying problem?
+
+### Phase 3 — Revise
+
+- For each ❌ Fail finding, apply the minimal targeted fix that resolves the issue.
+- Do not refactor unrelated code during revision.
+- After revisions, return to Phase 2 and re-evaluate only the criteria that had findings.
+- Continue iterating until no ❌ Fail findings remain.
+
+### When to Apply the Full Pattern
+
+Apply all three phases for:
+- Any new function, class, or module.
+- Any change to business logic, error handling, or data flow.
+- Any change that touches security-sensitive code paths.
+- Any fix to a reported bug.
+
+For purely mechanical changes (e.g., renaming a variable, updating a comment, reformatting), a lighter evaluation (checklist scan only) is sufficient.
+
+### Output Format
+
+When presenting code changes, Copilot should include a brief evaluation summary when findings were identified and resolved:
+
+```
+**Evaluation Summary**
+- Stability & Compatibility: ✅ Pass
+- Over-Engineering: ✅ Pass
+- Duplicate Code: ⚠️ Warning — extracted shared validation into `_validate_input()` helper
+- Fallback & Error Hiding: ✅ Pass
+- Root-Cause Orientation: ✅ Pass
+```
+
+Omit the summary for trivial changes (no findings).
