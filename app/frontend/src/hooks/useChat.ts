@@ -69,7 +69,8 @@ export function useChat() {
                 assistantContent += event.delta;
                 updateStreamingState({
                   buffer: assistantContent,
-                  tokenCount: assistantContent.length,
+                  // Approximate token count: one token ≈ 4 characters (common heuristic)
+                  tokenCount: Math.round(assistantContent.length / 4),
                 });
               }
               break;
@@ -84,6 +85,11 @@ export function useChat() {
                   content: assistantContent,
                   timestamp: new Date(),
                   threadId,
+                  metadata: {
+                    streamingComplete: true,
+                    // Approximate token count: one token ≈ 4 characters (common heuristic)
+                    tokenCount: Math.round(assistantContent.length / 4),
+                  },
                 };
                 addMessage(assistantMessage);
               }
