@@ -109,6 +109,11 @@ class AGUIClient {
         // Start stream processing without blocking
         processStream().catch((err) => {
           logger.error('Stream processing failed', err);
+          // Propagate failure as an ERROR event so callers can reset streaming state
+          onEvent({
+            type: 'ERROR',
+            message: err instanceof Error ? err.message : 'Stream processing failed',
+          });
         });
 
         // Return immediately with thread_id (stream processing continues in background)
