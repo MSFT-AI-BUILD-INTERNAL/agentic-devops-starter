@@ -93,31 +93,19 @@ class AGUIClient {
 
       // Handle SSE stream from response body
       if (response.body && onEvent) {
-        // Process stream in background with proper cleanup
-        const processStream = async () => {
-          try {
-            // Note: threadIdFromStream is returned but not used here since we return immediately
-            // The threadId is passed to the event handler if present in the stream
-            const threadIdFromStream = await processSSEStream(response, onEvent);
-            return threadIdFromStream;
-          } catch (error) {
-            logger.error('Stream processing failed', error);
-            throw error;
-          }
-        };
-
-        // Start stream processing without blocking
-        processStream().catch((err) => {
-          logger.error('Stream processing failed', err);
+        // Await stream completion so callers can rely on the resolved promise
+        // to know when streaming has fully finished (success or error).
+        try {
+          await processSSEStream(response, onEvent);
+        } catch (error) {
+          logger.error('Stream processing failed', error);
           // Propagate failure as an ERROR event so callers can reset streaming state
           onEvent({
             type: 'ERROR',
-            message: err instanceof Error ? err.message : 'Stream processing failed',
+            message: error instanceof Error ? error.message : 'Stream processing failed',
           });
-        });
+        }
 
-        // Return immediately with thread_id (stream processing continues in background)
-        // If no threadId provided, generate a new one - stream may provide one later via events
         return { thread_id: threadId || generateUUID() };
       }
 

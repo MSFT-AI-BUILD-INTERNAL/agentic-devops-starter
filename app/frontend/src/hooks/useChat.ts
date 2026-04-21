@@ -6,6 +6,9 @@ import { logger } from '../utils/logger';
 import { generateUUID } from '../utils/uuid';
 import type { Message } from '../types/message';
 
+// Approximate token count: one token ≈ 4 characters (common heuristic)
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+
 export function useChat() {
   const messages = useChatStore((state) => state.messages);
   const currentThread = useChatStore((state) => state.currentThread);
@@ -48,6 +51,7 @@ export function useChat() {
       // Prepare assistant message
       const assistantMessageId = generateUUID();
       let assistantContent = '';
+      let messageAdded = false;
 
       try {
         // Send to backend with SSE event handler
@@ -69,8 +73,7 @@ export function useChat() {
                 assistantContent += event.delta;
                 updateStreamingState({
                   buffer: assistantContent,
-                  // Approximate token count: one token ≈ 4 characters (common heuristic)
-                  tokenCount: Math.round(assistantContent.length / 4),
+                  tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
                 });
               }
               break;
@@ -87,11 +90,11 @@ export function useChat() {
                   threadId,
                   metadata: {
                     streamingComplete: true,
-                    // Approximate token count: one token ≈ 4 characters (common heuristic)
-                    tokenCount: Math.round(assistantContent.length / 4),
+                    tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
                   },
                 };
                 addMessage(assistantMessage);
+                messageAdded = true;
               }
               if (event.type === 'RUN_FINISHED') {
                 updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
@@ -108,10 +111,26 @@ export function useChat() {
         logger.info('Message sent successfully', { messageId: userMessage.id });
       } catch (error) {
         logger.error('Failed to send message', error);
-        // Ensure streaming state is always reset on failure so the
-        // "Thinking…" indicator does not stay visible indefinitely.
-        updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
         throw error;
+      } finally {
+        // Safety net: if the stream ended without a RUN_FINISHED event (network drop,
+        // server crash, timeout), preserve any buffered content and always reset the
+        // "Thinking…" indicator so it never stays visible indefinitely.
+        if (assistantContent.trim() && !messageAdded) {
+          const assistantMessage: Message = {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: assistantContent,
+            timestamp: new Date(),
+            threadId,
+            metadata: {
+              streamingComplete: false,
+              tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
+            },
+          };
+          addMessage(assistantMessage);
+        }
+        updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
       }
     },
     [currentThread?.id, createThread, addMessage, updateStreamingState]
