@@ -51,7 +51,6 @@ export function useChat() {
       // Prepare assistant message
       const assistantMessageId = generateUUID();
       let assistantContent = '';
-      let messageAdded = false;
 
       try {
         // Send to backend with SSE event handler
@@ -94,7 +93,6 @@ export function useChat() {
                   },
                 };
                 addMessage(assistantMessage);
-                messageAdded = true;
               }
               if (event.type === 'RUN_FINISHED') {
                 updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
@@ -112,25 +110,6 @@ export function useChat() {
       } catch (error) {
         logger.error('Failed to send message', error);
         throw error;
-      } finally {
-        // Safety net: if the stream ended without a RUN_FINISHED event (network drop,
-        // server crash, timeout), preserve any buffered content and always reset the
-        // "Thinking…" indicator so it never stays visible indefinitely.
-        if (assistantContent.trim() && !messageAdded) {
-          const assistantMessage: Message = {
-            id: assistantMessageId,
-            role: 'assistant',
-            content: assistantContent,
-            timestamp: new Date(),
-            threadId,
-            metadata: {
-              streamingComplete: false,
-              tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
-            },
-          };
-          addMessage(assistantMessage);
-        }
-        updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
       }
     },
     [currentThread?.id, createThread, addMessage, updateStreamingState]

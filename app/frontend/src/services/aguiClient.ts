@@ -93,13 +93,26 @@ class AGUIClient {
 
       // Handle SSE stream from response body
       if (response.body && onEvent) {
-        // Await stream completion so callers can rely on the resolved promise
-        // to know when streaming has fully finished (success or error).
+        // Track RUN_FINISHED so we can detect a protocol violation when the
+        // stream closes without signalling normal completion.
+        let runFinished = false;
+        const wrappedOnEvent = (event: StreamEvent) => {
+          if (event.type === 'RUN_FINISHED') {
+            runFinished = true;
+          }
+          onEvent(event);
+        };
+
         try {
-          await processSSEStream(response, onEvent);
+          await processSSEStream(response, wrappedOnEvent);
+          // AG-UI protocol requires RUN_FINISHED to signal normal completion.
+          // If the stream closed without it, treat this as an error so the
+          // ERROR handler in the caller can reset streaming state properly.
+          if (!runFinished) {
+            onEvent({ type: 'ERROR', message: 'Stream ended without RUN_FINISHED event' });
+          }
         } catch (error) {
           logger.error('Stream processing failed', error);
-          // Propagate failure as an ERROR event so callers can reset streaming state
           onEvent({
             type: 'ERROR',
             message: error instanceof Error ? error.message : 'Stream processing failed',
