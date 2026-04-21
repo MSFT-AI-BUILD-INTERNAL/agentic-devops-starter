@@ -100,7 +100,7 @@ export function useChat() {
 
             case 'ERROR':
               logger.error('Backend error', new Error(event.message || 'Unknown error'));
-              updateStreamingState({ isStreaming: false });
+              updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
               break;
           }
         });
@@ -108,6 +108,9 @@ export function useChat() {
         logger.info('Message sent successfully', { messageId: userMessage.id });
       } catch (error) {
         logger.error('Failed to send message', error);
+        // Ensure streaming state is always reset on failure so the
+        // "Thinking…" indicator does not stay visible indefinitely.
+        updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
         throw error;
       }
     },
