@@ -93,31 +93,32 @@ class AGUIClient {
 
       // Handle SSE stream from response body
       if (response.body && onEvent) {
-        // Process stream in background with proper cleanup
-        const processStream = async () => {
-          try {
-            // Note: threadIdFromStream is returned but not used here since we return immediately
-            // The threadId is passed to the event handler if present in the stream
-            const threadIdFromStream = await processSSEStream(response, onEvent);
-            return threadIdFromStream;
-          } catch (error) {
-            logger.error('Stream processing failed', error);
-            throw error;
+        // Track RUN_FINISHED so we can detect a protocol violation when the
+        // stream closes without signalling normal completion.
+        let runFinished = false;
+        const wrappedOnEvent = (event: StreamEvent) => {
+          if (event.type === 'RUN_FINISHED') {
+            runFinished = true;
           }
+          onEvent(event);
         };
 
-        // Start stream processing without blocking
-        processStream().catch((err) => {
-          logger.error('Stream processing failed', err);
-          // Propagate failure as an ERROR event so callers can reset streaming state
+        try {
+          await processSSEStream(response, wrappedOnEvent);
+          // AG-UI protocol requires RUN_FINISHED to signal normal completion.
+          // If the stream closed without it, treat this as an error so the
+          // ERROR handler in the caller can reset streaming state properly.
+          if (!runFinished) {
+            onEvent({ type: 'ERROR', message: 'Stream ended without RUN_FINISHED event' });
+          }
+        } catch (error) {
+          logger.error('Stream processing failed', error);
           onEvent({
             type: 'ERROR',
-            message: err instanceof Error ? err.message : 'Stream processing failed',
+            message: error instanceof Error ? error.message : 'Stream processing failed',
           });
-        });
+        }
 
-        // Return immediately with thread_id (stream processing continues in background)
-        // If no threadId provided, generate a new one - stream may provide one later via events
         return { thread_id: threadId || generateUUID() };
       }
 

@@ -6,6 +6,9 @@ import { logger } from '../utils/logger';
 import { generateUUID } from '../utils/uuid';
 import type { Message } from '../types/message';
 
+// Approximate token count: one token ≈ 4 characters (common heuristic)
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+
 export function useChat() {
   const messages = useChatStore((state) => state.messages);
   const currentThread = useChatStore((state) => state.currentThread);
@@ -69,8 +72,7 @@ export function useChat() {
                 assistantContent += event.delta;
                 updateStreamingState({
                   buffer: assistantContent,
-                  // Approximate token count: one token ≈ 4 characters (common heuristic)
-                  tokenCount: Math.round(assistantContent.length / 4),
+                  tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
                 });
               }
               break;
@@ -87,8 +89,7 @@ export function useChat() {
                   threadId,
                   metadata: {
                     streamingComplete: true,
-                    // Approximate token count: one token ≈ 4 characters (common heuristic)
-                    tokenCount: Math.round(assistantContent.length / 4),
+                    tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
                   },
                 };
                 addMessage(assistantMessage);
@@ -108,9 +109,6 @@ export function useChat() {
         logger.info('Message sent successfully', { messageId: userMessage.id });
       } catch (error) {
         logger.error('Failed to send message', error);
-        // Ensure streaming state is always reset on failure so the
-        // "Thinking…" indicator does not stay visible indefinitely.
-        updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
         throw error;
       }
     },
