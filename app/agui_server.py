@@ -6,7 +6,7 @@ FastAPI server exposing a ChatAgent through AG-UI protocol with streaming suppor
 import logging
 import os
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Annotated, Any
 
 from ag_ui.core import RunErrorEvent, RunFinishedEvent
 from ag_ui.encoder import EventEncoder
@@ -83,8 +83,8 @@ def create_app() -> FastAPI:
 
     # Security headers middleware
     @app.middleware("http")
-    async def add_security_headers(request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
-        response = await call_next(request)
+    async def add_security_headers(request: Request, call_next: Any) -> Response:
+        response: Response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -129,7 +129,7 @@ def create_app() -> FastAPI:
             except Exception as exc:
                 logger.exception("run_agent raised an exception; terminating stream cleanly")
                 yield encoder.encode(RunErrorEvent(message=str(exc)))
-                yield encoder.encode(RunFinishedEvent(threadId=thread_id, runId=run_id))
+                yield encoder.encode(RunFinishedEvent(thread_id=thread_id, run_id=run_id))
 
         return StreamingResponse(
             event_generator(),

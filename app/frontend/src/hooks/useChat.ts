@@ -106,9 +106,10 @@ export function useChat() {
               updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
               break;
 
-            case 'ERROR':
-              logger.error('Backend error', new Error(event.message || 'Unknown error'));
-              updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
+            case 'RUN_ERROR':
+              // Log the error and clear any accumulated content; let RUN_FINISHED reset streaming state.
+              logger.error('Backend error', { message: event.message, code: event.code });
+              assistantContent = '';
               break;
           }
         });

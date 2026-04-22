@@ -71,18 +71,22 @@ def test_get_time_zone_tool() -> None:
     """Test the get_time_zone server-side tool."""
     from agui_server import get_time_zone
 
-    # Test known locations
-    assert "Pacific Time" in get_time_zone("Seattle")
-    assert "Pacific Time" in get_time_zone("San Francisco")
-    assert "Eastern Time" in get_time_zone("New York")
-    assert "Greenwich Mean Time" in get_time_zone("London")
-
-    # Test case insensitivity
-    assert "Pacific Time" in get_time_zone("SEATTLE")
-    assert "Pacific Time" in get_time_zone("seattle")
+    # @ai_function wraps sync tools; the return value is always str at runtime.
+    for location, expected in [
+        ("Seattle", "Pacific Time"),
+        ("San Francisco", "Pacific Time"),
+        ("New York", "Eastern Time"),
+        ("London", "Greenwich Mean Time"),
+        ("SEATTLE", "Pacific Time"),
+        ("seattle", "Pacific Time"),
+    ]:
+        result = get_time_zone(location)
+        assert isinstance(result, str), f"get_time_zone({location!r}) did not return str"
+        assert expected in result, f"Expected {expected!r} in get_time_zone({location!r}), got {result!r}"
 
     # Test unknown location
     result = get_time_zone("Unknown City")
+    assert isinstance(result, str)
     assert "not available" in result
 
 
