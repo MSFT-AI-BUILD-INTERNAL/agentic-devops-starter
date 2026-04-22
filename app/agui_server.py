@@ -140,12 +140,9 @@ def create_app() -> FastAPI:
 
             async def event_generator() -> AsyncGenerator[str, None]:
                 encoder = EventEncoder()
-                event_count = 0
                 try:
                     async for event in wrapped_agent.run_agent(input_data):
-                        event_count += 1
                         yield encoder.encode(event)
-                    logger.info("Completed streaming %s events", event_count)
                 except Exception as exc:
                     logger.error("Agent execution error: %s", exc, exc_info=True)
                     yield encoder.encode(

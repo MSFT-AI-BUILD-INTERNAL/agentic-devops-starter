@@ -100,23 +100,11 @@ export function useChat() {
               break;
 
             case 'RUN_ERROR':
-              // Agent execution failed on the server. Save any partial content and
-              // clear streaming state so the UI does not remain stuck.
+              // Agent execution failed on the server. Discard any partial content
+              // (incomplete responses could confuse the user) and let the subsequent
+              // RUN_FINISHED event reset streaming state through the normal path.
               logger.error('Agent run error', new Error(event.message || 'Unknown agent error'));
-              if (assistantContent) {
-                addMessage({
-                  id: assistantMessageId,
-                  role: 'assistant',
-                  content: assistantContent,
-                  timestamp: new Date(),
-                  threadId,
-                  metadata: {
-                    streamingComplete: false,
-                    tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
-                  },
-                });
-              }
-              updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
+              assistantContent = '';
               break;
 
             case 'ERROR':
