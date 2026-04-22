@@ -5,15 +5,19 @@ FastAPI server exposing a ChatAgent through AG-UI protocol with streaming suppor
 
 import logging
 import os
+from collections.abc import AsyncGenerator
 from typing import Annotated
 
+from ag_ui.core import RunErrorEvent, RunFinishedEvent
+from ag_ui.encoder import EventEncoder
 from agent_framework import ChatAgent, ai_function
 from agent_framework.azure import AzureAIAgentClient
-from agent_framework_ag_ui import add_agent_framework_fastapi_endpoint
-from azure.identity import DefaultAzureCredential
+from agent_framework_ag_ui import AgentFrameworkAgent
+from azure.identity.aio import DefaultAzureCredential
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 # Load environment and setup logging
 load_dotenv()
@@ -23,7 +27,6 @@ logger = logging.getLogger(__name__)
 # Configuration
 ENDPOINT = os.environ.get("AZURE_AI_PROJECT_ENDPOINT")
 DEPLOYMENT = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-08-07")
 
 # Default CORS origins for development
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -54,10 +57,9 @@ def create_agent() -> ChatAgent:
     logger.info(f"Creating ChatAgent: endpoint={ENDPOINT}, deployment={DEPLOYMENT}")
 
     chat_client = AzureAIAgentClient(
-        endpoint=ENDPOINT,
-        model=DEPLOYMENT,
+        project_endpoint=ENDPOINT,
+        model_deployment_name=DEPLOYMENT,
         credential=DefaultAzureCredential(),
-        api_version=API_VERSION,
     )
 
     return ChatAgent(
@@ -107,9 +109,37 @@ def create_app() -> FastAPI:
     async def health_check() -> dict[str, str]:
         return {"status": "healthy"}
 
-    # Register AG-UI endpoint
-    agent = create_agent()
-    add_agent_framework_fastapi_endpoint(app, agent, "/")
+    # Register AG-UI endpoint with proper error handling so the SSE stream
+    # always terminates with RUN_FINISHED, even when run_agent() raises.
+    raw_agent = create_agent()
+    wrapped_agent = AgentFrameworkAgent(agent=raw_agent)
+
+    @app.post("/")
+    async def agent_endpoint(request: Request) -> StreamingResponse:  # type: ignore[misc]
+        """Handle AG-UI agent requests and guarantee stream termination."""
+        input_data = await request.json()
+        thread_id: str = input_data.get("thread_id") or ""
+        run_id: str = input_data.get("run_id") or ""
+
+        async def event_generator() -> AsyncGenerator[str, None]:
+            encoder = EventEncoder()
+            try:
+                async for event in wrapped_agent.run_agent(input_data):
+                    yield encoder.encode(event)
+            except Exception as exc:
+                logger.exception("run_agent raised an exception; terminating stream cleanly")
+                yield encoder.encode(RunErrorEvent(message=str(exc)))
+                yield encoder.encode(RunFinishedEvent(threadId=thread_id, runId=run_id))
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     logger.info("FastAPI app created successfully")
     return app
