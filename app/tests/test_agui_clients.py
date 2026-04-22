@@ -8,12 +8,18 @@ def test_get_weather_known_locations() -> None:
     """Test get_weather returns correct data for known locations."""
     from agui_client import get_weather
 
-    assert "Rainy" in get_weather("Seattle")
-    assert "Foggy" in get_weather("San Francisco")
-    assert "Sunny" in get_weather("New York")
-    assert "Cloudy" in get_weather("London")
-    assert "Clear" in get_weather("Tokyo")
-    assert "Sunny" in get_weather("Sydney")
+    # @ai_function wraps sync tools; the return value is always str at runtime.
+    for location, expected in [
+        ("Seattle", "Rainy"),
+        ("San Francisco", "Foggy"),
+        ("New York", "Sunny"),
+        ("London", "Cloudy"),
+        ("Tokyo", "Clear"),
+        ("Sydney", "Sunny"),
+    ]:
+        result = get_weather(location)
+        assert isinstance(result, str), f"get_weather({location!r}) did not return str"
+        assert expected in result, f"Expected {expected!r} in get_weather({location!r}), got {result!r}"
 
 
 def test_get_weather_case_insensitive() -> None:
@@ -29,6 +35,7 @@ def test_get_weather_unknown_location() -> None:
     from agui_client import get_weather
 
     result = get_weather("Unknown City")
+    assert isinstance(result, str)
     assert "not available" in result
     assert "Unknown City" in result
 
