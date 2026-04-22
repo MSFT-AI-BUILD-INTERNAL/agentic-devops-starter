@@ -108,7 +108,11 @@ export function useChat() {
 
             case 'RUN_ERROR':
               // Log the error and clear any accumulated content; let RUN_FINISHED reset streaming state.
-              logger.error('Backend error', { message: event.message, code: event.code });
+              logger.error(
+                'Backend error',
+                new Error(typeof event.message === 'string' ? event.message : 'Unknown backend error'),
+                { code: event.code }
+              );
               assistantContent = '';
               break;
           }
