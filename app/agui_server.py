@@ -13,7 +13,7 @@ from ag_ui.encoder import EventEncoder
 from agent_framework import ChatAgent, ai_function
 from agent_framework.azure import AzureAIAgentClient
 from agent_framework_ag_ui import AgentFrameworkAgent
-from azure.identity import DefaultAzureCredential
+from azure.identity.aio import DefaultAzureCredential
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 # Configuration
 ENDPOINT = os.environ.get("AZURE_AI_PROJECT_ENDPOINT")
 DEPLOYMENT = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-08-07")
 
 # Default CORS origins for development
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -58,10 +57,9 @@ def create_agent() -> ChatAgent:
     logger.info(f"Creating ChatAgent: endpoint={ENDPOINT}, deployment={DEPLOYMENT}")
 
     chat_client = AzureAIAgentClient(
-        endpoint=ENDPOINT,
-        model=DEPLOYMENT,
+        project_endpoint=ENDPOINT,
+        model_deployment_name=DEPLOYMENT,
         credential=DefaultAzureCredential(),
-        api_version=API_VERSION,
     )
 
     return ChatAgent(
