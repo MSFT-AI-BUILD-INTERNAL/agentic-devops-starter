@@ -94,13 +94,15 @@ export function useChat() {
                     tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
                   },
                 });
-                assistantContent = ''; // prevent double-add if RUN_FINISHED also carries content
               }
+              // Clear the streaming bubble as soon as the text is complete.
               updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
               break;
 
             case 'RUN_FINISHED':
-              // Idempotent cleanup — message already committed on TEXT_MESSAGE_END.
+              // The message was already committed on TEXT_MESSAGE_END for text responses.
+              // For runs that produce no text (e.g. tool-only), TEXT_MESSAGE_END never fires,
+              // so RUN_FINISHED is the only place that clears isStreaming.
               updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
               break;
 
