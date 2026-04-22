@@ -78,10 +78,12 @@ export function useChat() {
               break;
 
             case 'TEXT_MESSAGE_END':
-            case 'RUN_FINISHED':
-              // Add complete assistant message
-              if (assistantContent && event.type === 'RUN_FINISHED') {
-                const assistantMessage: Message = {
+              // TEXT_MESSAGE_END is the AG-UI protocol signal that the assistant text is
+              // complete. Commit the message to the permanent list immediately so it is
+              // never lost, even if RUN_FINISHED is not received (e.g. due to a network
+              // interruption or a server exception after content is already delivered).
+              if (assistantContent) {
+                addMessage({
                   id: assistantMessageId,
                   role: 'assistant',
                   content: assistantContent,
@@ -91,12 +93,17 @@ export function useChat() {
                     streamingComplete: true,
                     tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
                   },
-                };
-                addMessage(assistantMessage);
+                });
               }
-              if (event.type === 'RUN_FINISHED') {
-                updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
-              }
+              // Clear the streaming bubble as soon as the text is complete.
+              updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
+              break;
+
+            case 'RUN_FINISHED':
+              // The message was already committed on TEXT_MESSAGE_END for text responses.
+              // For runs that produce no text (e.g. tool-only), TEXT_MESSAGE_END never fires,
+              // so RUN_FINISHED is the only place that clears isStreaming.
+              updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
               break;
 
             case 'ERROR':
