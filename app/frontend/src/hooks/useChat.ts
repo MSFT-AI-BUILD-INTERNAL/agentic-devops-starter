@@ -78,10 +78,12 @@ export function useChat() {
               break;
 
             case 'TEXT_MESSAGE_END':
-            case 'RUN_FINISHED':
-              // Add complete assistant message
-              if (assistantContent && event.type === 'RUN_FINISHED') {
-                const assistantMessage: Message = {
+              // TEXT_MESSAGE_END is the AG-UI protocol signal that the assistant text is
+              // complete. Commit the message to the permanent list immediately so it is
+              // never lost, even if RUN_FINISHED is not received (e.g. due to a network
+              // interruption or a server exception after content is already delivered).
+              if (assistantContent) {
+                addMessage({
                   id: assistantMessageId,
                   role: 'assistant',
                   content: assistantContent,
@@ -91,20 +93,15 @@ export function useChat() {
                     streamingComplete: true,
                     tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
                   },
-                };
-                addMessage(assistantMessage);
+                });
+                assistantContent = ''; // prevent double-add if RUN_FINISHED also carries content
               }
-              if (event.type === 'RUN_FINISHED') {
-                updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
-              }
+              updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
               break;
 
-            case 'RUN_ERROR':
-              // Agent execution failed on the server. Discard any partial content
-              // (incomplete responses could confuse the user) and let the subsequent
-              // RUN_FINISHED event reset streaming state through the normal path.
-              logger.error('Agent run error', new Error(event.message || 'Unknown agent error'));
-              assistantContent = '';
+            case 'RUN_FINISHED':
+              // Idempotent cleanup — message already committed on TEXT_MESSAGE_END.
+              updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
               break;
 
             case 'ERROR':

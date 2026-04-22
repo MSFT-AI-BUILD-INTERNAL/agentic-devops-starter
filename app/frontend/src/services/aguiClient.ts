@@ -95,12 +95,9 @@ class AGUIClient {
       if (response.body && onEvent) {
         // Track RUN_FINISHED so we can detect a protocol violation when the
         // stream closes without signalling normal completion.
-        // RUN_ERROR is also accepted as a valid terminal signal: the server
-        // always follows it with RUN_FINISHED, but we treat it as sufficient
-        // on its own to avoid a spurious second error event in edge cases.
         let runFinished = false;
         const wrappedOnEvent = (event: StreamEvent) => {
-          if (event.type === 'RUN_FINISHED' || event.type === 'RUN_ERROR') {
+          if (event.type === 'RUN_FINISHED') {
             runFinished = true;
           }
           onEvent(event);
