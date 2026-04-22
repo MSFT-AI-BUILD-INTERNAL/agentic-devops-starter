@@ -106,6 +106,25 @@ export function useChat() {
               updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
               break;
 
+            case 'RUN_ERROR':
+              // The backend encountered an error during the run. Clear the streaming
+              // buffer and surface a user-visible error message. RUN_FINISHED follows
+              // immediately and is handled by its own case to reset isStreaming.
+              logger.error('Backend run error', new Error(event.message || 'Unknown error'));
+              assistantContent = '';
+              updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
+              addMessage({
+                id: assistantMessageId,
+                role: 'assistant',
+                content: event.message
+                  ? `An error occurred: ${event.message}`
+                  : 'An error occurred. Please try again.',
+                timestamp: new Date(),
+                threadId,
+                metadata: { streamingComplete: true, tokenCount: 0 },
+              });
+              break;
+
             case 'ERROR':
               logger.error('Backend error', new Error(event.message || 'Unknown error'));
               updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });

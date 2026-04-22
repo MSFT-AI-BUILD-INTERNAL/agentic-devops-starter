@@ -19,6 +19,9 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from src.prompts.prompt_manager import PromptManager
+from src.security.validator import SecurityValidator, SecurityViolationError
+
 # Load environment and setup logging
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -30,6 +33,9 @@ DEPLOYMENT = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
 
 # Default CORS origins for development
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+_security_validator = SecurityValidator()
+_prompt_manager = PromptManager()
 
 
 @ai_function(description="Get the time zone for a location.")
@@ -62,12 +68,11 @@ def create_agent() -> ChatAgent:
         credential=DefaultAzureCredential(),
     )
 
+    instructions = _prompt_manager.get("aguiassistant.system")
+
     return ChatAgent(
         name="AGUIAssistant",
-        instructions=(
-            "You are a helpful AI assistant. "
-            "Use get_time_zone for time zone information about locations."
-        ),
+        instructions=instructions,
         chat_client=chat_client,
         tools=[get_time_zone],
     )
@@ -121,8 +126,23 @@ def create_app() -> FastAPI:
         thread_id: str = input_data.get("thread_id") or ""
         run_id: str = input_data.get("run_id") or ""
 
+        # Extract and validate user input before streaming begins
+        user_message = _extract_user_message(input_data)
+
         async def event_generator() -> AsyncGenerator[str, None]:
             encoder = EventEncoder()
+
+            # Security validation on user input — surfaces as RUN_ERROR before
+            # the stream begins so the client always receives a well-formed response.
+            if user_message:
+                try:
+                    _security_validator.validate_input(user_message)
+                except SecurityViolationError as sec_exc:
+                    logger.warning("Security violation in user input: %s", sec_exc)
+                    yield encoder.encode(RunErrorEvent(message=f"Input rejected: {sec_exc}"))
+                    yield encoder.encode(RunFinishedEvent(threadId=thread_id, runId=run_id))
+                    return
+
             try:
                 async for event in wrapped_agent.run_agent(input_data):
                     yield encoder.encode(event)
@@ -143,6 +163,17 @@ def create_app() -> FastAPI:
 
     logger.info("FastAPI app created successfully")
     return app
+
+
+def _extract_user_message(input_data: dict) -> str:
+    """Extract the last user message text from AG-UI input for validation."""
+    messages = input_data.get("messages", [])
+    for msg in reversed(messages):
+        if isinstance(msg, dict) and msg.get("role") == "user":
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                return content
+    return ""
 
 
 # App instance (lazy initialization)

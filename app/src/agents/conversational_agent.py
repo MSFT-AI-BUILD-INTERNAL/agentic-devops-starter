@@ -4,6 +4,7 @@ import uuid
 
 from ..config import LLMConfig
 from ..logging_utils import set_correlation_id
+from ..security.validator import SecurityViolationError
 from .base_agent import BaseAgent
 
 # Response validation constants
@@ -24,21 +25,42 @@ class ConversationalAgent(BaseAgent):
         self.initialize_state()
 
     def process_message(self, message: str) -> str:
-        """Process a user message and generate a response."""
+        """Process a user message and generate a response.
+
+        Follows the mandatory harness pattern:
+        1. Validate input is non-empty.
+        2. ``validate_input_security(message)``
+        3. Generate response.
+        4. ``validate_response(response)``
+        5. ``run_harness_hook(message, response)``  ← mandatory.
+        """
         if not message or not message.strip():
             raise ValueError("Message cannot be empty")
 
+        # Step 2: security validation on input
+        self.validate_input_security(message)
+
         self.add_to_history("user", message)
 
-        # Generate response (mock implementation for demo)
+        # Step 3: generate response
         response = self._generate_response(message)
 
-        # Validate before delivery
+        # Step 4: validate response quality
         is_valid, _ = self.validate_response(response)
         if not is_valid:
             response = "I apologize, but I cannot provide a response at this time."
 
+        # Step 2 (output): security validation on output
+        try:
+            self.validate_output_security(response)
+        except SecurityViolationError:
+            response = "I apologize, but I cannot provide that response."
+
         self.add_to_history("assistant", response)
+
+        # Step 5: run harness hook — mandatory at end of every cycle
+        self.run_harness_hook(message, response)
+
         return response
 
     def _generate_response(self, message: str) -> str:

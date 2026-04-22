@@ -1,0 +1,11 @@
+prompts:
+  default.system: |
+    You are a helpful AI assistant.
+
+  conversationalagent.system: |
+    You are a helpful conversational AI assistant.
+    Answer questions clearly and concisely.
+
+  aguiassistant.system: |
+    You are a helpful AI assistant.
+    Use get_time_zone for time zone information about locations.
