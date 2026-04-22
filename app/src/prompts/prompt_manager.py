@@ -3,6 +3,13 @@
 import logging
 from pathlib import Path
 
+try:
+    import yaml as _yaml
+    _YAML_AVAILABLE = True
+except ImportError:
+    _yaml = None  # type: ignore[assignment]
+    _YAML_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_PROMPTS_PATH = Path(__file__).parent / "system_prompts.yaml"
@@ -28,9 +35,7 @@ class PromptManager:
 
     def _load(self) -> None:
         """Load prompts from the YAML file."""
-        try:
-            import yaml  # type: ignore[import-untyped]
-        except ImportError:
+        if not _YAML_AVAILABLE:
             logger.warning("PyYAML not installed; PromptManager will use built-in fallbacks only")
             self._prompts = {}
             return
@@ -41,7 +46,7 @@ class PromptManager:
             return
 
         with self._prompts_path.open(encoding="utf-8") as fh:
-            data = yaml.safe_load(fh)
+            data = _yaml.safe_load(fh)
 
         if not isinstance(data, dict) or "prompts" not in data:
             logger.warning("Invalid prompts YAML structure in %s", self._prompts_path)

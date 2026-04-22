@@ -16,6 +16,27 @@ class ArithmeticOperation(StrEnum):
     DIVIDE = "divide"
 
 
+_ARITHMETIC_OPS: dict[ArithmeticOperation, Any] = {
+    ArithmeticOperation.ADD: lambda x, y: x + y,
+    ArithmeticOperation.SUBTRACT: lambda x, y: x - y,
+    ArithmeticOperation.MULTIPLY: lambda x, y: x * y,
+    ArithmeticOperation.DIVIDE: lambda x, y: x / y if y != 0 else None,
+}
+
+
+def _run_arithmetic(operation: str, a: float, b: float) -> dict[str, Any]:
+    """Shared helper for arithmetic operations used by both CalculatorTool and CalculatorSkill."""
+    try:
+        op_enum = ArithmeticOperation(operation)
+    except ValueError as err:
+        raise ValueError(f"Invalid operation: {operation}") from err
+
+    result = _ARITHMETIC_OPS[op_enum](a, b)
+    if result is None:
+        raise ValueError("Division by zero")
+    return {"operation": operation, "operands": [a, b], "result": result}
+
+
 class ToolDefinition(BaseModel):
     """Tool definition with name, description, and parameters."""
 
@@ -81,22 +102,7 @@ class CalculatorTool(Tool):
         )
 
     def execute(self, operation: str, a: float, b: float) -> dict[str, Any]:
-        ops = {
-            ArithmeticOperation.ADD: lambda x, y: x + y,
-            ArithmeticOperation.SUBTRACT: lambda x, y: x - y,
-            ArithmeticOperation.MULTIPLY: lambda x, y: x * y,
-            ArithmeticOperation.DIVIDE: lambda x, y: x / y if y != 0 else None,
-        }
-
-        try:
-            op_enum = ArithmeticOperation(operation)
-        except ValueError as err:
-            raise ValueError(f"Invalid operation: {operation}") from err
-
-        result = ops[op_enum](a, b)
-        if result is None:
-            raise ValueError("Division by zero")
-        return {"operation": operation, "operands": [a, b], "result": result}
+        return _run_arithmetic(operation, a, b)
 
 
 class WeatherTool(Tool):
@@ -140,22 +146,7 @@ class CalculatorSkill(AgentSkill):
         )
 
     def execute(self, operation: str, a: float, b: float) -> dict[str, Any]:  # type: ignore[override]
-        ops = {
-            ArithmeticOperation.ADD: lambda x, y: x + y,
-            ArithmeticOperation.SUBTRACT: lambda x, y: x - y,
-            ArithmeticOperation.MULTIPLY: lambda x, y: x * y,
-            ArithmeticOperation.DIVIDE: lambda x, y: x / y if y != 0 else None,
-        }
-
-        try:
-            op_enum = ArithmeticOperation(operation)
-        except ValueError as err:
-            raise ValueError(f"Invalid operation: {operation}") from err
-
-        result = ops[op_enum](a, b)
-        if result is None:
-            raise ValueError("Division by zero")
-        return {"operation": operation, "operands": [a, b], "result": result}
+        return _run_arithmetic(operation, a, b)
 
 
 class WeatherSkill(AgentSkill):

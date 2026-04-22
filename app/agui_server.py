@@ -127,7 +127,7 @@ def create_app() -> FastAPI:
         run_id: str = input_data.get("run_id") or ""
 
         # Extract and validate user input before streaming begins
-        user_message = _extract_user_message(input_data)
+        user_message = _extract_latest_user_message(input_data)
 
         async def event_generator() -> AsyncGenerator[str, None]:
             encoder = EventEncoder()
@@ -165,8 +165,8 @@ def create_app() -> FastAPI:
     return app
 
 
-def _extract_user_message(input_data: dict) -> str:
-    """Extract the last user message text from AG-UI input for validation."""
+def _extract_latest_user_message(input_data: dict) -> str:
+    """Extract the latest user message text from AG-UI input for security validation."""
     messages = input_data.get("messages", [])
     for msg in reversed(messages):
         if isinstance(msg, dict) and msg.get("role") == "user":

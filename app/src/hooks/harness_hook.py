@@ -69,16 +69,19 @@ class HarnessHook:
         """
         violations: list[str] = []
 
-        for text, label, check_fn in (
-            (user_input, "input", self._validator.validate_input),
-            (agent_output, "output", self._validator.validate_output),
-        ):
-            try:
-                check_fn(text)
-            except SecurityViolationError as exc:
-                msg = f"{label} violation: {exc}"
-                violations.append(msg)
-                logger.warning("HarnessHook violation detected — %s", msg)
+        try:
+            self._validator.validate_input(user_input)
+        except SecurityViolationError as exc:
+            msg = f"input violation: {exc}"
+            violations.append(msg)
+            logger.warning("HarnessHook violation detected — %s", msg)
+
+        try:
+            self._validator.validate_output(agent_output)
+        except SecurityViolationError as exc:
+            msg = f"output violation: {exc}"
+            violations.append(msg)
+            logger.warning("HarnessHook violation detected — %s", msg)
 
         report = HarnessReport(
             passed=len(violations) == 0,
