@@ -4,6 +4,10 @@ Tests the AG-UI server endpoints and agent integration.
 Follows all constitution requirements including type safety and test coverage.
 """
 
+import json
+from collections.abc import AsyncGenerator
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -66,7 +70,6 @@ def test_security_headers(test_env: None) -> None:
     assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
 
 
-
 def test_get_time_zone_tool() -> None:
     """Test the get_time_zone server-side tool."""
     from agui_server import get_time_zone
@@ -105,3 +108,49 @@ def test_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValueError, match="must be set"):
         agui_server.create_agent()
+
+
+def test_agent_endpoint_emits_run_error_and_run_finished_on_agent_failure(
+    test_env: None,
+) -> None:
+    """Agent endpoint must emit RUN_ERROR + RUN_FINISHED when run_agent raises.
+
+    This validates the root-cause fix: before this fix, an unhandled exception
+    inside the streaming generator terminated the SSE stream without sending
+    RUN_FINISHED, causing the client to report 'Stream ended without
+    RUN_FINISHED event'.
+    """
+    from agui_server import create_app
+
+    app = create_app()
+    client = TestClient(app)
+
+    async def _failing_run_agent(_input: dict) -> AsyncGenerator:  # type: ignore[type-arg]
+        """Async generator that immediately raises to simulate a backend failure."""
+        raise RuntimeError("Simulated Azure AI failure")
+        yield  # pragma: no cover – makes this an async generator
+
+    with patch(
+        "agui_server.AgentFrameworkAgent.run_agent",
+        new=_failing_run_agent,
+    ):
+        response = client.post(
+            "/",
+            json={"messages": [{"role": "user", "content": "hello"}], "thread_id": "test-thread"},
+        )
+
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+
+    # Collect all SSE event types from the stream
+    event_types = []
+    for line in response.text.splitlines():
+        if line.startswith("data: "):
+            data = line[6:]
+            event = json.loads(data)
+            event_types.append(event.get("type"))
+
+    assert "RUN_ERROR" in event_types, "RUN_ERROR must be emitted when agent fails"
+    assert "RUN_FINISHED" in event_types, "RUN_FINISHED must always terminate the stream"
+    # RUN_ERROR must precede RUN_FINISHED
+    assert event_types.index("RUN_ERROR") < event_types.index("RUN_FINISHED")

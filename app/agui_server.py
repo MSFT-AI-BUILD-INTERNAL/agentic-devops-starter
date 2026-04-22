@@ -5,15 +5,20 @@ FastAPI server exposing a ChatAgent through AG-UI protocol with streaming suppor
 
 import logging
 import os
+import uuid
+from collections.abc import AsyncGenerator
 from typing import Annotated
 
+from ag_ui.core import RunErrorEvent, RunFinishedEvent
+from ag_ui.encoder import EventEncoder
 from agent_framework import ChatAgent, ai_function
 from agent_framework.azure import AzureAIAgentClient
-from agent_framework_ag_ui import add_agent_framework_fastapi_endpoint
+from agent_framework_ag_ui import AgentFrameworkAgent
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 # Load environment and setup logging
 load_dotenv()
@@ -107,9 +112,63 @@ def create_app() -> FastAPI:
     async def health_check() -> dict[str, str]:
         return {"status": "healthy"}
 
-    # Register AG-UI endpoint
+    # Register AG-UI endpoint with error handling that guarantees RUN_FINISHED is always emitted.
+    # The default add_agent_framework_fastapi_endpoint does not catch exceptions inside the
+    # streaming generator, so any Azure AI / network error terminates the stream without
+    # RUN_FINISHED and leaves the client stuck.  We recreate the endpoint here with an
+    # explicit try/except that emits RunErrorEvent + RunFinishedEvent on failure.
     agent = create_agent()
-    add_agent_framework_fastapi_endpoint(app, agent, "/")
+    wrapped_agent = AgentFrameworkAgent(agent=agent)
+
+    @app.post("/")
+    async def agent_endpoint(request: Request) -> Response:  # type: ignore[misc]
+        """Handle AG-UI agent requests with guaranteed stream termination."""
+        try:
+            input_data = await request.json()
+            run_id: str = (
+                input_data.get("run_id") or input_data.get("runId") or str(uuid.uuid4())
+            )
+            thread_id: str = (
+                input_data.get("thread_id") or input_data.get("threadId") or str(uuid.uuid4())
+            )
+            logger.info(
+                "Received request: run_id=%s thread_id=%s messages=%s",
+                run_id,
+                thread_id,
+                len(input_data.get("messages", [])),
+            )
+
+            async def event_generator() -> AsyncGenerator[str, None]:
+                encoder = EventEncoder()
+                event_count = 0
+                try:
+                    async for event in wrapped_agent.run_agent(input_data):
+                        event_count += 1
+                        yield encoder.encode(event)
+                    logger.info("Completed streaming %s events", event_count)
+                except Exception as exc:
+                    logger.error("Agent execution error: %s", exc, exc_info=True)
+                    yield encoder.encode(
+                        RunErrorEvent(message=f"Agent execution failed: {type(exc).__name__}")
+                    )
+                    yield encoder.encode(RunFinishedEvent(run_id=run_id, thread_id=thread_id))
+
+            return StreamingResponse(
+                event_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+        except Exception as exc:
+            logger.error("Error processing agent request: %s", exc, exc_info=True)
+            return Response(
+                content='{"error": "An internal error has occurred."}',
+                media_type="application/json",
+                status_code=500,
+            )
 
     logger.info("FastAPI app created successfully")
     return app
