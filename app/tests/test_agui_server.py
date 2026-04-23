@@ -4,17 +4,42 @@ Tests the AG-UI server endpoints and agent integration.
 Follows all constitution requirements including type safety and test coverage.
 """
 
+from unittest.mock import AsyncMock
+
 import pytest
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture
 def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Set up test environment variables."""
+    """Set up test environment variables and patch module-level constants.
+
+    agui_server reads ENDPOINT/DEPLOYMENT as module-level constants at import
+    time.  monkeypatch.setenv alone cannot update them after the first import,
+    so we also patch the attributes directly on the module.
+    """
     monkeypatch.setenv("AZURE_AI_PROJECT_ENDPOINT", "https://test.azure.com")
     monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "test-deployment")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("AGUI_SERVER_URL", "http://127.0.0.1:5100/")
+    import agui_server
+    monkeypatch.setattr(agui_server, "ENDPOINT", "https://test.azure.com")
+    monkeypatch.setattr(agui_server, "DEPLOYMENT", "test-deployment")
+
+
+@pytest.fixture
+def mock_azure_startup(test_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mock _init_azure_agent to prevent real Azure API calls during app startup.
+
+    Tests that make HTTP requests trigger the FastAPI lifespan, which calls
+    _init_azure_agent to provision the Azure AI Agent.  This fixture replaces
+    it with a no-op async mock so tests work without real Azure credentials.
+
+    Depends on test_env so ENDPOINT/DEPLOYMENT are always patched first.
+    """
+    import agui_server
+
+    monkeypatch.setattr(agui_server, "_init_azure_agent", AsyncMock(return_value="test-agent-id"))
 
 
 def test_server_creation(test_env: None) -> None:
@@ -26,7 +51,7 @@ def test_server_creation(test_env: None) -> None:
     assert app.title == "Agentic DevOps Starter AG-UI Server"
 
 
-def test_server_has_docs(test_env: None) -> None:
+def test_server_has_docs(mock_azure_startup: None) -> None:
     """Test that OpenAPI docs are available."""
     from agui_server import create_app
 
@@ -37,7 +62,7 @@ def test_server_has_docs(test_env: None) -> None:
     assert response.status_code == 200
 
 
-def test_health_check_endpoint(test_env: None) -> None:
+def test_health_check_endpoint(mock_azure_startup: None) -> None:
     """Test that the health check endpoint is available."""
     from agui_server import create_app
 
@@ -49,7 +74,7 @@ def test_health_check_endpoint(test_env: None) -> None:
     assert response.json() == {"status": "healthy"}
 
 
-def test_security_headers(test_env: None) -> None:
+def test_security_headers(mock_azure_startup: None) -> None:
     """Test that security headers are present in responses."""
     from agui_server import create_app
 

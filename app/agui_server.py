@@ -6,6 +6,7 @@ FastAPI server exposing a ChatAgent through AG-UI protocol with streaming suppor
 import logging
 import os
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 from ag_ui.core import RunErrorEvent, RunFinishedEvent
@@ -30,6 +31,12 @@ DEPLOYMENT = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
 
 # Default CORS origins for development
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+# Agent instructions constant — shared by ChatAgent and the Azure agent provisioning step.
+_INSTRUCTIONS = (
+    "You are a helpful AI assistant. "
+    "Use get_time_zone for time zone information about locations."
+)
 
 
 @ai_function(description="Get the time zone for a location.")
@@ -60,22 +67,75 @@ def create_agent() -> ChatAgent:
         project_endpoint=ENDPOINT,
         model_deployment_name=DEPLOYMENT,
         credential=DefaultAzureCredential(),
+        should_cleanup_agent=False,  # Lifecycle managed by lifespan (see _init_azure_agent)
     )
 
     return ChatAgent(
         name="AGUIAssistant",
-        instructions=(
-            "You are a helpful AI assistant. "
-            "Use get_time_zone for time zone information about locations."
-        ),
+        instructions=_INSTRUCTIONS,
         chat_client=chat_client,
         tools=[get_time_zone],
     )
 
 
+async def _init_azure_agent(agent: ChatAgent) -> str:
+    """Provision an Azure AI Agent with explicit null temperature and top_p.
+
+    Root cause of "Unsupported parameter: 'top_p/temperature' is not supported
+    with this model" on o-series reasoning models:
+
+    The Azure AI Agents service stores temperature=1.0 and top_p=1.0 as defaults
+    in every agent definition when these parameters are absent from the creation
+    request.  When a run is subsequently created against such an agent the service
+    injects those stored defaults into the inference call, and o-series models
+    (o1, o3, …) reject them outright.
+
+    Fix: pass the body as a dict rather than keyword arguments.  The keyword-
+    argument overload of create_agent filters out None values before building the
+    JSON body, so the fields are simply absent and the service falls back to its
+    defaults.  The dict-body overload serialises the dict directly with
+    json.dumps, which preserves Python None as JSON null.  Explicit null tells
+    the service "no value stored here", preventing any injection into run
+    requests.
+    """
+    chat_client = agent.chat_client
+    azure_agent = await chat_client.agents_client.create_agent(
+        {
+            "model": DEPLOYMENT,
+            "name": "AGUIAssistant",
+            "instructions": _INSTRUCTIONS,
+            "temperature": None,  # JSON null → service stores null, not default 1.0
+            "top_p": None,  # JSON null → same
+        }
+    )
+    chat_client.agent_id = azure_agent.id
+    return azure_agent.id
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    raw_agent = create_agent()
+    wrapped_agent = AgentFrameworkAgent(agent=raw_agent)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        # Provision the Azure AI Agent with explicit null temperature/top_p so the
+        # service never injects sampling defaults into run requests (root cause fix).
+        agent_id = await _init_azure_agent(raw_agent)
+        logger.info(f"Azure AI Agent provisioned: {agent_id}")
+        yield
+        # Teardown: delete the provisioned agent and release the HTTP connection.
+        try:
+            await raw_agent.chat_client.agents_client.delete_agent(agent_id)
+        except Exception:
+            logger.warning(f"Failed to delete Azure AI Agent {agent_id!r} on shutdown", exc_info=True)
+        try:
+            await raw_agent.chat_client.agents_client.close()
+        except Exception:
+            logger.warning("Failed to close Azure AI Agents client on shutdown", exc_info=True)
+
     app = FastAPI(
+        lifespan=lifespan,
         title="Agentic DevOps Starter AG-UI Server",
         description="AG-UI server for conversational AI agent",
         version="0.1.0",
@@ -111,9 +171,6 @@ def create_app() -> FastAPI:
 
     # Register AG-UI endpoint with proper error handling so the SSE stream
     # always terminates with RUN_FINISHED, even when run_agent() raises.
-    raw_agent = create_agent()
-    wrapped_agent = AgentFrameworkAgent(agent=raw_agent)
-
     @app.post("/")
     async def agent_endpoint(request: Request) -> StreamingResponse:  # type: ignore[misc]
         """Handle AG-UI agent requests and guarantee stream termination."""
