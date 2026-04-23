@@ -4,17 +4,28 @@ Tests the AG-UI server endpoints and agent integration.
 Follows all constitution requirements including type safety and test coverage.
 """
 
+from unittest.mock import AsyncMock
+
 import pytest
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture
 def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Set up test environment variables."""
+    """Set up environment variables, module-level constants, and mock Azure agent provisioning.
+
+    agui_server reads ENDPOINT/DEPLOYMENT as module-level constants at import time,
+    so we patch the attributes directly on the module.  _init_azure_agent is mocked
+    so tests work without real Azure credentials.
+    """
     monkeypatch.setenv("AZURE_AI_PROJECT_ENDPOINT", "https://test.azure.com")
     monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "test-deployment")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("AGUI_SERVER_URL", "http://127.0.0.1:5100/")
+    import agui_server
+    monkeypatch.setattr(agui_server, "ENDPOINT", "https://test.azure.com")
+    monkeypatch.setattr(agui_server, "DEPLOYMENT", "test-deployment")
+    monkeypatch.setattr(agui_server, "_init_azure_agent", AsyncMock(return_value="test-agent-id"))
 
 
 def test_server_creation(test_env: None) -> None:
@@ -64,7 +75,6 @@ def test_security_headers(test_env: None) -> None:
     assert response.headers.get("X-Frame-Options") == "DENY"
     assert response.headers.get("X-XSS-Protection") == "1; mode=block"
     assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
-
 
 
 def test_get_time_zone_tool() -> None:
