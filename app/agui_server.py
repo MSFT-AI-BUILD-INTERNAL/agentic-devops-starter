@@ -83,7 +83,7 @@ async def _init_azure_agent(agent: ChatAgent) -> str:
     """Create an Azure AI Agent omitting temperature/top_p to avoid o-series model errors.
 
     The kwargs overload filters out None values at the SDK level (body = {k: v ... if v is not None}),
-    so temperature and top_p are absent from the JSON request body.  The body-dict overload serialises
+    so temperature and top_p are absent from the JSON request body.  The body-dict overload serializes
     None as JSON null which Azure stores in the agent definition and later passes to the model — even a
     null value is rejected by o-series models that do not support these parameters at all.
     """
