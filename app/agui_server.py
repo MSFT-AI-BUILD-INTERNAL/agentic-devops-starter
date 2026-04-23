@@ -5,19 +5,12 @@ FastAPI server exposing a ChatAgent through AG-UI protocol with streaming suppor
 
 import logging
 import os
-from collections.abc import AsyncGenerator, MutableSequence
+from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
 from ag_ui.core import RunErrorEvent, RunFinishedEvent
 from ag_ui.encoder import EventEncoder
-from agent_framework import (
-    ChatAgent,
-    ChatMessage,
-    ChatOptions,
-    FunctionApprovalResponseContent,
-    FunctionResultContent,
-    ai_function,
-)
+from agent_framework import ChatAgent, ai_function
 from agent_framework.azure import AzureAIAgentClient
 from agent_framework_ag_ui import AgentFrameworkAgent
 from azure.identity.aio import DefaultAzureCredential
@@ -37,29 +30,6 @@ DEPLOYMENT = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
 
 # Default CORS origins for development
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
-
-
-class _CompatibleAzureAIAgentClient(AzureAIAgentClient):
-    """AzureAIAgentClient that removes sampling parameters unsupported by some models.
-
-    Certain model deployments (e.g., o-series reasoning models) do not support
-    `top_p` or `temperature` parameters. This subclass ensures they are never
-    included in run options, preventing API errors such as:
-    "Unsupported parameter: 'top_p' is not supported with this model."
-    """
-
-    async def _prepare_options(
-        self,
-        messages: MutableSequence[ChatMessage],
-        chat_options: ChatOptions,
-        **kwargs: Any,
-    ) -> tuple[dict[str, Any], list[FunctionResultContent | FunctionApprovalResponseContent] | None]:
-        run_options, required_action_results = await super()._prepare_options(
-            messages, chat_options, **kwargs
-        )
-        run_options.pop("top_p", None)
-        run_options.pop("temperature", None)
-        return run_options, required_action_results
 
 
 @ai_function(description="Get the time zone for a location.")
@@ -86,7 +56,7 @@ def create_agent() -> ChatAgent:
 
     logger.info(f"Creating ChatAgent: endpoint={ENDPOINT}, deployment={DEPLOYMENT}")
 
-    chat_client = _CompatibleAzureAIAgentClient(
+    chat_client = AzureAIAgentClient(
         project_endpoint=ENDPOINT,
         model_deployment_name=DEPLOYMENT,
         credential=DefaultAzureCredential(),
