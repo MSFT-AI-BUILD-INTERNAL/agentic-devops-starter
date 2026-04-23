@@ -99,6 +99,60 @@ def test_agent_creation(test_env: None) -> None:
     assert agent.name == "AGUIAssistant"
 
 
+def test_agent_uses_compatible_client(test_env: None) -> None:
+    """Test that the agent uses the compatible client that strips unsupported params."""
+    from agui_server import _CompatibleAzureAIAgentClient, create_agent
+
+    agent = create_agent()
+    assert isinstance(agent.chat_client, _CompatibleAzureAIAgentClient), (
+        "Agent must use _CompatibleAzureAIAgentClient to avoid 'top_p' errors on o-series models"
+    )
+
+
+def test_compatible_client_removes_top_p(test_env: None) -> None:
+    """Test that _CompatibleAzureAIAgentClient removes top_p and temperature from run options."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from agent_framework.azure import AzureAIAgentClient
+
+    from agui_server import _CompatibleAzureAIAgentClient
+
+    test_deployment = "test-deployment"
+    test_top_p = 1.0
+    test_temperature = 0.7
+
+    client = _CompatibleAzureAIAgentClient(
+        project_endpoint="https://test.azure.com",
+        model_deployment_name=test_deployment,
+        credential=MagicMock(),
+    )
+
+    # Simulate super()._prepare_options returning run_options with top_p and temperature
+    run_options_with_params = {
+        "model": test_deployment,
+        "top_p": test_top_p,
+        "temperature": test_temperature,
+        "tools": [],
+    }
+    mock_super_result = (run_options_with_params, None)
+
+    async def run_test() -> tuple[dict[str, object], object]:
+        with patch.object(
+            AzureAIAgentClient,
+            "_prepare_options",
+            new=AsyncMock(return_value=mock_super_result),
+        ):
+            return await client._prepare_options([], MagicMock())
+
+    result_options, result_actions = asyncio.run(run_test())
+
+    assert "top_p" not in result_options, "top_p must be removed from run options"
+    assert "temperature" not in result_options, "temperature must be removed from run options"
+    assert result_options.get("model") == test_deployment, "other options must be preserved"
+    assert result_actions is None
+
+
 def test_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that appropriate error is raised when API keys are missing."""
     import agui_server
