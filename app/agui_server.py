@@ -82,7 +82,7 @@ def create_agent() -> ChatAgent:
 async def _init_azure_agent(agent: ChatAgent) -> str:
     """Create an Azure AI Agent without temperature/top_p for o-series model compatibility.
 
-    Root cause: the body-dict overload of ``create_agent`` serialises Python ``None`` as JSON
+    Root cause: the body-dict overload of ``create_agent`` serializes Python ``None`` as JSON
     ``null``.  The Azure AI Agents service treats ``null`` the same as an *explicit* value and
     stores server-side defaults (1.0 for both temperature and top_p).  On subsequent runs the
     service injects those stored defaults into the model call, and o-series models reject them:
