@@ -109,6 +109,45 @@ def test_agent_creation(test_env: None) -> None:
     assert agent.name == "AGUIAssistant"
 
 
+@pytest.mark.asyncio
+async def test_init_azure_agent_sends_null_temperature_top_p(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify _init_azure_agent uses body-dict overload with explicit null temperature/top_p.
+
+    The kwargs overload of create_agent filters out None values, causing the Azure AI Agents
+    service to store server-side defaults (1.0) which o-series models reject.
+    The body-dict overload preserves None as JSON null, telling the service 'no value'.
+    """
+    monkeypatch.setenv("AZURE_AI_PROJECT_ENDPOINT", "https://test.azure.com")
+    monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "test-deployment")
+    import agui_server
+    monkeypatch.setattr(agui_server, "ENDPOINT", "https://test.azure.com")
+    monkeypatch.setattr(agui_server, "DEPLOYMENT", "test-deployment")
+
+    agent = agui_server.create_agent()
+    mock_response = AsyncMock()
+    mock_response.id = "test-agent-id"
+    mock_create = AsyncMock(return_value=mock_response)
+    mock_client = AsyncMock()
+    mock_client.create_agent = mock_create
+    agent.chat_client.agents_client = mock_client
+
+    await agui_server._init_azure_agent(agent)
+
+    # Verify create_agent was called with a dict (body-dict overload), not kwargs
+    mock_create.assert_called_once()
+    call_args = mock_create.call_args
+    # Body-dict is passed as the first positional argument
+    assert len(call_args.args) == 1, "Expected body dict as positional arg"
+    body = call_args.args[0]
+    assert isinstance(body, dict), "Expected a dict for body-dict overload"
+    # Explicit None values must be present (not absent) so json.dumps serializes them as null
+    assert "temperature" in body, "temperature must be present in body dict"
+    assert body["temperature"] is None, "temperature must be None (serialized as JSON null)"
+    assert "top_p" in body, "top_p must be present in body dict"
+    assert body["top_p"] is None, "top_p must be None (serialized as JSON null)"
+    assert agent.chat_client.agent_id == "test-agent-id"
+
+
 def test_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that appropriate error is raised when API keys are missing."""
     import agui_server

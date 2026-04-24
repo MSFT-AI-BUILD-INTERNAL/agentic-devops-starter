@@ -80,19 +80,28 @@ def create_agent() -> ChatAgent:
 
 
 async def _init_azure_agent(agent: ChatAgent) -> str:
-    """Create an Azure AI Agent omitting temperature/top_p to avoid o-series model errors.
+    """Create an Azure AI Agent with explicit null temperature/top_p for o-series model compatibility.
 
-    The kwargs overload filters out None values at the SDK level (body = {k: v ... if v is not None}),
-    so temperature and top_p are absent from the JSON request body.  The body-dict overload serializes
-    None as JSON null which Azure stores in the agent definition and later passes to the model — even a
-    null value is rejected by o-series models that do not support these parameters at all.
+    Root cause: when temperature and top_p are *absent* from the create_agent request (as happens with
+    the kwargs overload, which filters ``{k: v … if v is not None}``), the Azure AI Agents service
+    stores server-side defaults (1.0 for both).  On subsequent runs the service injects those stored
+    defaults into the model call, and o-series models reject them outright:
+
+        "Unsupported parameter: 'top_p' is not supported with this model."
+
+    Fix: use the **body-dict overload** of ``create_agent``.  The dict is serialized directly with
+    ``json.dumps`` (the SDK's None-filtering is *not* applied to a pre-built body dict), so Python
+    ``None`` becomes JSON ``null``.  Explicit ``null`` tells the service "no value" — it will not
+    fall back to the 1.0 defaults and will not inject these parameters into model calls.
     """
     azure_agent = await agent.chat_client.agents_client.create_agent(
-        model=DEPLOYMENT,
-        name="AGUIAssistant",
-        instructions=_INSTRUCTIONS,
-        # temperature and top_p intentionally omitted: passing them (even as null)
-        # causes o-series models to return "Unsupported parameter" on run creation.
+        {
+            "model": DEPLOYMENT,
+            "name": "AGUIAssistant",
+            "instructions": _INSTRUCTIONS,
+            "temperature": None,
+            "top_p": None,
+        }
     )
     agent.chat_client.agent_id = azure_agent.id
     return azure_agent.id
