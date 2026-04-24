@@ -4,19 +4,16 @@ Tests the AG-UI server endpoints and agent integration.
 Follows all constitution requirements including type safety and test coverage.
 """
 
-from unittest.mock import AsyncMock
-
 import pytest
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture
 def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Set up environment variables, module-level constants, and mock Azure agent provisioning.
+    """Set up environment variables and module-level constants.
 
     agui_server reads ENDPOINT/DEPLOYMENT as module-level constants at import time,
-    so we patch the attributes directly on the module.  _init_azure_agent is mocked
-    so tests work without real Azure credentials.
+    so we patch the attributes directly on the module.
     """
     monkeypatch.setenv("AZURE_AI_PROJECT_ENDPOINT", "https://test.azure.com")
     monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "test-deployment")
@@ -25,7 +22,6 @@ def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
     import agui_server
     monkeypatch.setattr(agui_server, "ENDPOINT", "https://test.azure.com")
     monkeypatch.setattr(agui_server, "DEPLOYMENT", "test-deployment")
-    monkeypatch.setattr(agui_server, "_init_azure_agent", AsyncMock(return_value="test-agent-id"))
 
 
 def test_server_creation(test_env: None) -> None:
@@ -109,44 +105,24 @@ def test_agent_creation(test_env: None) -> None:
     assert agent.name == "AGUIAssistant"
 
 
-@pytest.mark.asyncio
-async def test_init_azure_agent_omits_temperature_top_p(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify _init_azure_agent uses kwargs overload that omits temperature/top_p.
+def test_agent_uses_azure_ai_client_for_o_series_compat(test_env: None) -> None:
+    """Verify we use AzureAIClient (Responses API), not AzureAIAgentClient.
 
-    The body-dict overload serializes None as JSON null; the Azure AI Agents service
-    interprets null by storing server-side defaults (1.0) which o-series models reject.
-    The kwargs overload filters out None values so temperature/top_p are absent from
-    the request, preventing the service from storing any value for them.
+    The Azure AI Agents/Assistants API always injects ``temperature``/``top_p``
+    defaults into the underlying chat completion, which o-series models reject
+    with "Unsupported parameter: 'top_p' is not supported with this model".
+    ``AzureAIClient`` strips these from every request in its ``_prepare_options``
+    override, so it is the client required for o-series compatibility.
     """
-    monkeypatch.setenv("AZURE_AI_PROJECT_ENDPOINT", "https://test.azure.com")
-    monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "test-deployment")
-    import agui_server
-    monkeypatch.setattr(agui_server, "ENDPOINT", "https://test.azure.com")
-    monkeypatch.setattr(agui_server, "DEPLOYMENT", "test-deployment")
+    from agent_framework.azure import AzureAIClient
 
-    agent = agui_server.create_agent()
-    mock_response = AsyncMock()
-    mock_response.id = "test-agent-id"
-    mock_create = AsyncMock(return_value=mock_response)
-    mock_client = AsyncMock()
-    mock_client.create_agent = mock_create
-    agent.chat_client.agents_client = mock_client
+    from agui_server import create_agent
 
-    await agui_server._init_azure_agent(agent)
-
-    # Verify create_agent was called with kwargs (not body-dict overload)
-    mock_create.assert_called_once()
-    call_args = mock_create.call_args
-    # kwargs overload: no positional args
-    assert len(call_args.args) == 0, "Expected kwargs call, not body-dict positional arg"
-    # temperature and top_p must NOT be in kwargs (SDK filters None → omitted from HTTP body)
-    assert "temperature" not in call_args.kwargs, "temperature must not be passed"
-    assert "top_p" not in call_args.kwargs, "top_p must not be passed"
-    # Verify expected kwargs are present
-    assert call_args.kwargs["model"] == "test-deployment"
-    assert call_args.kwargs["name"] == "AGUIAssistant"
-    assert "instructions" in call_args.kwargs
-    assert agent.chat_client.agent_id == "test-agent-id"
+    agent = create_agent()
+    assert isinstance(agent.chat_client, AzureAIClient), (
+        "Chat client must be AzureAIClient (Responses API) for o-series "
+        "model compatibility; AzureAIAgentClient injects unsupported top_p/temperature."
+    )
 
 
 def test_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:

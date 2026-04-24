@@ -7,12 +7,12 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from ag_ui.core import RunErrorEvent, RunFinishedEvent
 from ag_ui.encoder import EventEncoder
 from agent_framework import ChatAgent, ai_function
-from agent_framework.azure import AzureAIAgentClient
+from agent_framework.azure import AzureAIClient
 from agent_framework_ag_ui import AgentFrameworkAgent
 from azure.identity.aio import DefaultAzureCredential
 from dotenv import load_dotenv
@@ -32,7 +32,7 @@ DEPLOYMENT = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
 # Default CORS origins for development
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
-# Agent instructions constant — shared by ChatAgent and the Azure agent provisioning step.
+# Agent instructions for the ChatAgent system prompt.
 _INSTRUCTIONS = (
     "You are a helpful AI assistant. "
     "Use get_time_zone for time zone information about locations."
@@ -57,18 +57,33 @@ def get_time_zone(location: Annotated[str, "The city or location name"]) -> str:
 
 
 def create_agent() -> ChatAgent:
-    """Create and configure the ChatAgent."""
+    """Create and configure the ChatAgent.
+
+    Uses ``AzureAIClient`` (Azure AI Foundry Responses API) rather than
+    ``AzureAIAgentClient`` (Azure AI Agents / Assistants API) because the
+    Agents API always stores and forwards ``temperature``/``top_p`` defaults
+    on the model call, which o-series models (o1, o3, o4) reject with
+    ``Unsupported parameter: 'top_p' is not supported with this model``.
+
+    ``AzureAIClient`` explicitly strips these parameters from every request
+    (see ``agent_framework_azure_ai/_client.py::_prepare_options``), making it
+    inherently compatible with o-series deployments. It uses the same
+    ``AZURE_AI_PROJECT_ENDPOINT`` / ``AZURE_AI_MODEL_DEPLOYMENT_NAME`` env
+    vars as the previous client, so no infrastructure changes are required.
+    ``use_latest_version=True`` makes the client reuse the existing agent
+    version on restart instead of creating a new one every time.
+    """
     if not ENDPOINT or not DEPLOYMENT:
         raise ValueError("AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_MODEL_DEPLOYMENT_NAME must be set")
 
     logger.info(f"Creating ChatAgent: endpoint={ENDPOINT}, deployment={DEPLOYMENT}")
 
-    # should_cleanup_agent=False: agent lifecycle is managed by the lifespan below.
-    chat_client = AzureAIAgentClient(
+    chat_client = AzureAIClient(
         project_endpoint=ENDPOINT,
         model_deployment_name=DEPLOYMENT,
         credential=DefaultAzureCredential(),
-        should_cleanup_agent=False,
+        agent_name="AGUIAssistant",
+        use_latest_version=True,
     )
 
     return ChatAgent(
@@ -79,31 +94,6 @@ def create_agent() -> ChatAgent:
     )
 
 
-async def _init_azure_agent(agent: ChatAgent) -> str:
-    """Create an Azure AI Agent without temperature/top_p for o-series model compatibility.
-
-    Root cause: the body-dict overload of ``create_agent`` serializes Python ``None`` as JSON
-    ``null``.  The Azure AI Agents service treats ``null`` the same as an *explicit* value and
-    stores server-side defaults (1.0 for both temperature and top_p).  On subsequent runs the
-    service injects those stored defaults into the model call, and o-series models reject them:
-
-        "Unsupported parameter: 'top_p' is not supported with this model."
-
-    Fix: use the **kwargs overload** of ``create_agent``.  The generated SDK code builds the
-    body dict internally and applies ``{k: v for k, v in body.items() if v is not None}``,
-    which **omits** any parameter whose value is ``None``.  When temperature and top_p are
-    absent from the HTTP request body the service stores nothing, and runs proceed without
-    injecting unsupported parameters.
-    """
-    azure_agent = await agent.chat_client.agents_client.create_agent(
-        model=DEPLOYMENT,
-        name="AGUIAssistant",
-        instructions=_INSTRUCTIONS,
-    )
-    agent.chat_client.agent_id = azure_agent.id
-    return azure_agent.id
-
-
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     raw_agent = create_agent()
@@ -111,14 +101,15 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        agent_id = await _init_azure_agent(raw_agent)
-        logger.info(f"Azure AI Agent provisioned: {agent_id}")
+        logger.info("AG-UI server started (AzureAIClient / Responses API)")
         yield
+        # chat_client is the AzureAIClient created in create_agent(); cast so
+        # mypy recognises the async close() method declared on that concrete type.
+        client = cast(AzureAIClient, raw_agent.chat_client)
         try:
-            await raw_agent.chat_client.agents_client.delete_agent(agent_id)
-            await raw_agent.chat_client.agents_client.close()
+            await client.close()
         except Exception:
-            logger.warning("Agent cleanup failed on shutdown", exc_info=True)
+            logger.warning("Chat client cleanup failed on shutdown", exc_info=True)
 
     app = FastAPI(
         lifespan=lifespan,
@@ -188,19 +179,7 @@ def create_app() -> FastAPI:
     return app
 
 
-# App instance (lazy initialization)
-app: FastAPI | None = None
-
-
-def get_app() -> FastAPI:
-    """Get or create the FastAPI application instance."""
-    global app
-    if app is None:
-        app = create_app()
-    return app
-
-
 if __name__ == "__main__":
     import uvicorn
     logger.info("Starting AG-UI server on http://0.0.0.0:5100")
-    uvicorn.run("agui_server:get_app", host="0.0.0.0", port=5100, factory=True)
+    uvicorn.run("agui_server:create_app", host="0.0.0.0", port=5100, factory=True)
