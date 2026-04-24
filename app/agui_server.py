@@ -80,18 +80,19 @@ def create_agent() -> ChatAgent:
 
 
 async def _init_azure_agent(agent: ChatAgent) -> str:
-    """Create an Azure AI Agent with null temperature/top_p to avoid o-series model errors."""
-    # Use the body-dict overload so json.dumps preserves None as JSON null.
-    # The kwargs overload strips None values, causing the service to store
-    # temperature=1.0 / top_p=1.0 defaults that o-series models reject.
+    """Create an Azure AI Agent omitting temperature/top_p to avoid o-series model errors.
+
+    The kwargs overload filters out None values at the SDK level (body = {k: v ... if v is not None}),
+    so temperature and top_p are absent from the JSON request body.  The body-dict overload serializes
+    None as JSON null which Azure stores in the agent definition and later passes to the model — even a
+    null value is rejected by o-series models that do not support these parameters at all.
+    """
     azure_agent = await agent.chat_client.agents_client.create_agent(
-        {
-            "model": DEPLOYMENT,
-            "name": "AGUIAssistant",
-            "instructions": _INSTRUCTIONS,
-            "temperature": None,
-            "top_p": None,
-        }
+        model=DEPLOYMENT,
+        name="AGUIAssistant",
+        instructions=_INSTRUCTIONS,
+        # temperature and top_p intentionally omitted: passing them (even as null)
+        # causes o-series models to return "Unsupported parameter" on run creation.
     )
     agent.chat_client.agent_id = azure_agent.id
     return azure_agent.id
