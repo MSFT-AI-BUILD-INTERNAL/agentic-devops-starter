@@ -110,12 +110,13 @@ def test_agent_creation(test_env: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_init_azure_agent_sends_null_temperature_top_p(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify _init_azure_agent uses body-dict overload with explicit null temperature/top_p.
+async def test_init_azure_agent_omits_temperature_top_p(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify _init_azure_agent uses kwargs overload that omits temperature/top_p.
 
-    The kwargs overload of create_agent filters out None values, causing the Azure AI Agents
-    service to store server-side defaults (1.0) which o-series models reject.
-    The body-dict overload preserves None as JSON null, telling the service 'no value'.
+    The body-dict overload serializes None as JSON null; the Azure AI Agents service
+    interprets null by storing server-side defaults (1.0) which o-series models reject.
+    The kwargs overload filters out None values so temperature/top_p are absent from
+    the request, preventing the service from storing any value for them.
     """
     monkeypatch.setenv("AZURE_AI_PROJECT_ENDPOINT", "https://test.azure.com")
     monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "test-deployment")
@@ -133,18 +134,18 @@ async def test_init_azure_agent_sends_null_temperature_top_p(monkeypatch: pytest
 
     await agui_server._init_azure_agent(agent)
 
-    # Verify create_agent was called with a dict (body-dict overload), not kwargs
+    # Verify create_agent was called with kwargs (not body-dict overload)
     mock_create.assert_called_once()
     call_args = mock_create.call_args
-    # Body-dict is passed as the first positional argument
-    assert len(call_args.args) == 1, "Expected body dict as positional arg"
-    body = call_args.args[0]
-    assert isinstance(body, dict), "Expected a dict for body-dict overload"
-    # Explicit None values must be present (not absent) so json.dumps serializes them as null
-    assert "temperature" in body, "temperature must be present in body dict"
-    assert body["temperature"] is None, "temperature must be None (serialized as JSON null)"
-    assert "top_p" in body, "top_p must be present in body dict"
-    assert body["top_p"] is None, "top_p must be None (serialized as JSON null)"
+    # kwargs overload: no positional args
+    assert len(call_args.args) == 0, "Expected kwargs call, not body-dict positional arg"
+    # temperature and top_p must NOT be in kwargs (SDK filters None → omitted from HTTP body)
+    assert "temperature" not in call_args.kwargs, "temperature must not be passed"
+    assert "top_p" not in call_args.kwargs, "top_p must not be passed"
+    # Verify expected kwargs are present
+    assert call_args.kwargs["model"] == "test-deployment"
+    assert call_args.kwargs["name"] == "AGUIAssistant"
+    assert "instructions" in call_args.kwargs
     assert agent.chat_client.agent_id == "test-agent-id"
 
 
