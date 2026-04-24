@@ -83,7 +83,7 @@ async def _init_azure_agent(agent: ChatAgent) -> str:
     """Create an Azure AI Agent with explicit null temperature/top_p for o-series model compatibility.
 
     Root cause: when temperature and top_p are *absent* from the create_agent request (as happens with
-    the kwargs overload, which filters ``{k: v … if v is not None}``), the Azure AI Agents service
+    the kwargs overload, which filters ``{k: v ... if v is not None}``), the Azure AI Agents service
     stores server-side defaults (1.0 for both).  On subsequent runs the service injects those stored
     defaults into the model call, and o-series models reject them outright:
 
