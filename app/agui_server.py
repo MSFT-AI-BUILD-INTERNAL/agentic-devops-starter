@@ -32,7 +32,7 @@ DEPLOYMENT = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
 # Default CORS origins for development
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
-# Agent instructions constant — shared by ChatAgent and the Azure agent provisioning step.
+# Agent instructions for the ChatAgent system prompt.
 _INSTRUCTIONS = (
     "You are a helpful AI assistant. "
     "Use get_time_zone for time zone information about locations."
@@ -179,19 +179,7 @@ def create_app() -> FastAPI:
     return app
 
 
-# App instance (lazy initialization)
-app: FastAPI | None = None
-
-
-def get_app() -> FastAPI:
-    """Get or create the FastAPI application instance."""
-    global app
-    if app is None:
-        app = create_app()
-    return app
-
-
 if __name__ == "__main__":
     import uvicorn
     logger.info("Starting AG-UI server on http://0.0.0.0:5100")
-    uvicorn.run("agui_server:get_app", host="0.0.0.0", port=5100, factory=True)
+    uvicorn.run("agui_server:create_app", host="0.0.0.0", port=5100, factory=True)
