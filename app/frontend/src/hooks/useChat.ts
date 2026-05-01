@@ -45,8 +45,29 @@ export function useChat() {
         threadId,
       };
 
+      // Read the freshest committed history straight from the store rather
+      // than the React-closure snapshot. This is the canonical Zustand
+      // pattern for concurrency safety: when sendMessage is invoked rapidly
+      // (or from multiple tabs/sessions sharing this hook instance), each
+      // call sees the up-to-date messages list at send time instead of a
+      // stale render snapshot. Different customers always have separate
+      // browser stores, so this also keeps per-customer histories isolated.
+      const priorMessages = useChatStore.getState().messages;
+
       // Add to store immediately
       addMessage(userMessage);
+
+      // Build the AG-UI messages array containing the full conversation
+      // history (prior turns from the store + the new user turn). The AG-UI
+      // server passes this to the Microsoft Agent Framework `AgentThread`,
+      // which is what enables multi-turn behaviour.
+      const aguiMessages = [...priorMessages, userMessage]
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+        }));
 
       // Prepare assistant message
       const assistantMessageId = generateUUID();
@@ -54,7 +75,7 @@ export function useChat() {
 
       try {
         // Send to backend with SSE event handler
-        await aguiClient.sendMessage(content.trim(), threadId, (event) => {
+        await aguiClient.sendMessage(aguiMessages, threadId, (event) => {
           logger.info('Received SSE event', { type: event.type });
 
           switch (event.type) {
