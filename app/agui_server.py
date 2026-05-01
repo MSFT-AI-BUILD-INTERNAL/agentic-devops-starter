@@ -20,10 +20,18 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from observability import configure_observability
+
 # Load environment and setup logging
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+# Configure OpenTelemetry exporters to Microsoft Foundry / Azure Application
+# Insights. This must run before any agent_framework spans are emitted, so we
+# call it at module import time. It is a no-op when the connection string is
+# not configured (e.g. local development without telemetry).
+configure_observability()
 
 # Configuration
 ENDPOINT = os.environ.get("AZURE_AI_PROJECT_ENDPOINT")

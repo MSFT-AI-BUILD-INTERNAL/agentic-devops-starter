@@ -74,6 +74,18 @@ Comprehensive logging with:
 - Correlation ID tracking across all operations
 - Contextual information for debugging
 - LLM interaction audit trail
+- **Microsoft Foundry tracing via OpenTelemetry** (optional): when
+  `APPLICATIONINSIGHTS_CONNECTION_STRING` is set, agent runs, tool calls, and
+  LLM requests are exported as OTEL traces/logs/metrics to the Application
+  Insights resource attached to your Foundry project. See
+  [`observability.py`](./observability.py) and the env vars in
+  [`.env.example`](./.env.example):
+
+  | Variable | Required | Description |
+  |---|---|---|
+  | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Yes (to enable tracing) | Connection string of the App Insights resource linked to your Foundry project |
+  | `OTEL_SERVICE_NAME` | No | Service name on every span (default `agentic-devops-starter`) |
+  | `ENABLE_SENSITIVE_DATA` | No | Set `true` to include prompt/completion contents on spans (dev/test only) |
 
 ### 4. Type Safety
 
