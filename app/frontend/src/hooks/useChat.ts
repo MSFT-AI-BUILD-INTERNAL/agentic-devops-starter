@@ -48,13 +48,25 @@ export function useChat() {
       // Add to store immediately
       addMessage(userMessage);
 
+      // Build the AG-UI messages array containing the full conversation
+      // history (prior turns from the store + the new user turn). The AG-UI
+      // server passes this to the Microsoft Agent Framework `AgentThread`,
+      // which is what enables multi-turn behaviour.
+      const aguiMessages = [...messages, userMessage]
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+        }));
+
       // Prepare assistant message
       const assistantMessageId = generateUUID();
       let assistantContent = '';
 
       try {
         // Send to backend with SSE event handler
-        await aguiClient.sendMessage(content.trim(), threadId, (event) => {
+        await aguiClient.sendMessage(aguiMessages, threadId, (event) => {
           logger.info('Received SSE event', { type: event.type });
 
           switch (event.type) {
@@ -124,7 +136,7 @@ export function useChat() {
         throw error;
       }
     },
-    [currentThread?.id, createThread, addMessage, updateStreamingState]
+    [currentThread?.id, messages, createThread, addMessage, updateStreamingState]
   );
 
   /**

@@ -13,8 +13,14 @@ export interface StreamEvent {
   [key: string]: unknown;
 }
 
+export interface AGUIMessage {
+  id?: string;
+  role: string;
+  content: string;
+}
+
 export interface ChatRequest {
-  messages: Array<{ role: string; content: string }>;
+  messages: AGUIMessage[];
   thread_id?: string | null;
   stream: boolean;
 }
@@ -52,10 +58,15 @@ class AGUIClient {
   }
 
   /**
-   * Send a chat message to the backend
+   * Send a chat message to the backend.
+   *
+   * The full conversation history is forwarded to the AG-UI server so that
+   * the Microsoft Agent Framework `AgentThread` built by the default
+   * orchestrator (see `agent_framework_ag_ui._orchestrators`) has access to
+   * every prior turn — this is what enables multi-turn conversation.
    */
   async sendMessage(
-    message: string,
+    messages: AGUIMessage[],
     threadId?: string | null,
     onEvent?: (event: StreamEvent) => void
   ): Promise<ChatResponse> {
@@ -63,12 +74,12 @@ class AGUIClient {
     logger.setCorrelationId(correlationId);
 
     logger.info('Sending chat message', {
-      messageLength: message.length,
+      messageCount: messages.length,
       threadId: threadId || 'new',
     });
 
     const request: ChatRequest = {
-      messages: [{ role: 'user', content: message }],
+      messages,
       thread_id: threadId,
       stream: true,
     };
