@@ -80,6 +80,7 @@ dependencies = [
     { name = "agent-framework-ag-ui" },
     { name = "agent-framework-azure-ai" },
     { name = "agent-framework-core" },
+    { name = "azure-appconfiguration" },
     { name = "azure-identity" },
     { name = "azure-monitor-opentelemetry" },
     { name = "fastapi" },
@@ -102,6 +103,7 @@ requires-dist = [
     { name = "agent-framework-ag-ui", specifier = ">=1.0.0b260107" },
     { name = "agent-framework-azure-ai", specifier = ">=1.0.0b260107" },
     { name = "agent-framework-core", specifier = ">=1.0.0b260107" },
+    { name = "azure-appconfiguration", specifier = ">=1.8.0" },
     { name = "azure-identity", specifier = ">=1.19.0" },
     { name = "azure-monitor-opentelemetry", specifier = ">=1.6.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
@@ -300,6 +302,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/24/e0/3512d3f07e9dd2eb4af684387c31598c435bd87833b6a81850972963cb9c/azure_ai_projects-2.0.0b3.tar.gz", hash = "sha256:6d09ad110086e450a47b991ee8a3644f1be97fa3085d5981d543f900d78f4505", size = 431749, upload-time = "2026-01-06T05:31:25.849Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4e/b6/8fbd4786bb5c0dd19eaff86ddce0fbfb53a6f90d712038272161067a076a/azure_ai_projects-2.0.0b3-py3-none-any.whl", hash = "sha256:3b3048a3ba3904d556ba392b7bd20b6e84c93bb39df6d43a6470cdb0ad08af8c", size = 240717, upload-time = "2026-01-06T05:31:27.716Z" },
+]
+
+[[package]]
+name = "azure-appconfiguration"
+version = "1.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0f/de/d75d8f35bc1dbf77ddf005f1b0d61ae43361fa2f654cbe98e0947684b9b2/azure_appconfiguration-1.8.0.tar.gz", hash = "sha256:168e7b01b350f5d806a2d935a8ec3694c59c6394d5a1c409eb05fef0b56b1aa0", size = 131718, upload-time = "2026-01-27T19:54:19.16Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0a/7a/a39fadd3ec377fe669dfa54e37faf27396e1f722cb6ae4adec6f81bec044/azure_appconfiguration-1.8.0-py3-none-any.whl", hash = "sha256:fcfcfaa51712a59067d2cf837004327e73c0649d63f2d298020e5db2c77f7821", size = 106898, upload-time = "2026-01-27T19:54:20.744Z" },
 ]
 
 [[package]]

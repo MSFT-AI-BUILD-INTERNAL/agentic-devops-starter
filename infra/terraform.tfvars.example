@@ -25,6 +25,13 @@ log_analytics_workspace_name = "log-agentic-devops"
 log_analytics_sku            = "PerGB2018"
 log_analytics_retention_days = 30
 
+# Azure App Configuration
+# IMPORTANT: App Configuration name must be globally unique
+app_configuration_name                       = "appcfg-agentic-devops"
+app_configuration_sku                        = "standard"  # Required for feature flags
+app_configuration_sample_feature_flag_name   = "Beta"
+app_configuration_sample_feature_flag_enabled = true
+
 # Azure AI Foundry Configuration (Optional)
 # If you have an Azure AI Foundry project, provide its resource ID for role assignments
 # ai_foundry_resource_id = "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<project-name>"

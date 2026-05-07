@@ -113,7 +113,7 @@ Before running the workflow:
    terraform apply
    ```
 
-   Terraform creates: Resource Group, ACR, App Service Plan, App Service, Log Analytics.
+   Terraform creates: Resource Group, ACR, App Service Plan, App Service, Log Analytics, **App Configuration** (with a sample `Beta` feature flag and an "App Configuration Data Reader" role assignment for the App Service managed identity).
 
    After applying, note the outputs for GitHub Secrets:
    ```bash

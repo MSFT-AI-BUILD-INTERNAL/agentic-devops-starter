@@ -132,6 +132,21 @@ module "acr" {
 #   depends_on = [module.managed_identity]
 # }
 
+# Azure App Configuration Module
+module "app_configuration" {
+  source = "./app-configuration"
+
+  app_configuration_name      = var.app_configuration_name
+  resource_group_name         = azurerm_resource_group.main.name
+  location                    = azurerm_resource_group.main.location
+  sku                         = var.app_configuration_sku
+  sample_feature_flag_name    = var.app_configuration_sample_feature_flag_name
+  sample_feature_flag_enabled = var.app_configuration_sample_feature_flag_enabled
+  tags                        = var.tags
+
+  depends_on = [azurerm_resource_group.main]
+}
+
 # App Service Plan Module
 module "app_service_plan" {
   source = "./app-service-plan"
@@ -149,25 +164,39 @@ module "app_service_plan" {
 module "app_service" {
   source = "./app-service"
 
-  app_service_name        = var.app_service_name
-  resource_group_name     = azurerm_resource_group.main.name
-  location                = azurerm_resource_group.main.location
-  service_plan_id         = module.app_service_plan.service_plan_id
-  sku_name                = var.app_service_plan_sku
-  docker_registry_url     = "https://${module.acr.acr_login_server}"
-  docker_image_name       = var.backend_image_name
-  docker_image_tag        = "latest"
-  acr_id                  = module.acr.acr_id
-  ai_foundry_resource_id  = var.ai_foundry_resource_id
-  
+  app_service_name       = var.app_service_name
+  resource_group_name    = azurerm_resource_group.main.name
+  location               = azurerm_resource_group.main.location
+  service_plan_id        = module.app_service_plan.service_plan_id
+  sku_name               = var.app_service_plan_sku
+  docker_registry_url    = "https://${module.acr.acr_login_server}"
+  docker_image_name      = var.backend_image_name
+  docker_image_tag       = "latest"
+  acr_id                 = module.acr.acr_id
+  ai_foundry_resource_id = var.ai_foundry_resource_id
+
   app_settings = {
-    "AZURE_TENANT_ID"                 = data.azurerm_subscription.current.tenant_id
-    "AZURE_AI_PROJECT_ENDPOINT"       = var.azure_ai_project_endpoint
-    "AZURE_AI_MODEL_DEPLOYMENT_NAME"  = var.azure_ai_model_deployment_name
-    "AZURE_OPENAI_API_VERSION"        = var.azure_openai_api_version
+    "AZURE_TENANT_ID"                = data.azurerm_subscription.current.tenant_id
+    "AZURE_AI_PROJECT_ENDPOINT"      = var.azure_ai_project_endpoint
+    "AZURE_AI_MODEL_DEPLOYMENT_NAME" = var.azure_ai_model_deployment_name
+    "AZURE_OPENAI_API_VERSION"       = var.azure_openai_api_version
+    "AZURE_APPCONFIG_ENDPOINT"       = module.app_configuration.app_configuration_endpoint
   }
 
   tags = var.tags
 
   depends_on = [azurerm_resource_group.main, module.acr, module.app_service_plan]
+}
+
+# Grant the App Service managed identity read access to App Configuration.
+# Done in the root module rather than the app-configuration module to avoid a
+# circular dependency between the two modules (app_service depends on the
+# config endpoint, and the role assignment depends on the app_service identity).
+resource "azurerm_role_assignment" "app_service_appconfig_data_reader" {
+  principal_id                     = module.app_service.app_service_identity_principal_id
+  role_definition_name             = "App Configuration Data Reader"
+  scope                            = module.app_configuration.app_configuration_id
+  skip_service_principal_aad_check = true
+
+  depends_on = [module.app_service, module.app_configuration]
 }
