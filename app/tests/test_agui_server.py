@@ -4,6 +4,8 @@ Tests the AG-UI server endpoints and agent integration.
 Follows all constitution requirements including type safety and test coverage.
 """
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -127,8 +129,6 @@ def test_agent_uses_azure_ai_client_for_o_series_compat(test_env: None) -> None:
 
 def test_echo_endpoint(test_env: None) -> None:
     """POST /api/v1/echo returns the request body wrapped with status and ms timestamp."""
-    import time
-
     from agui_server import create_app
 
     app = create_app()
