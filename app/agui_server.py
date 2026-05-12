@@ -157,7 +157,14 @@ def create_app() -> FastAPI:
 
     # Simple echo endpoint: returns the request query parameters wrapped with a
     # status code and current timestamp in milliseconds.
-    @app.get("/api/v1/echo")
+    #
+    # The route is registered at "/v1/echo" (not "/api/v1/echo") because the
+    # production nginx reverse proxy in Dockerfile.appservice maps external
+    # "/api/" -> backend "/" (proxy_pass http://127.0.0.1:5100/ with trailing
+    # slash). So the public URL "/api/v1/echo" reaches FastAPI as "/v1/echo".
+    # Registering "/api/v1/echo" here would make the endpoint unreachable
+    # behind nginx and surface as a Gateway error in production.
+    @app.get("/v1/echo")
     async def echo(request: Request) -> dict[str, Any]:
         params = dict(request.query_params)
         return {

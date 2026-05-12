@@ -128,7 +128,12 @@ def test_agent_uses_azure_ai_client_for_o_series_compat(test_env: None) -> None:
 
 
 def test_echo_endpoint(test_env: None) -> None:
-    """GET /api/v1/echo returns the request query params wrapped with status and ms timestamp."""
+    """GET /v1/echo returns the request query params wrapped with status and ms timestamp.
+
+    The route is registered at ``/v1/echo`` (not ``/api/v1/echo``) so that the
+    production nginx reverse proxy — which maps external ``/api/`` -> backend
+    ``/`` — exposes it at the public URL ``/api/v1/echo``.
+    """
     from agui_server import create_app
 
     app = create_app()
@@ -137,7 +142,7 @@ def test_echo_endpoint(test_env: None) -> None:
     params = {"key1": "value1", "key2": "value2"}
 
     before_ms = int(time.time() * 1000)
-    response = client.get("/api/v1/echo", params=params)
+    response = client.get("/v1/echo", params=params)
     after_ms = int(time.time() * 1000)
 
     assert response.status_code == 200
