@@ -20,6 +20,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from feature_flags import is_feature_enabled
 from observability import configure_observability
 
 # Load environment and setup logging
@@ -153,6 +154,21 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check() -> dict[str, str]:
         return {"status": "healthy"}
+
+    # Sample feature-flag endpoint backed by Azure App Configuration.
+    # Returns ``{"name": str, "enabled": bool}``. Falls back to ``enabled=False``
+    # when the App Configuration endpoint is not configured or the flag is
+    # missing; see ``feature_flags.is_feature_enabled``.
+    #
+    # Registered at ``/v1/feature-flags/{name}`` (no ``/api/`` prefix) so that
+    # production nginx (Dockerfile.appservice) reaches it via the
+    # ``location /api/ { proxy_pass http://127.0.0.1:5100/; }`` rule which
+    # strips the ``/api/`` prefix. External callers therefore use
+    # ``/api/v1/feature-flags/{name}``.
+    @app.get("/v1/feature-flags/{name}")
+    async def get_feature_flag(name: str) -> dict[str, str | bool]:
+        enabled = await is_feature_enabled(name)
+        return {"name": name, "enabled": enabled}
 
     # Register AG-UI endpoint with proper error handling so the SSE stream
     # always terminates with RUN_FINISHED, even when run_agent() raises.

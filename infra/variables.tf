@@ -179,3 +179,28 @@ variable "ai_foundry_resource_id" {
   default     = ""
 }
 
+# Azure App Configuration variables
+variable "app_configuration_name" {
+  description = "Name of the Azure App Configuration store. Must be globally unique."
+  type        = string
+  default     = "appcfg-agentic-devops"
+}
+
+variable "app_configuration_sku" {
+  description = "SKU tier for App Configuration (free or standard). Standard is required for feature flags."
+  type        = string
+  default     = "standard"
+}
+
+variable "app_configuration_sample_feature_flag_name" {
+  description = "Name of the sample feature flag seeded in App Configuration"
+  type        = string
+  default     = "Beta"
+}
+
+variable "app_configuration_sample_feature_flag_enabled" {
+  description = "Initial state of the sample feature flag"
+  type        = bool
+  default     = true
+}
+

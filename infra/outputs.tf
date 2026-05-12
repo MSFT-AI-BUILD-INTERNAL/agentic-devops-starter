@@ -69,3 +69,19 @@ output "log_analytics_workspace_name" {
   description = "Name of the Log Analytics Workspace"
   value       = module.log_analytics.workspace_name
 }
+
+# Azure App Configuration
+output "app_configuration_name" {
+  description = "Name of the Azure App Configuration store"
+  value       = module.app_configuration.app_configuration_name
+}
+
+output "app_configuration_endpoint" {
+  description = "Endpoint URL of the Azure App Configuration store"
+  value       = module.app_configuration.app_configuration_endpoint
+}
+
+output "app_configuration_sample_feature_flag" {
+  description = "Name of the seeded sample feature flag"
+  value       = module.app_configuration.sample_feature_flag_name
+}
