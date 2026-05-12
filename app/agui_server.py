@@ -5,6 +5,7 @@ FastAPI server exposing a ChatAgent through AG-UI protocol with streaming suppor
 
 import logging
 import os
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any, cast
@@ -153,6 +154,17 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check() -> dict[str, str]:
         return {"status": "healthy"}
+
+    # Simple echo endpoint: returns the request body wrapped with a status
+    # code and current timestamp in milliseconds.
+    @app.post("/api/v1/echo")
+    async def echo(request: Request) -> dict[str, Any]:
+        body = await request.json()
+        return {
+            "statusCode": "SUCCESS",
+            "message": body,
+            "timestamp": int(time.time() * 1000),
+        }
 
     # Register AG-UI endpoint with proper error handling so the SSE stream
     # always terminates with RUN_FINISHED, even when run_agent() raises.

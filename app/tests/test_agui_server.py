@@ -125,6 +125,32 @@ def test_agent_uses_azure_ai_client_for_o_series_compat(test_env: None) -> None:
     )
 
 
+def test_echo_endpoint(test_env: None) -> None:
+    """POST /api/v1/echo returns the request body wrapped with status and ms timestamp."""
+    import time
+
+    from agui_server import create_app
+
+    app = create_app()
+    client = TestClient(app)
+
+    payload = {
+        "key1": "value1",
+        "key2": {"key21": "value21", "key22": "value22"},
+    }
+
+    before_ms = int(time.time() * 1000)
+    response = client.post("/api/v1/echo", json=payload)
+    after_ms = int(time.time() * 1000)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["statusCode"] == "SUCCESS"
+    assert body["message"] == payload
+    assert isinstance(body["timestamp"], int)
+    assert before_ms <= body["timestamp"] <= after_ms
+
+
 def test_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that appropriate error is raised when API keys are missing."""
     import agui_server
