@@ -128,25 +128,22 @@ def test_agent_uses_azure_ai_client_for_o_series_compat(test_env: None) -> None:
 
 
 def test_echo_endpoint(test_env: None) -> None:
-    """POST /api/v1/echo returns the request body wrapped with status and ms timestamp."""
+    """GET /api/v1/echo returns the request query params wrapped with status and ms timestamp."""
     from agui_server import create_app
 
     app = create_app()
     client = TestClient(app)
 
-    payload = {
-        "key1": "value1",
-        "key2": {"key21": "value21", "key22": "value22"},
-    }
+    params = {"key1": "value1", "key2": "value2"}
 
     before_ms = int(time.time() * 1000)
-    response = client.post("/api/v1/echo", json=payload)
+    response = client.get("/api/v1/echo", params=params)
     after_ms = int(time.time() * 1000)
 
     assert response.status_code == 200
     body = response.json()
     assert body["statusCode"] == "SUCCESS"
-    assert body["message"] == payload
+    assert body["message"] == params
     assert isinstance(body["timestamp"], int)
     assert before_ms <= body["timestamp"] <= after_ms
 

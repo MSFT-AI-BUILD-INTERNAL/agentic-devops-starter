@@ -155,14 +155,14 @@ def create_app() -> FastAPI:
     async def health_check() -> dict[str, str]:
         return {"status": "healthy"}
 
-    # Simple echo endpoint: returns the request body wrapped with a status
-    # code and current timestamp in milliseconds.
-    @app.post("/api/v1/echo")
+    # Simple echo endpoint: returns the request query parameters wrapped with a
+    # status code and current timestamp in milliseconds.
+    @app.get("/api/v1/echo")
     async def echo(request: Request) -> dict[str, Any]:
-        body = await request.json()
+        params = dict(request.query_params)
         return {
             "statusCode": "SUCCESS",
-            "message": body,
+            "message": params,
             "timestamp": int(time.time() * 1000),
         }
 
