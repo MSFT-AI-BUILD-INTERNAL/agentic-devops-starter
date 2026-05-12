@@ -34,7 +34,7 @@ first-class **feature flags** with built-in rollout/targeting support
 4. Expose `AZURE_APPCONFIG_ENDPOINT` to the backend via App Service
    app settings so the application can locate the store.
 5. Add a thin Python helper (`app/feature_flags.py`) and a sample
-   `GET /feature-flags/{name}` endpoint that returns whether a feature
+   `GET /v1/feature-flags/{name}` endpoint that returns whether a feature
    flag is enabled.
 
 ## Non-Goals
@@ -83,7 +83,7 @@ first-class **feature flags** with built-in rollout/targeting support
     `ResourceNotFoundError` (flag not yet seeded). Other exceptions
     propagate so they are not silently swallowed
     (per `code-review-criteria` §4).
-- Add `GET /feature-flags/{name}` endpoint to `app/agui_server.py`
+- Add `GET /v1/feature-flags/{name}` endpoint to `app/agui_server.py`
   returning `{"name": str, "enabled": bool}`.
 - `app/.env.example` documents `AZURE_APPCONFIG_ENDPOINT`.
 
@@ -94,7 +94,7 @@ first-class **feature flags** with built-in rollout/targeting support
   - `is_feature_enabled` honours an enabled flag from a mocked client.
   - `is_feature_enabled` honours a disabled flag from a mocked client.
 - `tests/test_agui_server.py`:
-  - `GET /feature-flags/{name}` returns the helper's result with HTTP
+  - `GET /v1/feature-flags/{name}` returns the helper's result with HTTP
     200 when endpoint env is unset (default `False`).
 
 ## Risks / Mitigations
@@ -115,6 +115,6 @@ first-class **feature flags** with built-in rollout/targeting support
    state.
 2. `uv run pytest tests/ -v` passes including the new feature-flag
    tests.
-3. Calling `GET /feature-flags/Beta` against a deployed App Service
+3. Calling `GET /v1/feature-flags/Beta` (external `/api/v1/feature-flags/Beta`) against a deployed App Service
    returns `{"name": "Beta", "enabled": true}` once the Terraform
    default of `enabled = true` has been applied.

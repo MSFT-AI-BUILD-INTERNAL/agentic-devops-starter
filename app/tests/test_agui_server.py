@@ -140,13 +140,13 @@ def test_missing_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_feature_flag_endpoint_returns_default_without_appconfig(
     test_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``GET /feature-flags/{name}`` returns enabled=False when no store configured."""
+    """``GET /v1/feature-flags/{name}`` returns enabled=False when no store configured."""
     monkeypatch.delenv("AZURE_APPCONFIG_ENDPOINT", raising=False)
     from agui_server import create_app
 
     app = create_app()
     client = TestClient(app)
 
-    response = client.get("/feature-flags/Beta")
+    response = client.get("/v1/feature-flags/Beta")
     assert response.status_code == 200
     assert response.json() == {"name": "Beta", "enabled": False}
