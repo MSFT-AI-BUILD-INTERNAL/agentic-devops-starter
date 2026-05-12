@@ -3,7 +3,6 @@
 FastAPI server exposing a ChatAgent through AG-UI protocol with streaming support.
 """
 
-import asyncio
 import logging
 import os
 from collections.abc import AsyncGenerator
@@ -166,54 +165,13 @@ def create_app() -> FastAPI:
 
         async def event_generator() -> AsyncGenerator[str, None]:
             encoder = EventEncoder()
-            # Flush response headers immediately and emit a periodic SSE
-            # comment heartbeat while the agent is computing. Azure App
-            # Service's front door closes the connection (504) after ~240s
-            # of no bytes; o-series models can exceed that before the first
-            # token. SSE comments (lines starting with ":") are ignored by
-            # clients per the spec, so this is transport-only.
-            yield ": ok\n\n"
-
-            queue: asyncio.Queue[Any] = asyncio.Queue()
-            sentinel = object()
-
-            async def producer() -> None:
-                try:
-                    async for event in wrapped_agent.run_agent(input_data):
-                        await queue.put(event)
-                except Exception as exc:  # noqa: BLE001 - forwarded to consumer
-                    await queue.put(exc)
-                finally:
-                    await queue.put(sentinel)
-
-            producer_task = asyncio.create_task(producer())
             try:
-                while True:
-                    try:
-                        item = await asyncio.wait_for(queue.get(), timeout=20)
-                    except TimeoutError:
-                        yield ": keepalive\n\n"
-                        continue
-                    if item is sentinel:
-                        break
-                    if isinstance(item, Exception):
-                        logger.exception(
-                            "run_agent raised an exception; terminating stream cleanly",
-                            exc_info=item,
-                        )
-                        yield encoder.encode(RunErrorEvent(message=str(item)))
-                        yield encoder.encode(
-                            RunFinishedEvent(thread_id=thread_id, run_id=run_id)
-                        )
-                        break
-                    yield encoder.encode(item)
-            finally:
-                if not producer_task.done():
-                    producer_task.cancel()
-                    try:
-                        await producer_task
-                    except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                        pass
+                async for event in wrapped_agent.run_agent(input_data):
+                    yield encoder.encode(event)
+            except Exception as exc:
+                logger.exception("run_agent raised an exception; terminating stream cleanly")
+                yield encoder.encode(RunErrorEvent(message=str(exc)))
+                yield encoder.encode(RunFinishedEvent(thread_id=thread_id, run_id=run_id))
 
         return StreamingResponse(
             event_generator(),
