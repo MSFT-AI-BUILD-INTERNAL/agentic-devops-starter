@@ -26,6 +26,9 @@ source .venv/bin/activate
 echo "📚 Installing Python packages..."
 uv pip install -e ./app --prerelease=allow
 
+echo "[init] install copilot sdk with uv"
+uv pip install --python .venv/bin/python github-copilot-sdk
+
 # Install specify-cli
 echo "🔧 Installing specify-cli..."
 uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
@@ -118,6 +121,11 @@ fi
 NPM_GLOBAL_BIN=$(npm config get prefix 2>/dev/null)/bin
 if [ -d "$NPM_GLOBAL_BIN" ]; then
     export PATH="$NPM_GLOBAL_BIN:$PATH"
+fi
+
+echo "[init] install copilot cli"
+if ! command -v copilot >/dev/null 2>&1; then
+    npm install -g @github/copilot
 fi
 
 # Install frontend dependencies if frontend directory exists

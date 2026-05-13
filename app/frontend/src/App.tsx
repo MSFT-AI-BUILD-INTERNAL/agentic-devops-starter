@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { ChatInterface } from './components/ChatInterface';
+import { TeamsSidebar } from './components/TeamsSidebar';
 import { logger } from './utils/logger';
 import { useTheme } from './hooks/useTheme';
 import { getApiBaseUrl } from './config/api';
@@ -17,8 +18,9 @@ function App() {
   }, [currentTheme]);
 
   return (
-    <div className="min-h-screen bg-primary flex items-center justify-center p-4">
-      <div className="w-full max-w-5xl h-[90vh]">
+    <div className="min-h-screen bg-primary flex">
+      <TeamsSidebar />
+      <div className="flex-1 flex flex-col h-screen">
         <ChatInterface />
       </div>
     </div>

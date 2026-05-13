@@ -19,7 +19,9 @@ def test_get_weather_known_locations() -> None:
     ]:
         result = get_weather(location)
         assert isinstance(result, str), f"get_weather({location!r}) did not return str"
-        assert expected in result, f"Expected {expected!r} in get_weather({location!r}), got {result!r}"
+        assert expected in result, (
+            f"Expected {expected!r} in get_weather({location!r}), got {result!r}"
+        )
 
 
 def test_get_weather_case_insensitive() -> None:

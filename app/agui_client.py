@@ -1,16 +1,16 @@
-"""AG-UI client for the Agentic DevOps Starter application.
+"""AG-UI CLI client for the Agentic DevOps Starter application.
 
-This client demonstrates hybrid tool execution where both client-side and
-server-side tools can execute in the same conversation.
+Interactive terminal client that communicates with the AG-UI server via
+HTTP POST + SSE streaming.  Uses the same protocol the React frontend uses,
+so it doubles as a quick smoke-test for the backend.
 """
 
 import asyncio
+import json
 import logging
 import os
-from typing import Annotated
 
-from agent_framework import ChatAgent, ai_function
-from agent_framework.ag_ui import AGUIChatClient
+import httpx
 
 # Setup logging
 logging.basicConfig(
@@ -20,11 +20,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Client-side tool - executes locally
-@ai_function(description="Get the current weather for a location.")
-def get_weather(location: Annotated[str, "The city or location name"]) -> str:
-    """Get the current weather for a location (client-side tool)."""
-    logger.info(f"[CLIENT] get_weather called: {location}")
+def get_weather(location: str) -> str:
+    """Get the current weather for a location (client-side demo tool)."""
+    logger.info("[CLIENT] get_weather called: %s", location)
     weather_data = {
         "seattle": "Rainy, 55°F",
         "san francisco": "Foggy, 62°F",
@@ -38,51 +36,72 @@ def get_weather(location: Annotated[str, "The city or location name"]) -> str:
     return weather_data.get(location.lower(), f"Weather data not available for {location}")
 
 
+async def _stream_chat(
+    client: httpx.AsyncClient,
+    server_url: str,
+    messages: list[dict[str, str]],
+    thread_id: str,
+) -> str:
+    """Send messages to the AG-UI server and stream the response."""
+    payload = {"messages": messages, "thread_id": thread_id, "stream": True}
+
+    assistant_text = ""
+    async with client.stream("POST", server_url, json=payload, timeout=120.0) as resp:
+        resp.raise_for_status()
+        async for line in resp.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            try:
+                event = json.loads(line[6:])
+            except json.JSONDecodeError:
+                continue
+
+            match event.get("type"):
+                case "TEXT_MESSAGE_CONTENT":
+                    delta = event.get("delta", "")
+                    print(delta, end="", flush=True)
+                    assistant_text += delta
+                case "RUN_ERROR":
+                    print(f"\n[ERROR] {event.get('message', 'Unknown error')}")
+                case "RUN_FINISHED":
+                    break
+
+    print()
+    return assistant_text
+
+
 async def main() -> None:
-    """Interactive chat client with hybrid tool execution."""
+    """Interactive chat client over AG-UI SSE protocol."""
     server_url = os.environ.get("AGUI_SERVER_URL", "http://127.0.0.1:5100/")
 
     print("=" * 60)
-    print("AG-UI Chat Client")
+    print("AG-UI Chat Client (Copilot SDK)")
     print("=" * 60)
     print(f"Server: {server_url}")
-    print("Tools: get_weather (client), get_time_zone (server)")
     print("Type ':q' or 'quit' to exit")
     print("=" * 60 + "\n")
 
-    try:
-        async with AGUIChatClient(endpoint=server_url) as remote_client:
-            agent = ChatAgent(
-                name="assistant",
-                instructions=(
-                    "You are a helpful assistant. "
-                    "Use get_weather for weather and get_time_zone for time zones."
-                ),
-                chat_client=remote_client,
-                tools=[get_weather],
-            )
-            thread = agent.get_new_thread()
+    messages: list[dict[str, str]] = []
+    thread_id = ""
 
-            while True:
-                user_input = input("\nUser: ").strip()
-                if not user_input:
-                    continue
-                if user_input.lower() in (":q", "quit"):
-                    print("Goodbye!")
-                    break
+    async with httpx.AsyncClient() as client:
+        while True:
+            user_input = input("\nUser: ").strip()
+            if not user_input:
+                continue
+            if user_input.lower() in (":q", "quit"):
+                print("Goodbye!")
+                break
 
-                print("Assistant: ", end="", flush=True)
-                try:
-                    async for chunk in agent.run_stream(user_input, thread=thread):
-                        if chunk.text:
-                            print(chunk.text, end="", flush=True)
-                    print()
-                except Exception as e:
-                    print(f"\nError: {e}")
+            messages.append({"role": "user", "content": user_input})
+            print("Assistant: ", end="", flush=True)
 
-    except ConnectionError as e:
-        print(f"\nConnection Error: {e}")
-        print("Make sure the AG-UI server is running: python agui_server.py")
+            try:
+                assistant_text = await _stream_chat(client, server_url, messages, thread_id)
+                if assistant_text:
+                    messages.append({"role": "assistant", "content": assistant_text})
+            except Exception as e:
+                print(f"\nError: {e}")
 
 
 if __name__ == "__main__":

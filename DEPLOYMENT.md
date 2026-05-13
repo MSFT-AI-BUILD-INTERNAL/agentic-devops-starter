@@ -81,9 +81,7 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 ### Application Configuration (Optional)
 | Secret | Description |
 |--------|-------------|
-| `AZURE_AI_PROJECT_ENDPOINT` | Azure AI Foundry project endpoint |
-| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | AI model deployment name |
-| `AZURE_OPENAI_API_VERSION` | Azure OpenAI API version |
+| `COPILOT_GITHUB_TOKEN` | GitHub PAT with `copilot` scope for Copilot SDK authentication |
 
 ## Workflow Triggers
 
@@ -188,8 +186,7 @@ Static infrastructure settings (e.g., `WEBSITES_PORT`, `CORS`) are managed by **
 |---------|-----------|--------|
 | `WEBSITES_PORT` | Terraform | Static infrastructure config |
 | `CORS` | Terraform (`site_config.cors`) | Static infrastructure config |
-| `AZURE_TENANT_ID` | deploy.yml | Secret value |
-| `AZURE_AI_*` | deploy.yml | Secret values |
+| `GITHUB_TOKEN` | deploy.yml | Copilot SDK auth (from `COPILOT_GITHUB_TOKEN` secret) |
 
 ## Troubleshooting
 

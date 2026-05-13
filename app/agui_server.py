@@ -1,132 +1,51 @@
-"""AG-UI server for the Agentic DevOps Starter application.
+"""AG-UI server for the Agentic DevOps Starter application."""
 
-FastAPI server exposing a ChatAgent through AG-UI protocol with streaming support.
-"""
-
-import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Annotated, Any, cast
+from typing import Any
 
-from ag_ui.core import RunErrorEvent, RunFinishedEvent
-from ag_ui.encoder import EventEncoder
-from agent_framework import ChatAgent, ai_function
-from agent_framework.azure import AzureAIClient
-from agent_framework_ag_ui import AgentFrameworkAgent
-from azure.identity.aio import DefaultAzureCredential
+from copilot import CopilotClient, SubprocessConfig
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 
-from observability import configure_observability
+from src.config import settings
+from src.logging_utils import setup_logging
+from src.observability import configure_observability
+from src.routes import router
+from src.state import set_client
 
-# Load environment and setup logging
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
-# Configure OpenTelemetry exporters to Microsoft Foundry / Azure Application
-# Insights. This must run before any agent_framework spans are emitted, so we
-# call it at module import time. It is a no-op when the connection string is
-# not configured (e.g. local development without telemetry).
+logger = setup_logging(settings.log_level)
 configure_observability()
 
-# Configuration
-ENDPOINT = os.environ.get("AZURE_AI_PROJECT_ENDPOINT")
-DEPLOYMENT = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-
-# Default CORS origins for development
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
-
-# Agent instructions for the ChatAgent system prompt.
-_INSTRUCTIONS = (
-    "You are a helpful AI assistant. "
-    "Use get_time_zone for time zone information about locations."
-)
-
-
-@ai_function(description="Get the time zone for a location.")
-def get_time_zone(location: Annotated[str, "The city or location name"]) -> str:
-    """Get the time zone for a location (server-side tool)."""
-    logger.info(f"get_time_zone called: {location}")
-    timezone_data = {
-        "seattle": "Pacific Time (UTC-8)",
-        "san francisco": "Pacific Time (UTC-8)",
-        "new york": "Eastern Time (UTC-5)",
-        "london": "Greenwich Mean Time (UTC+0)",
-        "tokyo": "Japan Standard Time (UTC+9)",
-        "sydney": "Australian Eastern Time (UTC+10)",
-        "paris": "Central European Time (UTC+1)",
-        "mumbai": "India Standard Time (UTC+5:30)",
-    }
-    return timezone_data.get(location.lower(), f"Time zone not available for {location}")
-
-
-def create_agent() -> ChatAgent:
-    """Create and configure the ChatAgent.
-
-    Uses ``AzureAIClient`` (Azure AI Foundry Responses API) rather than
-    ``AzureAIAgentClient`` (Azure AI Agents / Assistants API) because the
-    Agents API always stores and forwards ``temperature``/``top_p`` defaults
-    on the model call, which o-series models (o1, o3, o4) reject with
-    ``Unsupported parameter: 'top_p' is not supported with this model``.
-
-    ``AzureAIClient`` explicitly strips these parameters from every request
-    (see ``agent_framework_azure_ai/_client.py::_prepare_options``), making it
-    inherently compatible with o-series deployments. It uses the same
-    ``AZURE_AI_PROJECT_ENDPOINT`` / ``AZURE_AI_MODEL_DEPLOYMENT_NAME`` env
-    vars as the previous client, so no infrastructure changes are required.
-    ``use_latest_version=True`` makes the client reuse the existing agent
-    version on restart instead of creating a new one every time.
-    """
-    if not ENDPOINT or not DEPLOYMENT:
-        raise ValueError("AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_MODEL_DEPLOYMENT_NAME must be set")
-
-    logger.info(f"Creating ChatAgent: endpoint={ENDPOINT}, deployment={DEPLOYMENT}")
-
-    chat_client = AzureAIClient(
-        project_endpoint=ENDPOINT,
-        model_deployment_name=DEPLOYMENT,
-        credential=DefaultAzureCredential(),
-        agent_name="AGUIAssistant",
-        use_latest_version=True,
-    )
-
-    return ChatAgent(
-        name="AGUIAssistant",
-        instructions=_INSTRUCTIONS,
-        chat_client=chat_client,
-        tools=[get_time_zone],
-    )
 
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
-    raw_agent = create_agent()
-    wrapped_agent = AgentFrameworkAgent(agent=raw_agent)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        logger.info("AG-UI server started (AzureAIClient / Responses API)")
+        github_token = os.environ.get("GITHUB_TOKEN")
+        config = SubprocessConfig(github_token=github_token) if github_token else None
+        client = CopilotClient(config)
+        await client.start()
+        set_client(client)
+        logger.info("CopilotClient started (GitHub Copilot SDK)")
         yield
-        # chat_client is the AzureAIClient created in create_agent(); cast so
-        # mypy recognises the async close() method declared on that concrete type.
-        client = cast(AzureAIClient, raw_agent.chat_client)
-        try:
-            await client.close()
-        except Exception:
-            logger.warning("Chat client cleanup failed on shutdown", exc_info=True)
+        await client.stop()
+        logger.info("CopilotClient stopped")
 
     app = FastAPI(
         lifespan=lifespan,
         title="Agentic DevOps Starter AG-UI Server",
-        description="AG-UI server for conversational AI agent",
-        version="0.1.0",
+        description="AG-UI server for conversational AI agent powered by GitHub Copilot SDK",
+        version="0.2.0",
     )
 
-    # Security headers middleware
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next: Any) -> Response:
         response: Response = await call_next(request)
@@ -136,7 +55,6 @@ def create_app() -> FastAPI:
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
 
-    # CORS configuration
     cors_origins = os.environ.get("CORS_ORIGINS", "").split(",")
     if not cors_origins or cors_origins == [""]:
         cors_origins = DEFAULT_CORS_ORIGINS
@@ -149,39 +67,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Health check endpoint for App Service and CI/CD verification
-    @app.get("/health")
-    async def health_check() -> dict[str, str]:
-        return {"status": "healthy"}
-
-    # Register AG-UI endpoint with proper error handling so the SSE stream
-    # always terminates with RUN_FINISHED, even when run_agent() raises.
-    @app.post("/")
-    async def agent_endpoint(request: Request) -> StreamingResponse:  # type: ignore[misc]
-        """Handle AG-UI agent requests and guarantee stream termination."""
-        input_data = await request.json()
-        thread_id: str = input_data.get("thread_id") or ""
-        run_id: str = input_data.get("run_id") or ""
-
-        async def event_generator() -> AsyncGenerator[str, None]:
-            encoder = EventEncoder()
-            try:
-                async for event in wrapped_agent.run_agent(input_data):
-                    yield encoder.encode(event)
-            except Exception as exc:
-                logger.exception("run_agent raised an exception; terminating stream cleanly")
-                yield encoder.encode(RunErrorEvent(message=str(exc)))
-                yield encoder.encode(RunFinishedEvent(thread_id=thread_id, run_id=run_id))
-
-        return StreamingResponse(
-            event_generator(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
+    app.include_router(router)
 
     logger.info("FastAPI app created successfully")
     return app
@@ -189,5 +75,6 @@ def create_app() -> FastAPI:
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info("Starting AG-UI server on http://0.0.0.0:5100")
-    uvicorn.run("agui_server:create_app", host="0.0.0.0", port=5100, factory=True)
+
+    logger.info("Starting AG-UI server on http://0.0.0.0:%d", settings.port)
+    uvicorn.run("agui_server:create_app", host=settings.host, port=settings.port, factory=True)
