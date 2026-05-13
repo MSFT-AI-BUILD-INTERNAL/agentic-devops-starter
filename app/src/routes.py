@@ -157,7 +157,7 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
             if message_started:
                 yield _sse({"type": "TEXT_MESSAGE_END", "message_id": message_id})
 
-        except Exception as exc:
+        except Exception:
             logger.exception("Copilot session error; terminating stream")
             yield _sse({"type": "RUN_ERROR", "message": "An internal error occurred"})
         finally:
