@@ -410,9 +410,12 @@ async def run_teams(
     try:
         async for event in runner(pattern.roles, prompt, max_rounds):
             yield event
-    except Exception as exc:
+    except Exception:
         logger.exception("Teams execution error for pattern %s", pattern_id)
-        yield {"type": "TEAMS_ERROR", "message": str(exc)}
+        yield {
+            "type": "TEAMS_ERROR",
+            "message": "An internal error occurred while executing the team workflow.",
+        }
         return
 
     yield {"type": "TEAMS_FINISHED", "pattern_id": pattern_id, "run_id": run_id}
