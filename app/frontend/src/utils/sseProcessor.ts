@@ -1,14 +1,6 @@
 // Utility for processing Server-Sent Events (SSE) from fetch responses
 import { logger } from '../utils/logger';
-
-// Simple event interface for streaming events
-export interface StreamEvent {
-  type: string;
-  delta?: string;
-  message?: string;
-  threadId?: string;
-  [key: string]: unknown;
-}
+import type { StreamEvent } from '../services/aguiClient';
 
 /**
  * Process SSE stream from a Response body
@@ -28,8 +20,11 @@ export async function processSSEStream(
   let threadIdFromStream: string | undefined;
 
   try {
-    while (true) {
-      const { done, value } = await reader.read();
+    let done = false;
+    while (!done) {
+      const result = await reader.read();
+      done = result.done;
+      const value = result.value;
 
       if (done) {
         logger.info('Stream reading completed');

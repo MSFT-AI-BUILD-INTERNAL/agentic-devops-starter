@@ -30,25 +30,6 @@ export interface ChatResponse {
   message?: string;
 }
 
-export interface ToolResultRequest {
-  execution_id: string;
-  result?: unknown;
-  error?: string;
-}
-
-export interface HealthResponse {
-  status: string;
-  version: string;
-  thread_count: number;
-  uptime_seconds: number;
-}
-
-export interface ThreadMetadata {
-  thread_id: string;
-  created_at: string;
-  message_count: number;
-}
-
 class AGUIClient {
   private baseUrl: string;
 
@@ -146,101 +127,7 @@ class AGUIClient {
     }
   }
 
-  /**
-   * Submit client-side tool execution result
-   */
-  async submitToolResult(executionId: string, result?: unknown, error?: string): Promise<void> {
-    const correlationId = logger.generateCorrelationId();
-    logger.setCorrelationId(correlationId);
 
-    logger.info('Submitting tool result', { executionId, hasError: !!error });
-
-    const request: ToolResultRequest = {
-      execution_id: executionId,
-      result,
-      error,
-    };
-
-    try {
-      const response = await fetch(`${this.baseUrl}/tool_result`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Correlation-ID': correlationId,
-        },
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        logger.error('Tool result submission failed', new Error(errorText), {
-          status: response.status,
-        });
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      logger.info('Tool result submitted successfully');
-    } catch (error) {
-      logger.error('Failed to submit tool result', error);
-      throw error;
-    } finally {
-      logger.clearCorrelationId();
-    }
-  }
-
-  /**
-   * Check backend health
-   */
-  async checkHealth(): Promise<HealthResponse> {
-    try {
-      const response = await fetch(`${this.baseUrl}/health`);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      logger.error('Health check failed', error);
-      throw error;
-    }
-  }
-
-  /**
-   * List all threads
-   */
-  async listThreads(): Promise<ThreadMetadata[]> {
-    try {
-      const response = await fetch(`${this.baseUrl}/threads`);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      logger.error('Failed to list threads', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get thread by ID
-   */
-  async getThread(threadId: string): Promise<unknown> {
-    try {
-      const response = await fetch(`${this.baseUrl}/threads/${threadId}`);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      logger.error('Failed to get thread', error, { threadId });
-      throw error;
-    }
-  }
 }
 
 // Export singleton instance

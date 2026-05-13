@@ -1,556 +1,184 @@
-# Agent Framework Integration with AG-UI
+# Agentic DevOps Starter — Application
 
-This is a comprehensive example demonstrating the integration of the `microsoft-agent-framework` for building conversational AI agents with **AG-UI (Agent User Interface)** for web-based interaction, following all requirements from `constitution.md`.
+Conversational AI application powered by the **GitHub Copilot SDK**. The backend streams responses via the AG-UI SSE protocol, and a React frontend renders them in real time.
 
-## Overview
-
-This implementation showcases:
-
-- **Python-First Backend**: All code uses Python ≥3.12
-- **Agent-Centric Architecture**: Core orchestration using agent primitives
-- **AG-UI Integration**: Web-based interface using FastAPI with streaming support
-- **Type Safety**: Full type hints with Pydantic validation
-- **Response Quality**: Guardrails and validation for LLM responses
-- **Observability**: Structured logging with correlation IDs
-- **Tool Integration**: Example tools with hybrid client/server execution
-- **Streaming Responses**: Real-time agent responses via Server-Sent Events (SSE)
-
-## Project Structure
+## Architecture
 
 ```
 app/
+├── agui_server.py           # FastAPI app factory (entry point)
+├── agui_client.py           # CLI chat client (smoke-test tool)
 ├── src/
-│   ├── __init__.py
-│   ├── logging_utils.py          # Structured logging with correlation IDs
-│   ├── config/
-│   │   ├── __init__.py
-│   │   └── llm_config.py         # LLM provider configuration
-│   └── agents/
-│       ├── __init__.py
-│       ├── base_agent.py         # Base agent class
-│       ├── conversational_agent.py  # Conversational agent implementation
-│       └── tools.py              # Tool/function integration examples
-├── tests/                        # Test directory
-├── main.py                       # CLI demo (original example)
-├── agui_server.py                # AG-UI FastAPI server
-├── agui_client.py                # Basic AG-UI client
-├── agui_client_hybrid.py         # Advanced client with hybrid tools
-├── .env.example                  # Environment configuration example
-└── pyproject.toml               # Project dependencies and configuration
+│   ├── config.py            # Pydantic settings (COPILOT_API_* env)
+│   ├── routes.py            # All API routes (AG-UI, Fleet, Infinite Session)
+│   ├── jobs.py              # Background job manager (Fleet / Infinite Session)
+│   ├── models.py            # Pydantic request/response models
+│   ├── state.py             # CopilotClient singleton
+│   ├── logging_utils.py     # Structured logging + correlation IDs
+│   └── observability.py     # Azure Monitor OpenTelemetry (optional)
+├── frontend/                # React + TypeScript + Vite
+├── tests/                   # pytest test suite
+├── pyproject.toml           # Python deps (uv-managed)
+├── Dockerfile.appservice    # Production multi-stage build
+└── .env.example             # Environment variable reference
 ```
 
-## Features
+## Prerequisites
 
-### 1. Agent Framework Integration
+- **Python ≥ 3.12**
+- **[uv](https://docs.astral.sh/uv/)** — Python package manager
+- **Node.js ≥ 20** — for the frontend
+- **GitHub CLI** (`gh`) — authenticated with `gh auth login`
+  - Required for the Copilot SDK (it uses your GitHub Copilot entitlement)
+  - Your GitHub account must have an active Copilot subscription
 
-The implementation provides:
+## Quick Start (Local Development)
 
-- **BaseAgent**: Abstract base class for all agents with:
-  - State management using Pydantic models
-  - Conversation history tracking
-  - LLM interaction logging
-  - Response validation hooks
-
-- **ConversationalAgent**: Concrete implementation demonstrating:
-  - Message processing pipeline
-  - Conversation state management
-  - Response validation and guardrails
-  - Structured logging throughout
-
-### 2. Configuration Management
-
-LLM configuration supports:
-
-- Multiple providers (OpenAI, Azure OpenAI)
-- Fallback mechanisms for reliability
-- Token usage tracking for cost monitoring
-- Environment-based configuration
-
-### 3. Observability
-
-Comprehensive logging with:
-
-- Structured log format
-- Correlation ID tracking across all operations
-- Contextual information for debugging
-- LLM interaction audit trail
-- **Microsoft Foundry tracing via OpenTelemetry** (optional): when
-  `APPLICATIONINSIGHTS_CONNECTION_STRING` is set, agent runs, tool calls, and
-  LLM requests are exported as OTEL traces/logs/metrics to the Application
-  Insights resource attached to your Foundry project. See
-  [`observability.py`](./observability.py) and the env vars in
-  [`.env.example`](./.env.example):
-
-  | Variable | Required | Description |
-  |---|---|---|
-  | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Yes (to enable tracing) | Connection string of the App Insights resource linked to your Foundry project |
-  | `OTEL_SERVICE_NAME` | No | Service name on every span (default `agentic-devops-starter`) |
-  | `ENABLE_SENSITIVE_DATA` | No | Set `true` to include prompt/completion contents on spans (dev/test only) |
-
-### 4. Type Safety
-
-All code includes:
-
-- Type hints on all functions and methods
-- Pydantic models for data validation
-- Mypy compatibility for type checking
-
-### 5. Tool Integration
-
-Example tools demonstrating:
-
-- Tool definition with parameter schemas
-- Calculator tool for arithmetic operations
-- Weather tool (mock) for API integration
-- Time zone tool for location information
-- Extensible tool framework
-- **Hybrid tool execution**: Both client-side and server-side tools
-
-### 6. AG-UI Web Interface
-
-Web-based agent interface with:
-
-- FastAPI server with AG-UI protocol support
-- Server-Sent Events (SSE) for real-time streaming
-- Thread management for conversation continuity
-- Client-side and server-side tool execution
-- Full OpenAPI documentation at `/docs`
-- Health check endpoint
-
-## Installation
-
-### Prerequisites
-
-- Python ≥3.12
-- `uv` package manager (or pip)
-
-### Setup
-
-1. Install dependencies:
+### 1. Install backend dependencies
 
 ```bash
 cd app
-uv pip install -e .
+uv sync --frozen --all-extras
 ```
 
-Or with pip:
+### 2. Configure environment
 
 ```bash
-cd app
-pip install -e .
-```
-
-2. Install development dependencies:
-
-```bash
-uv pip install -e ".[dev]"
-```
-
-## Usage
-
-### Running the Example
-
-```bash
-cd app
-uv run main.py
-```
-
-This will run three demonstrations:
-
-1. **Basic Conversation**: Shows agent message processing
-2. **Tool Integration**: Demonstrates calculator and weather tools
-3. **State Management**: Shows conversation state tracking
-
-### Using the Agent in Your Code
-
-```python
-from src.agents import ConversationalAgent
-from src.config import LLMConfig, LLMProvider
-
-# Create configuration
-config = LLMConfig(
-    provider=LLMProvider.OPENAI,
-    api_key="your-api-key",
-    model="gpt-4",
-    temperature=0.7,
-)
-
-# Initialize agent
-agent = ConversationalAgent(
-    name="MyAgent",
-    llm_config=config,
-)
-
-# Process messages
-response = agent.process_message("Hello!")
-print(response)
-
-# Get conversation summary
-summary = agent.get_conversation_summary()
-print(f"Messages: {summary['message_count']}")
-```
-
-### Using Tools
-
-```python
-from src.agents.tools import CalculatorTool
-
-# Create tool
-calculator = CalculatorTool()
-
-# Execute tool
-result = calculator.execute(
-    operation="multiply",
-    a=15,
-    b=7
-)
-print(f"Result: {result['result']}")
-```
-
-## Using AG-UI Web Interface
-
-AG-UI provides a web-based interface for your agent with streaming responses and tool execution.
-
-### Quick Start
-
-1. **Configure environment variables** (copy `.env.example` to `.env`):
-
-```bash
-cd app
 cp .env.example .env
-# Edit .env with your API keys
+# No edits needed for local dev — SDK uses `gh auth` automatically
 ```
 
-2. **Start the AG-UI server**:
+### 3. Start the backend
 
 ```bash
 cd app
 uv run agui_server.py
 ```
 
-The server will start at `http://127.0.0.1:5100` with:
-- OpenAPI documentation at `http://127.0.0.1:5100/docs`
-- AG-UI endpoint at `http://127.0.0.1:5100/`
+The server starts at **http://127.0.0.1:5100**:
+- `POST /` — AG-UI streaming endpoint (used by frontend)
+- `GET /health` — health check
+- `POST /v1/fleet` — parallel multi-prompt execution
+- `POST /v1/infinite-session` — chained reasoning loop
+- `GET /v1/jobs/{job_id}` — async job status
+- `GET /docs` — interactive OpenAPI docs
 
-3. **Use the basic client** (in another terminal):
+### 4. Start the frontend (separate terminal)
+
+```bash
+cd app/frontend
+npm ci
+npm run dev
+```
+
+Opens at **http://localhost:8080**. The Vite dev server proxies `/api/*` → backend `:5100`.
+
+### 5. Test with the CLI client (optional)
 
 ```bash
 cd app
 uv run agui_client.py
 ```
 
-4. **Or use the hybrid tools client**:
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST /` | AG-UI SSE stream | Chat with streaming (frontend uses this) |
+| `GET /health` | Health check | Returns `{"status": "healthy"}` |
+| `POST /v1/fleet` | Fleet execution | Run up to 20 prompts in parallel |
+| `POST /v1/infinite-session` | Chained reasoning | Output N → Input N+1, up to 10 iterations |
+| `GET /v1/jobs/{job_id}` | Job status | Poll async job results |
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GITHUB_TOKEN` | Production only | — | GitHub PAT with `copilot` scope (local dev uses `gh auth`) |
+| `COPILOT_API_HOST` | No | `0.0.0.0` | Server bind address |
+| `COPILOT_API_PORT` | No | `5100` | Server port |
+| `COPILOT_API_LOG_LEVEL` | No | `INFO` | Log level |
+| `COPILOT_API_SESSION_TIMEOUT` | No | `120.0` | Copilot session timeout (seconds) |
+| `CORS_ORIGINS` | No | `localhost:5173` | Comma-separated CORS origins |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | No | — | Enables Azure Monitor tracing |
+| `OTEL_SERVICE_NAME` | No | `agentic-devops-starter` | OpenTelemetry service name |
+
+## Development Commands
+
+All commands run from `app/`:
 
 ```bash
-cd app
-uv run agui_client_hybrid.py
+# Install dependencies
+uv sync --frozen --all-extras
+
+# Run the server
+uv run agui_server.py
+
+# Lint
+uv run ruff check .
+
+# Format
+uv run ruff format .
+
+# Type check
+uv run mypy .
+
+# Run tests
+uv run pytest tests/ -v
 ```
 
-### AG-UI Features
-
-#### Server-Side Tools
-
-The server includes the `get_time_zone` tool that executes on the server:
-
-```python
-# Try asking:
-# "What time zone is Seattle in?"
-# "What's the time zone for Tokyo?"
-```
-
-#### Client-Side Tools
-
-The hybrid client includes the `get_weather` tool that executes on the client:
-
-```python
-# Try asking:
-# "What's the weather like in Seattle?"
-# "How's the weather in Tokyo?"
-```
-
-#### Hybrid Tool Execution
-
-Both tools work together seamlessly:
-
-```python
-# Try asking:
-# "What's the weather and time zone in London?"
-# "Tell me about the weather in Paris and what time zone it's in"
-```
-
-The agent will automatically:
-1. Decide which tools to use based on the query
-2. Execute server-side tools (get_time_zone) on the server
-3. Execute client-side tools (get_weather) on the client
-4. Combine results into a coherent response
-
-### Conversation Continuity
-
-The AG-UI protocol maintains conversation history through thread management:
-
-- Each conversation gets a unique thread ID
-- Messages are tracked across requests
-- Context is preserved for natural multi-turn conversations
-
-### API Documentation
-
-Visit `http://127.0.0.1:5100/docs` when the server is running to see:
-- Complete API documentation
-- Interactive API testing
-- Request/response schemas
-- Try out endpoints directly
-
-## Chat Request Flow (Production Deployment)
-
-When deployed to Azure App Service, chat requests follow this flow:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 1. User Input in Browser                                        │
-│    https://<app-service-name>.azurewebsites.net                 │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 2. Frontend (React) - useChat Hook                              │
-│    File: app/frontend/src/hooks/useChat.ts                      │
-│    Action: sendMessage() → aguiClient.sendMessage()             │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 3. AGUIClient - HTTP Request                                    │
-│    File: app/frontend/src/services/aguiClient.ts                │
-│    Request: POST /api/                                          │
-│    Headers: Content-Type: application/json                      │
-│    Body: { messages: [...], thread_id, stream: true }           │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 4. NGINX - Reverse Proxy (inside App Service container)         │
-│    File: app/Dockerfile.appservice                              │
-│    Config: location /api/ { proxy_pass http://127.0.0.1:5100/ } │
-│    Transform: /api/ → / (removes /api/ prefix)                  │
-│    Forwards to: Backend on localhost:5100                        │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 5. Backend (FastAPI) - AG-UI Endpoint                           │
-│    File: app/agui_server.py                                     │
-│    Endpoint: POST / (root path)                                 │
-│    Handler: add_agent_framework_fastapi_endpoint(app, "/")      │
-│    Processing: AG-UI protocol → ChatAgent                       │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 6. ChatAgent - Azure AI Invocation                              │
-│    File: app/agui_server.py (create_agent)                      │
-│    Authentication: DefaultAzureCredential (Managed Identity)    │
-│    Model: Azure AI Foundry                                      │
-│    Response: SSE (Server-Sent Events) stream                    │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 7. SSE Stream Response (Reverse Flow)                           │
-│    Backend → NGINX → Frontend → Browser                         │
-│    Events: RUN_STARTED, TEXT_MESSAGE_CONTENT, RUN_FINISHED      │
-│    Result: Real-time token streaming to UI                      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Key Components
-
-#### Frontend API Client
-- **Base URL**: `/api/` (relative path)
-- **Build-time Configuration**: `VITE_AGUI_ENDPOINT=/api/` set in Dockerfile
-- **Runtime**: Calls `/api/` which NGINX proxies to backend
-
-#### NGINX Reverse Proxy
-```nginx
-location /api/ {
-    proxy_pass http://127.0.0.1:5100/;  # Trailing slash removes /api/ prefix
-    proxy_http_version 1.1;
-    proxy_buffering off;  # Required for SSE streaming
-    # ... other proxy settings
-}
-```
-
-**Path Rewriting**: 
-- Frontend request: `POST /api/`
-- NGINX proxies to: `POST /` (on backend)
-- The `/api/` prefix is automatically removed
-
-#### Backend AG-UI Endpoint
-```python
-# agui_server.py
-app = FastAPI()
-add_agent_framework_fastapi_endpoint(app, agent, "/")  # Root path
-```
-
-- Receives requests at `/` (after NGINX proxy)
-- Processes AG-UI protocol messages
-- Returns SSE stream for real-time responses
-
-#### Managed Identity Authentication
-- **Identity**: System-assigned managed identity on App Service
-- **Credential**: `DefaultAzureCredential` automatically uses managed identity
-- **Roles**: Azure AI Developer + Cognitive Services User
-- **Scope**: `https://ai.azure.com/.default` for Azure AI Foundry
-
-### Local Development vs Production
-
-| Aspect | Local Development | Production (App Service) |
-|--------|-------------------|-------------------------|
-| Frontend URL | `http://localhost:5173` | `https://<app>.azurewebsites.net` |
-| Backend URL | `http://localhost:5100` | `http://127.0.0.1:5100` (same container) |
-| API Path | Direct to backend | Through NGINX `/api/` proxy |
-| Authentication | API key or local credentials | System-assigned Managed Identity |
-| Containers | Separate processes | Single container with supervisor |
-
-### SSE Streaming Support
-
-The architecture supports Server-Sent Events for real-time streaming:
-
-1. **NGINX Configuration**: 
-   - `proxy_buffering off` - Disables response buffering
-   - `proxy_read_timeout 600s` - Extended timeout for long streams
-
-2. **Backend Response**: 
-   - Content-Type: `text/event-stream`
-   - Streams AG-UI events as they occur
-
-3. **Frontend Handler**: 
-   - Processes events in real-time
-   - Updates UI progressively as tokens arrive
-
-## Configuration
-
-### Environment Variables
-
-Configure LLM providers using environment variables (see `.env.example`):
+Frontend commands (from `app/frontend/`):
 
 ```bash
-# Azure OpenAI (Preferred)
-export AZURE_AI_PROJECT_ENDPOINT="https://your-resource.openai.azure.com/"
-export AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-4o-mini"
-export AZURE_OPENAI_API_KEY="your-key"  # Optional if using DefaultAzureCredential
-
-# OpenAI (Fallback)
-export OPENAI_API_KEY="your-key"
-
-# AG-UI Client Configuration
-export AGUI_SERVER_URL="http://127.0.0.1:5100/"
+npm ci                  # Install deps
+npm run dev             # Dev server (:8080, proxies /api → :5100)
+npm run build           # Production build
+npm run lint            # ESLint
+npm run type-check      # TypeScript check
+npm run test            # Vitest unit tests
+npm run test:e2e        # Playwright E2E tests
 ```
 
-### Configuration Options
+## Production Deployment
 
-All configuration is done through Pydantic models in `src/config/llm_config.py`:
+The app deploys to **Azure App Service** as a single container:
 
-- `provider`: LLM provider (OpenAI or Azure OpenAI)
-- `api_key`: API key for authentication
-- `model`: Model name to use
-- `temperature`: Response temperature (0.0-2.0)
-- `max_tokens`: Maximum tokens in response
-- `fallback_provider`: Fallback provider if primary fails
-- `enable_token_tracking`: Enable token usage tracking
+1. **Frontend** — built to static files, served by NGINX on `:8080`
+2. **Backend** — FastAPI on `:5100`, proxied via NGINX at `/api/*`
+3. **Supervisor** — manages both processes
 
-## Development
+See [`Dockerfile.appservice`](./Dockerfile.appservice) and the [deploy workflow](../.github/workflows/deploy.yml).
 
-### Code Quality
+### Required GitHub Secrets
 
-Run linting with Ruff:
+| Secret | Description |
+|--------|-------------|
+| `ACR_NAME` | Azure Container Registry name |
+| `APP_SERVICE_NAME` | App Service resource name |
+| `RESOURCE_GROUP` | Azure resource group |
+| `AZURE_CLIENT_ID` | OIDC service principal |
+| `AZURE_TENANT_ID` | Azure AD tenant |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription |
+| `COPILOT_GITHUB_TOKEN` | GitHub PAT with `copilot` scope |
 
-```bash
-cd app
-ruff check src/
+## How It Works
+
+```
+Browser → React (useChat hook)
+  → POST /api/ (Vite proxy in dev, NGINX in prod)
+    → FastAPI POST / (agui_server.py)
+      → CopilotClient.create_session()
+        → Copilot SDK CLI subprocess
+          → GitHub Copilot LLM
+      ← SessionEvent stream (deltas)
+    ← SSE: RUN_STARTED → TEXT_MESSAGE_CONTENT* → TEXT_MESSAGE_END → RUN_FINISHED
+  ← Real-time token rendering in chat UI
 ```
 
-Run type checking with mypy:
-
-```bash
-cd app
-mypy src/
-```
-
-### Testing
-
-Run tests with pytest:
-
-```bash
-cd app
-pytest tests/
-```
-
-## Architecture Principles
-
-This implementation follows all principles from `constitution.md`:
-
-### I. Python-First Backend
-✓ Python ≥3.12 with modern features
-
-### II. Agent-Centric Architecture
-✓ Agent framework as core orchestration layer
-✓ State management through agent primitives
-✓ Tool integration for extended capabilities
-
-### III. Type Safety
-✓ Complete type hints throughout
-✓ Pydantic for validation and serialization
-✓ Mypy-compatible code
-
-### IV. Response Quality
-✓ Response validation before delivery
-✓ Guardrails for harmful content
-✓ LLM interaction logging
-
-### V. Observability
-✓ Structured logging everywhere
-✓ Correlation IDs for request tracking
-✓ Traceable agent actions and LLM calls
-
-### VI. Project Structure
-✓ All application code in `app/` directory
-✓ Clear separation of concerns
-✓ Modular and extensible design
-
-## Extending the Example
-
-### Adding New Agents
-
-1. Create a new agent class inheriting from `BaseAgent`
-2. Implement `process_message` and `validate_response` methods
-3. Add agent-specific logic and tools
-
-### Adding New Tools
-
-1. Create a new tool class inheriting from `Tool`
-2. Implement `get_definition` and `execute` methods
-3. Register tool with your agent
-
-### Customizing Configuration
-
-Extend `LLMConfig` in `src/config/llm_config.py` to add:
-- New provider types
-- Custom parameters
-- Additional validation rules
+**Authentication flow:**
+- **Local dev**: SDK spawns bundled CLI → uses `gh auth` token automatically
+- **Production**: `GITHUB_TOKEN` env var → `SubprocessConfig(github_token=...)` → CLI authenticates via PAT
 
 ## License
 
 See LICENSE file in the repository root.
-
-## Contributing
-
-Follow the development workflow defined in `constitution.md`:
-
-1. Use Speckit for planning and task management
-2. Write tests before implementation
-3. Ensure code passes all quality gates (Ruff, mypy)
-4. Require PR reviews before merge
-
-## Support
-
-For issues or questions, please refer to the repository's issue tracker.

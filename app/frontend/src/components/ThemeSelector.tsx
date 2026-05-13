@@ -5,7 +5,7 @@
  * Provides accessible theme switching with keyboard navigation.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTheme } from '../hooks/useTheme';
 import type { ThemeId } from '../types/theme';
 
@@ -15,6 +15,13 @@ export function ThemeSelector() {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  
+  // Handle theme selection
+  const handleThemeSelect = useCallback((themeId: ThemeId) => {
+    setTheme(themeId);
+    setIsOpen(false);
+    buttonRef.current?.focus();
+  }, [setTheme]);
   
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -69,14 +76,7 @@ export function ThemeSelector() {
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isOpen, focusedIndex, availableThemes]);
-  
-  // Handle theme selection
-  const handleThemeSelect = (themeId: ThemeId) => {
-    setTheme(themeId);
-    setIsOpen(false);
-    buttonRef.current?.focus();
-  };
+  }, [isOpen, focusedIndex, availableThemes, handleThemeSelect]);
   
   // Get current theme object
   const currentThemeObject = availableThemes.find(t => t.id === currentTheme);

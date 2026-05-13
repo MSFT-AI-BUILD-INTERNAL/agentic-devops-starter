@@ -1,0 +1,1 @@
+"""Copilot SDK backend package."""
