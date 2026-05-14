@@ -10,6 +10,7 @@ interface TeamsState {
   currentRound: number;
   error: string | null;
   summary: string | null;
+  threadId: string | null;
 
   setPatterns: (patterns: PatternInfo[]) => void;
   selectPattern: (pattern: PatternInfo | null) => void;
@@ -21,6 +22,7 @@ interface TeamsState {
   setError: (error: string | null) => void;
   setSummary: (summary: string | null) => void;
   clearTeams: () => void;
+  newThread: () => void;
 }
 
 export const useTeamsStore = create<TeamsState>((set) => ({
@@ -31,6 +33,7 @@ export const useTeamsStore = create<TeamsState>((set) => ({
   currentRound: 0,
   error: null,
   summary: null,
+  threadId: null,
 
   setPatterns: (patterns) => set({ patterns }),
 
@@ -69,4 +72,7 @@ export const useTeamsStore = create<TeamsState>((set) => ({
 
   clearTeams: () =>
     set({ teamsMessages: [], currentRound: 0, error: null, summary: null }),
+
+  newThread: () =>
+    set({ teamsMessages: [], currentRound: 0, error: null, summary: null, threadId: null }),
 }));
