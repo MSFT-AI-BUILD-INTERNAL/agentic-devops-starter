@@ -116,10 +116,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   clearThread: () => {
+    const prevThread = get().currentThread;
     set({
       ...initialState,
       connection: get().connection, // Preserve connection state
     });
+    // Notify backend to disconnect the session so resources are freed.
+    if (prevThread?.id) {
+      fetch(`${getApiBaseUrl()}/v1/threads/${prevThread.id}`, { method: 'DELETE' }).catch(() => {
+        // Best-effort cleanup; ignore failures.
+      });
+    }
   },
 
   retryLastMessage: () => {

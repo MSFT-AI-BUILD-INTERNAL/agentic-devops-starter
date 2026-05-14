@@ -111,10 +111,19 @@ export function useTeams() {
       if (!selectedPattern || !prompt.trim()) return;
 
       const baseUrl = getApiBaseUrl();
+
+      // Create thread_id on first message, reuse on follow-ups
+      let threadId = useTeamsStore.getState().threadId;
+      if (!threadId) {
+        threadId = generateUUID();
+        useTeamsStore.setState({ threadId });
+      }
+
       const request: TeamsRequest = {
         pattern_id: selectedPattern.id,
         prompt: prompt.trim(),
         max_rounds: 3,
+        thread_id: threadId,
       };
 
       clearTeams();
@@ -188,6 +197,8 @@ export function useTeams() {
     [selectedPattern, handleTeamsEvent, clearTeams, setRunning, setError]
   );
 
+  const newThread = useTeamsStore((s) => s.newThread);
+
   return {
     patterns,
     selectedPattern,
@@ -198,5 +209,6 @@ export function useTeams() {
     currentRound,
     error,
     summary,
+    newThread,
   };
 }

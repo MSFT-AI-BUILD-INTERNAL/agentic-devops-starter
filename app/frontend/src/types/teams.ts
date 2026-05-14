@@ -11,6 +11,7 @@ export interface TeamsRequest {
   pattern_id: string;
   prompt: string;
   max_rounds?: number;
+  thread_id?: string | null;
 }
 
 export const ROLE_EMOJIS: Record<string, string> = {

@@ -7,13 +7,11 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from copilot.generated.session_events import (
-    AssistantMessageData,
     AssistantMessageDeltaData,
     SessionErrorData,
     SessionEvent,
     SessionIdleData,
 )
-from copilot.session import PermissionHandler
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
@@ -29,17 +27,11 @@ from src.models import (
 )
 from src.orchestrator import run_teams
 from src.patterns import PATTERNS
-from src.state import get_client
+from src.state import get_session_pool
 
 logger = setup_logging(settings.log_level)
 
 router = APIRouter()
-
-# System message for the Copilot session.
-_SYSTEM_MESSAGE = (
-    "You are a helpful AI assistant powered by GitHub Copilot. "
-    "Provide clear, accurate, and well-structured responses."
-)
 
 
 def _build_prompt(messages: list[dict[str, str]]) -> str:
@@ -50,16 +42,6 @@ def _build_prompt(messages: list[dict[str, str]]) -> str:
     if messages:
         return messages[-1].get("content", "")
     return ""
-
-
-def _build_system_message(messages: list[dict[str, str]]) -> str:
-    """Build system message with conversation context from prior turns."""
-    if len(messages) <= 1:
-        return _SYSTEM_MESSAGE
-
-    prior = messages[:-1]
-    parts = [f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in prior]
-    return _SYSTEM_MESSAGE + "\n\nPrevious conversation:\n" + "\n".join(parts)
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -74,18 +56,24 @@ async def health_check() -> dict[str, str]:
 
 @router.post("/")
 async def agent_endpoint(request: Request) -> StreamingResponse:
-    """Handle AG-UI agent requests with Copilot SDK streaming."""
+    """Handle AG-UI agent requests with Copilot SDK multi-turn streaming.
+
+    The session pool keeps Copilot sessions alive between turns so the SDK
+    manages full conversation history internally. Only the latest user message
+    is sent; prior context is maintained by the SDK session.
+    """
     input_data = await request.json()
     thread_id: str = input_data.get("thread_id") or uuid.uuid4().hex[:12]
     run_id: str = input_data.get("run_id") or uuid.uuid4().hex[:12]
     messages: list[dict[str, str]] = input_data.get("messages", [])
 
     prompt = _build_prompt(messages)
-    system_content = _build_system_message(messages)
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        pool = get_session_pool()
+
         try:
-            client = get_client()
+            session = await pool.get_or_create(thread_id)
         except RuntimeError:
             yield _sse({"type": "RUN_ERROR", "message": "CopilotClient not initialized"})
             yield _sse({"type": "RUN_FINISHED", "thread_id": thread_id, "run_id": run_id})
@@ -107,10 +95,6 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
                         send_queue.put_nowait,
                         {"type": "delta", "content": delta.delta_content},
                     )
-                case AssistantMessageData():
-                    # The complete message is already delivered via deltas when
-                    # streaming=True. Emitting it again would duplicate content.
-                    pass
                 case SessionErrorData() as err:
                     loop.call_soon_threadsafe(
                         send_queue.put_nowait,
@@ -120,15 +104,9 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
                 case SessionIdleData():
                     loop.call_soon_threadsafe(idle_event.set)
 
-        session = await client.create_session(
-            on_permission_request=PermissionHandler.approve_all,
-            system_message={"mode": "replace", "content": system_content},
-            streaming=True,
-            available_tools=[],
-        )
-
+        unsubscribe = None
         try:
-            session.on(on_event)
+            unsubscribe = session.on(on_event)
             await session.send(prompt)
 
             while not idle_event.is_set():
@@ -160,8 +138,11 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
         except Exception:
             logger.exception("Copilot session error; terminating stream")
             yield _sse({"type": "RUN_ERROR", "message": "An internal error occurred"})
+            # On error, disconnect so next request gets a fresh session
+            await pool.disconnect(thread_id)
         finally:
-            await session.destroy()
+            if unsubscribe:
+                unsubscribe()
 
         # Always emit RUN_FINISHED
         yield _sse({"type": "RUN_FINISHED", "thread_id": thread_id, "run_id": run_id})
@@ -175,6 +156,14 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.delete("/v1/threads/{thread_id}")
+async def delete_thread(thread_id: str) -> dict[str, str]:
+    """Disconnect and clean up a conversation thread."""
+    pool = get_session_pool()
+    await pool.disconnect(thread_id)
+    return {"status": "deleted", "thread_id": thread_id}
 
 
 @router.post("/v1/fleet", status_code=202)
@@ -216,7 +205,7 @@ async def teams_stream(request: TeamsRequest) -> StreamingResponse:
 
     async def event_generator() -> AsyncGenerator[str, None]:
         async for event in run_teams(
-            request.pattern_id, request.prompt, request.max_rounds
+            request.pattern_id, request.prompt, request.max_rounds, request.thread_id
         ):
             yield _sse(event)
 

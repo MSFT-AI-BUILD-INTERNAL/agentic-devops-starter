@@ -2,6 +2,9 @@
 
 Runs agent team patterns by creating Copilot SDK sessions for each role
 and yielding SSE event dicts as agents produce output.
+
+Multi-turn support: an in-memory store of prior run results keyed by thread_id
+allows follow-up prompts to build on previous team outputs.
 """
 
 import asyncio
@@ -23,6 +26,33 @@ from src.patterns import AgentRole, get_pattern
 from src.state import get_client
 
 logger = setup_logging(settings.log_level)
+
+# In-memory store: thread_id -> list of prior run summaries
+_teams_history: dict[str, list[str]] = {}
+
+_MAX_HISTORY_TURNS = 10
+
+
+def _get_history_context(thread_id: str | None) -> str:
+    """Return accumulated context from prior runs for this thread."""
+    if not thread_id:
+        return ""
+    history = _teams_history.get(thread_id, [])
+    if not history:
+        return ""
+    return "Previous team discussions:\n\n" + "\n\n---\n\n".join(history)
+
+
+def _append_history(thread_id: str | None, run_summary: str) -> None:
+    """Store a run's output for future turns."""
+    if not thread_id:
+        return
+    if thread_id not in _teams_history:
+        _teams_history[thread_id] = []
+    _teams_history[thread_id].append(run_summary)
+    # Keep bounded
+    if len(_teams_history[thread_id]) > _MAX_HISTORY_TURNS:
+        _teams_history[thread_id] = _teams_history[thread_id][-_MAX_HISTORY_TURNS:]
 
 
 async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[str, str]:
@@ -58,7 +88,7 @@ async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[st
     session.on(on_event)
     await session.send(prompt)
     await asyncio.wait_for(idle_event.wait(), timeout=settings.session_timeout)
-    await session.destroy()
+    await session.disconnect()
 
     if error_msg:
         raise RuntimeError(f"Agent {role.name} error: {error_msg}")
@@ -137,7 +167,7 @@ async def _stream_agent(
                     "delta": msg["content"],
                 }
     finally:
-        await session.destroy()
+        await session.disconnect()
 
     yield {
         "type": "AGENT_MESSAGE_END",
@@ -159,11 +189,12 @@ async def _run_sequential_rounds(
     pattern_roles: list[AgentRole],
     prompt: str,
     max_rounds: int,
+    prior_context: str = "",
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Debate & Critic: sequential rounds until CONVERGED or max_rounds."""
     debate_roles = [r for r in pattern_roles if r.name != "Scribe"]
     scribe = next(r for r in pattern_roles if r.name == "Scribe")
-    context_parts: list[str] = []
+    context_parts: list[str] = [prior_context] if prior_context else []
 
     for round_num in range(1, max_rounds + 1):
         context = "\n\n".join(context_parts)
@@ -193,6 +224,7 @@ async def _run_feedback_loop(
     pattern_roles: list[AgentRole],
     prompt: str,
     max_rounds: int,
+    prior_context: str = "",
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Generator & Evaluator: feedback loop until PASS or max_rounds."""
     generator = next(r for r in pattern_roles if r.name == "Generator")
@@ -202,7 +234,7 @@ async def _run_feedback_loop(
 
     current_draft = ""
     evaluator_feedback = ""
-    all_context_parts: list[str] = []
+    all_context_parts: list[str] = [prior_context] if prior_context else []
 
     for cycle in range(1, max_rounds + 1):
         if cycle == 1:
@@ -242,15 +274,21 @@ async def _run_fan_out_sequential(
     pattern_roles: list[AgentRole],
     prompt: str,
     _max_rounds: int,
+    prior_context: str = "",
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Leadership: CEO agenda → parallel briefings → CEO decision → docs."""
     ceo = next(r for r in pattern_roles if r.name == "CEO")
     briefing_roles = [r for r in pattern_roles if r.name in ("CTO", "CISO", "CFO", "CPO")]
     chief_of_staff = next(r for r in pattern_roles if r.name == "ChiefOfStaff")
 
+    # Phase 1: CEO sets agenda (include prior context)
+    agenda_context = "Set the agenda for this discussion."
+    if prior_context:
+        agenda_context = prior_context + "\n\n" + agenda_context
+
     # Phase 1: CEO sets agenda
     events: list[dict[str, Any]] = []
-    async for event in _stream_agent(ceo, prompt, "Set the agenda for this discussion.", 1):
+    async for event in _stream_agent(ceo, prompt, agenda_context, 1):
         events.append(event)
         yield event
     ceo_agenda = _get_agent_content(events)
@@ -298,6 +336,7 @@ async def _run_sequential_tasks(
     pattern_roles: list[AgentRole],
     prompt: str,
     max_rounds: int,
+    prior_context: str = "",
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Planner & Executor: plan → execute/validate loop → scribe."""
     planner = next(r for r in pattern_roles if r.name == "Planner")
@@ -307,11 +346,14 @@ async def _run_sequential_tasks(
 
     # Planner creates tasks
     events: list[dict[str, Any]] = []
-    async for event in _stream_agent(planner, prompt, "", 1):
+    planner_ctx = prior_context if prior_context else ""
+    async for event in _stream_agent(planner, prompt, planner_ctx, 1):
         events.append(event)
         yield event
     plan = _get_agent_content(events)
     all_context_parts = [f"[Planner] {plan}"]
+    if prior_context:
+        all_context_parts.insert(0, prior_context)
 
     # Execute/validate loop
     prior_feedback = ""
@@ -346,13 +388,14 @@ async def _run_research_loop(
     pattern_roles: list[AgentRole],
     prompt: str,
     max_rounds: int,
+    prior_context: str = "",
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Research & Report: research/reason loop → reporter."""
     researcher = next(r for r in pattern_roles if r.name == "Researcher")
     reasoner = next(r for r in pattern_roles if r.name == "Reasoner")
     reporter = next(r for r in pattern_roles if r.name == "Reporter")
 
-    prior_feedback = ""
+    prior_feedback = prior_context if prior_context else ""
     research_output = ""
 
     for round_num in range(1, max_rounds + 1):
@@ -392,8 +435,13 @@ async def run_teams(
     pattern_id: str,
     prompt: str,
     max_rounds: int = 3,
+    thread_id: str | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
-    """Execute a multi-agent pattern and yield SSE event dicts."""
+    """Execute a multi-agent pattern and yield SSE event dicts.
+
+    When *thread_id* is provided, prior run results are included as context
+    and the current run's output is appended for future turns.
+    """
     pattern = get_pattern(pattern_id)
     if pattern is None:
         yield {"type": "TEAMS_ERROR", "message": f"Unknown pattern: {pattern_id}"}
@@ -407,9 +455,17 @@ async def run_teams(
         yield {"type": "TEAMS_ERROR", "message": f"Unknown flow type: {pattern.flow_type}"}
         return
 
+    prior_context = _get_history_context(thread_id)
+    run_outputs: list[str] = []
+
     try:
-        async for event in runner(pattern.roles, prompt, max_rounds):
+        async for event in runner(pattern.roles, prompt, max_rounds, prior_context):
             yield event
+            # Collect final agent outputs for history
+            if event.get("type") == "AGENT_MESSAGE_END":
+                role = event.get("agent_role", "Agent")
+                content = event.get("content", "")
+                run_outputs.append(f"[{role}] {content}")
     except Exception:
         logger.exception("Teams execution error for pattern %s", pattern_id)
         yield {
@@ -417,5 +473,10 @@ async def run_teams(
             "message": "An internal error occurred while executing the team workflow.",
         }
         return
+
+    # Store this run's output for multi-turn context
+    if run_outputs:
+        summary = f"User prompt: {prompt}\n\n" + "\n\n".join(run_outputs)
+        _append_history(thread_id, summary)
 
     yield {"type": "TEAMS_FINISHED", "pattern_id": pattern_id, "run_id": run_id}

@@ -59,6 +59,7 @@ class TeamsRequest(BaseModel):
     pattern_id: str
     prompt: str
     max_rounds: int = Field(default=3, ge=1, le=10)
+    thread_id: str | None = None
 
 
 class PatternInfo(BaseModel):

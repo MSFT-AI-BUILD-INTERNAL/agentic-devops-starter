@@ -1,5 +1,6 @@
 """AG-UI server for the Agentic DevOps Starter application."""
 
+import asyncio
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -14,7 +15,7 @@ from src.config import settings
 from src.logging_utils import setup_logging
 from src.observability import configure_observability
 from src.routes import router
-from src.state import set_client
+from src.state import SessionPool, set_client, set_session_pool
 
 load_dotenv()
 
@@ -22,6 +23,13 @@ logger = setup_logging(settings.log_level)
 configure_observability()
 
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+async def _idle_cleanup_loop(pool: SessionPool) -> None:
+    """Periodically disconnect idle sessions to free resources."""
+    while True:
+        await asyncio.sleep(30)
+        await pool.cleanup_idle()
 
 
 def create_app() -> FastAPI:
@@ -35,7 +43,15 @@ def create_app() -> FastAPI:
         await client.start()
         set_client(client)
         logger.info("CopilotClient started (GitHub Copilot SDK)")
+
+        pool = SessionPool(idle_timeout=settings.session_timeout)
+        set_session_pool(pool)
+        cleanup_task = asyncio.create_task(_idle_cleanup_loop(pool))
+
         yield
+
+        cleanup_task.cancel()
+        await pool.shutdown()
         await client.stop()
         logger.info("CopilotClient stopped")
 

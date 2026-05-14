@@ -67,7 +67,7 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
     session.on(on_event)
     await session.send(prompt)
     await asyncio.wait_for(idle_event.wait(), timeout=settings.session_timeout)
-    await session.destroy()
+    await session.disconnect()
 
     if error_msg:
         raise RuntimeError(error_msg)
