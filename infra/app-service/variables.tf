@@ -62,3 +62,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "virtual_network_subnet_id" {
+  description = "Subnet ID for App Service VNet integration (outbound). Leave null to disable."
+  type        = string
+  default     = null
+}

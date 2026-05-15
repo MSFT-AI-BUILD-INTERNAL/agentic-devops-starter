@@ -10,6 +10,8 @@ terraform {
 }
 
 provider "azurerm" {
+  storage_use_azuread = true
+
   features {
     resource_group {
       prevent_deletion_if_contains_resources = false
@@ -57,6 +59,21 @@ module "log_analytics" {
 #
 #   depends_on = [azurerm_resource_group.main]
 # }
+
+# Network Module (VNet + Subnets for App Service integration and Private Endpoints)
+module "network" {
+  source = "./network"
+
+  vnet_name                      = var.vnet_name
+  resource_group_name            = azurerm_resource_group.main.name
+  location                       = azurerm_resource_group.main.location
+  address_space                  = var.vnet_address_space
+  app_integration_subnet_prefix  = var.app_integration_subnet_prefix
+  private_endpoint_subnet_prefix = var.private_endpoint_subnet_prefix
+  tags                           = var.tags
+
+  depends_on = [azurerm_resource_group.main]
+}
 
 # Azure Container Registry Module
 module "acr" {
@@ -145,29 +162,86 @@ module "app_service_plan" {
   depends_on = [azurerm_resource_group.main]
 }
 
+# Storage Account Module
+module "storage" {
+  source = "./storage"
+
+  storage_account_name          = var.storage_account_name
+  resource_group_name           = azurerm_resource_group.main.name
+  location                      = azurerm_resource_group.main.location
+  replication_type              = var.storage_replication_type
+  public_network_access_enabled = var.storage_public_network_access_enabled
+  shared_access_key_enabled     = var.storage_shared_access_key_enabled
+  allowed_ip_rules              = var.storage_allowed_ip_rules
+  container_names               = [var.uploads_container_name]
+  tags                          = var.tags
+
+  depends_on = [azurerm_resource_group.main]
+}
+
 # App Service Module
 module "app_service" {
   source = "./app-service"
 
-  app_service_name        = var.app_service_name
-  resource_group_name     = azurerm_resource_group.main.name
-  location                = azurerm_resource_group.main.location
-  service_plan_id         = module.app_service_plan.service_plan_id
-  sku_name                = var.app_service_plan_sku
-  docker_registry_url     = "https://${module.acr.acr_login_server}"
-  docker_image_name       = var.backend_image_name
-  docker_image_tag        = "latest"
-  acr_id                  = module.acr.acr_id
-  ai_foundry_resource_id  = var.ai_foundry_resource_id
-  
+  app_service_name          = var.app_service_name
+  resource_group_name       = azurerm_resource_group.main.name
+  location                  = azurerm_resource_group.main.location
+  service_plan_id           = module.app_service_plan.service_plan_id
+  sku_name                  = var.app_service_plan_sku
+  docker_registry_url       = "https://${module.acr.acr_login_server}"
+  docker_image_name         = var.backend_image_name
+  docker_image_tag          = "latest"
+  acr_id                    = module.acr.acr_id
+  ai_foundry_resource_id    = var.ai_foundry_resource_id
+  virtual_network_subnet_id = module.network.app_integration_subnet_id
+
   app_settings = {
-    "AZURE_TENANT_ID"                 = data.azurerm_subscription.current.tenant_id
-    "AZURE_AI_PROJECT_ENDPOINT"       = var.azure_ai_project_endpoint
-    "AZURE_AI_MODEL_DEPLOYMENT_NAME"  = var.azure_ai_model_deployment_name
-    "AZURE_OPENAI_API_VERSION"        = var.azure_openai_api_version
+    "AZURE_TENANT_ID"                = data.azurerm_subscription.current.tenant_id
+    "AZURE_AI_PROJECT_ENDPOINT"      = var.azure_ai_project_endpoint
+    "AZURE_AI_MODEL_DEPLOYMENT_NAME" = var.azure_ai_model_deployment_name
+    "AZURE_OPENAI_API_VERSION"       = var.azure_openai_api_version
+    "AZURE_STORAGE_BLOB_ENDPOINT"    = module.storage.primary_blob_endpoint
+    "AZURE_STORAGE_CONTAINER_NAME"   = var.uploads_container_name
   }
 
   tags = var.tags
 
-  depends_on = [azurerm_resource_group.main, module.acr, module.app_service_plan]
+  depends_on = [azurerm_resource_group.main, module.acr, module.app_service_plan, module.storage, module.network]
+}
+
+# --- Private DNS Zone for Blob Storage ---
+resource "azurerm_private_dns_zone" "blob" {
+  name                = "privatelink.blob.core.windows.net"
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = var.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
+  name                  = "${var.vnet_name}-blob-dns-link"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.blob.name
+  virtual_network_id    = module.network.vnet_id
+  registration_enabled  = false
+  tags                  = var.tags
+}
+
+# --- Private Endpoint for Blob Storage ---
+resource "azurerm_private_endpoint" "blob" {
+  name                = "pe-${var.storage_account_name}-blob"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  subnet_id           = module.network.private_endpoint_subnet_id
+  tags                = var.tags
+
+  private_service_connection {
+    name                           = "psc-${var.storage_account_name}-blob"
+    private_connection_resource_id = module.storage.storage_account_id
+    subresource_names              = ["blob"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "blob-dns-zone-group"
+    private_dns_zone_ids = [azurerm_private_dns_zone.blob.id]
+  }
 }

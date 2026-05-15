@@ -69,3 +69,35 @@ output "log_analytics_workspace_name" {
   description = "Name of the Log Analytics Workspace"
   value       = module.log_analytics.workspace_name
 }
+
+# Storage Account
+output "storage_account_name" {
+  description = "Name of the Storage Account"
+  value       = module.storage.storage_account_name
+}
+
+output "storage_account_id" {
+  description = "ID of the Storage Account"
+  value       = module.storage.storage_account_id
+}
+
+output "storage_primary_blob_endpoint" {
+  description = "Primary blob endpoint URL of the Storage Account"
+  value       = module.storage.primary_blob_endpoint
+}
+
+# Network
+output "vnet_id" {
+  description = "ID of the virtual network"
+  value       = module.network.vnet_id
+}
+
+output "vnet_name" {
+  description = "Name of the virtual network"
+  value       = module.network.vnet_name
+}
+
+output "blob_private_endpoint_ip" {
+  description = "Private IP address of the Blob Storage private endpoint"
+  value       = azurerm_private_endpoint.blob.private_service_connection[0].private_ip_address
+}
