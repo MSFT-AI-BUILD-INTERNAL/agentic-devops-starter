@@ -24,7 +24,6 @@ export function useTeams() {
   const setRunning = useTeamsStore((s) => s.setRunning);
   const setError = useTeamsStore((s) => s.setError);
   const setSummary = useTeamsStore((s) => s.setSummary);
-  const clearTeams = useTeamsStore((s) => s.clearTeams);
 
   // Fetch patterns on mount
   useEffect(() => {
@@ -50,7 +49,6 @@ export function useTeams() {
 
       switch (event.type) {
         case 'TEAMS_STARTED':
-          clearTeams();
           setRunning(true);
           break;
 
@@ -95,7 +93,6 @@ export function useTeams() {
       }
     },
     [
-      clearTeams,
       setRunning,
       addAgentMessage,
       updateLastAgentMessage,
@@ -126,7 +123,16 @@ export function useTeams() {
         thread_id: threadId,
       };
 
-      clearTeams();
+      setError(null);
+      setSummary(null);
+      addAgentMessage({
+        id: generateUUID(),
+        role: 'User',
+        content: prompt.trim(),
+        round: 0,
+        timestamp: new Date(),
+        isComplete: true,
+      });
       setRunning(true);
       setError(null);
 
@@ -194,7 +200,7 @@ export function useTeams() {
         setError(err instanceof Error ? err.message : 'Teams stream failed');
       }
     },
-    [selectedPattern, handleTeamsEvent, clearTeams, setRunning, setError]
+    [selectedPattern, handleTeamsEvent, addAgentMessage, setRunning, setError, setSummary]
   );
 
   const newThread = useTeamsStore((s) => s.newThread);
