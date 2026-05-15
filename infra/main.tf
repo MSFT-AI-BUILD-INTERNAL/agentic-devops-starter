@@ -22,11 +22,6 @@ data "azurerm_subscription" "current" {
 }
 
 # Resource Group
-#
-# Set ``create_resource_group = false`` in your tfvars to skip creating the
-# resource group and instead reference one that already exists in the
-# subscription (e.g. when the prior ``terraform apply`` partially succeeded
-# and re-running fails with "A resource with the ID ... already exists").
 resource "azurerm_resource_group" "main" {
   count    = var.create_resource_group ? 1 : 0
   name     = var.resource_group_name

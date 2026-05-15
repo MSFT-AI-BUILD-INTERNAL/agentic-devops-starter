@@ -6,7 +6,7 @@ resource_group_name = "rg-agentic-devops"
 
 # Set to false to reuse an existing resource group (e.g. when a previous
 # apply already created it). Terraform will look it up via a data source
-# instead of creating it. Default: true.
+# instead of creating it.
 # create_resource_group = true
 location            = "koreacentral"
 

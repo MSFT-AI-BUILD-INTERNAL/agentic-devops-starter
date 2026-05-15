@@ -5,7 +5,7 @@ variable "resource_group_name" {
 }
 
 variable "create_resource_group" {
-  description = "Whether Terraform should create the resource group. Set to false to reference an existing resource group with the same name (e.g. when an earlier apply already created it and re-running fails with 'A resource with the ID ... already exists')."
+  description = "Whether to create the resource group. If false, references an existing resource group with the same name."
   type        = bool
   default     = true
 }
