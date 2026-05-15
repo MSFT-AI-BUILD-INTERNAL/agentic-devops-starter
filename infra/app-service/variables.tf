@@ -64,7 +64,7 @@ variable "vnet_integration_subnet_id" {
 }
 
 variable "enable_vnet_integration" {
-  description = "Whether to create the App Service regional VNet integration. Must be a plan-time-known boolean (not derived from another resource's attributes) so Terraform can resolve count statically."
+  description = "Whether to enable regional VNet integration for the App Service. Must be known at plan time."
   type        = bool
   default     = false
 }

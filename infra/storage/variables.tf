@@ -47,7 +47,7 @@ variable "app_service_principal_id" {
 }
 
 variable "assign_app_service_role" {
-  description = "Whether to create the Storage Blob Data Contributor role assignment for app_service_principal_id. Must be a plan-time-known boolean so Terraform can resolve count statically (the principal ID from another module is not known until apply)."
+  description = "Whether to create the Storage Blob Data Contributor role assignment for the App Service. Must be known at plan time."
   type        = bool
   default     = false
 }
