@@ -91,7 +91,9 @@ class BlobStorageClient:
             container=self._container_name, blob=blob_name
         )
         # ``upload_blob`` performs a multi-part (block) upload automatically
-        # for inputs larger than the block size.
+        # for inputs larger than the block size. ``length=None`` because the
+        # incoming stream from FastAPI's ``UploadFile`` doesn't expose a
+        # predetermined size; the SDK chunks the stream as it reads.
         await blob_client.upload_blob(
             stream,
             overwrite=False,

@@ -237,6 +237,20 @@ export function useChat() {
       } catch (error) {
         logger.error('Failed to upload file', error);
         updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
+        // Surface the failure in the chat so the user understands why no
+        // assistant reply arrived. The message is local-only (not sent to
+        // the backend) — it just keeps the UI honest.
+        addMessage({
+          id: generateUUID(),
+          role: 'assistant',
+          content:
+            error instanceof Error
+              ? `File upload failed: ${error.message}`
+              : 'File upload failed.',
+          timestamp: new Date(),
+          threadId,
+          metadata: { streamingComplete: true, errorRecoverable: false },
+        });
         throw error;
       }
     },

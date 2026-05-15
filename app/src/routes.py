@@ -197,7 +197,10 @@ async def upload_file_endpoint(
     # the stream, but still cap our own download via _MAX_PROCESS_BYTES.
     declared_size = getattr(file, "size", None)
     if isinstance(declared_size, int) and declared_size > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Uploaded file is too large")
+        limit_mb = _MAX_UPLOAD_BYTES // (1024 * 1024)
+        raise HTTPException(
+            status_code=413, detail=f"Uploaded file is too large (max {limit_mb} MB)"
+        )
 
     resolved_thread_id = thread_id or uuid.uuid4().hex[:12]
     run_id = uuid.uuid4().hex[:12]

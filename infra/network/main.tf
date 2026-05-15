@@ -29,9 +29,13 @@ resource "azurerm_subnet" "app_integration" {
 }
 
 resource "azurerm_subnet" "private_endpoint" {
-  name                                          = var.private_endpoint_subnet_name
-  resource_group_name                           = var.resource_group_name
-  virtual_network_name                          = azurerm_virtual_network.main.name
-  address_prefixes                              = [var.private_endpoint_subnet_prefix]
-  private_endpoint_network_policies_enabled     = false
+  name                 = var.private_endpoint_subnet_name
+  resource_group_name  = var.resource_group_name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = [var.private_endpoint_subnet_prefix]
+
+  # Private endpoints can only be created in subnets where network policies
+  # (NSGs / UDRs against the PE NIC) are disabled. Required by Azure;
+  # workload NSGs can still be applied at the resource level.
+  private_endpoint_network_policies_enabled = false
 }
