@@ -41,12 +41,13 @@ variable "docker_image_tag" {
 }
 
 variable "acr_id" {
-  description = "ID of the Azure Container Registry"
+  description = "ID of the Azure Container Registry (kept for backward compat; role assignment is now manual)"
   type        = string
+  default     = ""
 }
 
 variable "ai_foundry_resource_id" {
-  description = "Resource ID of the Azure AI Foundry project (optional)"
+  description = "Resource ID of the Azure AI Foundry project (kept for backward compat; role assignments are now manual)"
   type        = string
   default     = ""
 }

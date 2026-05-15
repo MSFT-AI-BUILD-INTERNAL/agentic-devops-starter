@@ -5,9 +5,9 @@ variable "resource_group_name" {
 }
 
 variable "create_resource_group" {
-  description = "Whether to create the resource group. If false, references an existing resource group with the same name."
+  description = "Whether to create the resource group. Defaults to false so the stack references an existing resource group (which is the typical pattern when the RG is governed by a separate admin/landing-zone process). Set to true only for greenfield deployments where Terraform owns the RG end-to-end."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "location" {

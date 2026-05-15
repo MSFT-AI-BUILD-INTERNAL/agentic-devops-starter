@@ -216,23 +216,19 @@ module "app_service" {
 }
 
 # Storage Module — Blob Storage account locked down behind a private endpoint
-# in the network module's private endpoint subnet. The App Service managed
-# identity is granted Storage Blob Data Contributor at the storage scope.
+# in the network module's private endpoint subnet. The Storage Blob Data
+# Contributor role assignment for the App Service identity is granted manually
+# after deployment (see DEPLOYMENT.md).
 module "storage" {
   source = "./storage"
 
-  storage_account_name       = var.storage_account_name
-  resource_group_name        = local.resource_group_name
-  location                   = local.resource_group_location
-  uploads_container_name     = var.uploads_container_name
-  replication_type           = var.storage_replication_type
-  vnet_id                    = module.network.vnet_id
-  private_endpoint_subnet_id = module.network.private_endpoint_subnet_id
-  # ``assign_app_service_role`` is a static boolean so the role assignment's
-  # ``count`` resolves at plan time even though the principal ID is the
-  # output of another module.
-  assign_app_service_role       = true
-  app_service_principal_id      = module.app_service.app_service_identity_principal_id
+  storage_account_name          = var.storage_account_name
+  resource_group_name           = local.resource_group_name
+  location                      = local.resource_group_location
+  uploads_container_name        = var.uploads_container_name
+  replication_type              = var.storage_replication_type
+  vnet_id                       = module.network.vnet_id
+  private_endpoint_subnet_id    = module.network.private_endpoint_subnet_id
   public_network_access_enabled = var.storage_public_network_access_enabled
   shared_access_key_enabled     = var.storage_shared_access_key_enabled
   tags                          = var.tags

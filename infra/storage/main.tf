@@ -93,16 +93,7 @@ resource "azurerm_private_endpoint" "blob" {
   ]
 }
 
-# Grant the App Service managed identity write access to the container so it
-# can perform multi-part uploads without storage account keys. ``count`` is
-# driven by a static boolean so Terraform can resolve it at plan time even
-# when ``app_service_principal_id`` is the output of another module.
-resource "azurerm_role_assignment" "app_blob_contributor" {
-  count                            = var.assign_app_service_role ? 1 : 0
-  scope                            = azurerm_storage_account.main.id
-  role_definition_name             = "Storage Blob Data Contributor"
-  principal_id                     = var.app_service_principal_id
-  skip_service_principal_aad_check = true
-
-  depends_on = [azurerm_storage_account.main]
-}
+# Role assignment for the App Service managed identity (Storage Blob Data
+# Contributor) is intentionally NOT managed by Terraform. Grant it manually
+# after deployment with ``az role assignment create``. See DEPLOYMENT.md
+# ("Manual role assignments") for the exact command.

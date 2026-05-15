@@ -69,34 +69,8 @@ resource "azurerm_app_service_virtual_network_swift_connection" "main" {
   depends_on = [azurerm_linux_web_app.main]
 }
 
-# Grant AcrPull role to the App Service managed identity
-resource "azurerm_role_assignment" "acr_pull" {
-  principal_id                     = azurerm_linux_web_app.main.identity[0].principal_id
-  role_definition_name             = "AcrPull"
-  scope                            = var.acr_id
-  skip_service_principal_aad_check = true
-
-  depends_on = [azurerm_linux_web_app.main]
-}
-
-# Role assignment: Azure AI Developer on AI Foundry for App Service Identity
-resource "azurerm_role_assignment" "ai_developer" {
-  count                            = var.ai_foundry_resource_id != "" ? 1 : 0
-  principal_id                     = azurerm_linux_web_app.main.identity[0].principal_id
-  role_definition_name             = "Azure AI Developer"
-  scope                            = var.ai_foundry_resource_id
-  skip_service_principal_aad_check = true
-
-  depends_on = [azurerm_linux_web_app.main]
-}
-
-# Role assignment: Cognitive Services User on AI Foundry
-resource "azurerm_role_assignment" "cognitive_services_user" {
-  count                            = var.ai_foundry_resource_id != "" ? 1 : 0
-  principal_id                     = azurerm_linux_web_app.main.identity[0].principal_id
-  role_definition_name             = "Cognitive Services User"
-  scope                            = var.ai_foundry_resource_id
-  skip_service_principal_aad_check = true
-
-  depends_on = [azurerm_linux_web_app.main]
-}
+# Role assignments (AcrPull, Azure AI Developer, Cognitive Services User,
+# Storage Blob Data Contributor) are intentionally NOT managed by Terraform.
+# They are granted out-of-band by a privileged operator after the App Service
+# managed identity exists. See DEPLOYMENT.md ("Manual role assignments") for
+# the exact `az role assignment create` commands.

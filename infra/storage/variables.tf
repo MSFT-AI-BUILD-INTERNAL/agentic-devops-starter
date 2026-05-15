@@ -40,18 +40,6 @@ variable "private_endpoint_subnet_id" {
   type        = string
 }
 
-variable "app_service_principal_id" {
-  description = "Principal ID of the App Service managed identity that needs Storage Blob Data Contributor access. Only used when assign_app_service_role = true."
-  type        = string
-  default     = ""
-}
-
-variable "assign_app_service_role" {
-  description = "Whether to create the Storage Blob Data Contributor role assignment for the App Service. Must be known at plan time."
-  type        = bool
-  default     = false
-}
-
 variable "public_network_access_enabled" {
   description = "When true, the storage account is reachable over the public internet (in addition to the private endpoint). Recommended to keep false in production."
   type        = bool

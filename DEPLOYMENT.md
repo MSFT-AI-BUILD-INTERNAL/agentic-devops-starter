@@ -100,7 +100,8 @@ Key infrastructure pieces (all created by Terraform):
 | `module.network` | VNet with two subnets: one delegated to `Microsoft.Web/serverFarms` for App Service VNet integration, one with private-endpoint network policies disabled for the Blob private endpoint |
 | `module.app_service` | Has regional VNet integration enabled (`enable_vnet_integration = true`) and `WEBSITE_VNET_ROUTE_ALL=1` so blob traffic only flows over the private endpoint |
 | `module.storage` | Storage Account with `public_network_access_enabled = false`, `shared_access_key_enabled = false`, an `uploads` container, blob private endpoint, and `privatelink.blob.core.windows.net` zone linked to the VNet |
-| Role assignment | App Service managed identity granted `Storage Blob Data Contributor` on the storage account (`assign_app_service_role = true`) |
+
+> **Role assignments are not managed by Terraform.** See [Manual role assignments](#manual-role-assignments) below.
 
 The backend reads the following app settings (Terraform sets these automatically):
 
@@ -112,23 +113,66 @@ The backend reads the following app settings (Terraform sets these automatically
 
 If none of the storage env vars is present, the `POST /v1/files/upload` endpoint returns HTTP 503 and the frontend hides the attach button — so it is safe to deploy without storage configured (e.g. for local dev).
 
+### Manual role assignments
+
+For security and least-privilege governance, **no `azurerm_role_assignment` resources are managed by Terraform**. After `terraform apply` succeeds, a privileged operator must grant the App Service managed identity the roles it needs. Capture the principal ID first:
+
+```bash
+PRINCIPAL_ID=$(az webapp identity show \
+  --name <app-service-name> \
+  --resource-group <rg> \
+  --query principalId -o tsv)
+SUB=$(az account show --query id -o tsv)
+```
+
+Then grant each role:
+
+```bash
+# Pull images from ACR
+az role assignment create --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "AcrPull" \
+  --scope "/subscriptions/$SUB/resourceGroups/<rg>/providers/Microsoft.ContainerRegistry/registries/<acr>"
+
+# Upload/download blobs via managed identity (file-upload feature)
+az role assignment create --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/$SUB/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<storage>"
+
+# Azure AI Foundry access (only if you use AI Foundry)
+az role assignment create --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Azure AI Developer" \
+  --scope "<ai-foundry-resource-id>"
+
+az role assignment create --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Cognitive Services User" \
+  --scope "<ai-foundry-resource-id>"
+```
+
+Record each assignment in `docs/infra-manual-changes.md` per the repo convention.
+
 ### Important: plan-time-known toggles
 
-Terraform requires `count` values to be known at plan time. Both module flags (`enable_vnet_integration` on `app-service` and `assign_app_service_role` on `storage`) are **static booleans**, not derived from other resources' attributes. If you need to disable VNet integration or the role assignment, flip the flag in `infra/main.tf` rather than emptying the related ID input. This avoids the `Invalid count argument` error that occurs when `count` depends on a value not known until apply.
+Terraform requires `count` values to be known at plan time. The `enable_vnet_integration` flag on the `app-service` module is a **static boolean**, not derived from other resources' attributes. If you need to disable VNet integration, flip the flag in `infra/main.tf` rather than emptying the related ID input. This avoids the `Invalid count argument` error that occurs when `count` depends on a value not known until apply.
 
-### Reusing an existing resource group
+### Resource group: reference vs. create
 
-If the target resource group already exists in your subscription (e.g. a previous `terraform apply` partially succeeded), `terraform apply` will fail with:
+The resource group is **referenced** (not created) by default — `create_resource_group = false`. Terraform looks up the existing RG via a `data` source. This is the sustainable pattern because:
 
+- Resource groups are typically governed by a separate landing-zone / admin process and pre-exist in the subscription.
+- It eliminates the `A resource with the ID ".../resourceGroups/<rg>" already exists` error on re-runs.
+- It avoids accidental deletion of the RG (and everything it contains) on `terraform destroy`.
+
+Make sure the RG exists before running `terraform apply`:
+
+```bash
+az group create --name <rg> --location <region>
 ```
-Error: A resource with the ID ".../resourceGroups/<rg>" already exists - to be
-managed via Terraform this resource needs to be imported into the State.
-```
 
-You have two options:
-
-1. **Reference the existing RG without importing it** — set `create_resource_group = false` in `terraform.tfvars` (default is `true`). Terraform will look up the existing RG via a `data` source instead of creating it, and all child modules will deploy into it.
-2. **Import it into state** — `terraform import azurerm_resource_group.main /subscriptions/<sub>/resourceGroups/<rg>` and re-run `terraform apply` with `create_resource_group = true`.
+For **greenfield deployments** where Terraform should own the RG end-to-end, set `create_resource_group = true` in `terraform.tfvars`. If you previously created it manually and now want Terraform to manage it, import instead: `terraform import 'azurerm_resource_group.main[0]' /subscriptions/<sub>/resourceGroups/<rg>`.
 
 ## Workflow Triggers
 
