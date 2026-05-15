@@ -48,6 +48,21 @@ export function TeamsMessageList() {
         ) : (
           <>
             {teamsMessages.map((msg) => {
+              if (msg.role === 'User') {
+                return (
+                  <div key={msg.id} className="flex justify-end mb-4">
+                    <div className="max-w-[70%] rounded-lg px-4 py-2 shadow-sm bg-message-user text-message-user-text">
+                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                      <div className="text-xs mt-2 opacity-60">
+                        {msg.timestamp.toLocaleTimeString('en-US', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
               const showDivider = msg.round > lastRound;
               lastRound = msg.round;
               return (
