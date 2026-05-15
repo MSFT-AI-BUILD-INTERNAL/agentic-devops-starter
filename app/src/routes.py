@@ -232,12 +232,16 @@ async def upload_file(file: UploadFile) -> JSONResponse:
     content_type = file.content_type or "application/octet-stream"
     try:
         validate_file_type(content_type, filename)
-    except ValueError as e:
+    except ValueError:
+        logger.warning(
+            "Rejected file upload due to invalid content type",
+            extra={"filename": filename, "content_type": content_type},
+        )
         return JSONResponse(
             status_code=415,
             content={
                 "error": "INVALID_TYPE",
-                "detail": str(e),
+                "detail": "File type is not allowed.",
                 "allowed_types": sorted(ALLOWED_CONTENT_TYPES),
             },
         )
@@ -248,13 +252,17 @@ async def upload_file(file: UploadFile) -> JSONResponse:
     # Validate size
     try:
         validate_file_size(len(content))
-    except ValueError as e:
+    except ValueError:
         status = 422 if len(content) == 0 else 413
+        logger.warning(
+            "Rejected file upload due to invalid file size",
+            extra={"filename": filename, "size_bytes": len(content), "status": status},
+        )
         return JSONResponse(
             status_code=status,
             content={
                 "error": "EMPTY_FILE" if len(content) == 0 else "FILE_TOO_LARGE",
-                "detail": str(e),
+                "detail": "File is empty." if len(content) == 0 else "File exceeds the maximum allowed size.",
                 "max_size_bytes": MAX_FILE_SIZE_BYTES,
             },
         )
