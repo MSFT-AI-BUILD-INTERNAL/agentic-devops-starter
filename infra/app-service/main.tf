@@ -33,10 +33,10 @@ resource "azurerm_linux_web_app" "main" {
   # Application settings (environment variables)
   app_settings = merge(
     {
-      "WEBSITES_PORT"                         = "8080"  # nginx listens on 8080
-      "WEBSITES_ENABLE_APP_SERVICE_STORAGE"   = "false"
-      "DOCKER_ENABLE_CI"                      = "true"
-      "DOCKER_REGISTRY_SERVER_URL"            = var.docker_registry_url
+      "WEBSITES_PORT"                       = "8080" # nginx listens on 8080
+      "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = "false"
+      "DOCKER_ENABLE_CI"                    = "true"
+      "DOCKER_REGISTRY_SERVER_URL"          = var.docker_registry_url
     },
     var.app_settings
   )
@@ -58,9 +58,11 @@ resource "azurerm_linux_web_app" "main" {
 }
 
 # Regional VNet integration so the App Service can reach private endpoints
-# (e.g. the Blob Storage private endpoint).
+# (e.g. the Blob Storage private endpoint). ``count`` is driven by a static
+# boolean so Terraform can resolve it at plan time even when the subnet ID
+# is the unknown output of another module.
 resource "azurerm_app_service_virtual_network_swift_connection" "main" {
-  count          = var.vnet_integration_subnet_id != "" ? 1 : 0
+  count          = var.enable_vnet_integration ? 1 : 0
   app_service_id = azurerm_linux_web_app.main.id
   subnet_id      = var.vnet_integration_subnet_id
 

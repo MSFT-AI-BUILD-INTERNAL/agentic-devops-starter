@@ -83,6 +83,39 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 |--------|-------------|
 | `COPILOT_GITHUB_TOKEN` | GitHub PAT with `copilot` scope for Copilot SDK authentication |
 
+## File Upload via Azure Blob Storage
+
+The deployment provisions an Azure Storage Account that is reachable **only via a private endpoint** from the App Service's integrated subnet. The flow is:
+
+```
+Browser ── multipart/form-data ──▶ App Service ── private endpoint ──▶ Blob Storage
+                                       │
+                                       └── downloads blob ──▶ Copilot SDK session
+```
+
+Key infrastructure pieces (all created by Terraform):
+
+| Resource | Purpose |
+|----------|---------|
+| `module.network` | VNet with two subnets: one delegated to `Microsoft.Web/serverFarms` for App Service VNet integration, one with private-endpoint network policies disabled for the Blob private endpoint |
+| `module.app_service` | Has regional VNet integration enabled (`enable_vnet_integration = true`) and `WEBSITE_VNET_ROUTE_ALL=1` so blob traffic only flows over the private endpoint |
+| `module.storage` | Storage Account with `public_network_access_enabled = false`, `shared_access_key_enabled = false`, an `uploads` container, blob private endpoint, and `privatelink.blob.core.windows.net` zone linked to the VNet |
+| Role assignment | App Service managed identity granted `Storage Blob Data Contributor` on the storage account (`assign_app_service_role = true`) |
+
+The backend reads the following app settings (Terraform sets these automatically):
+
+| Setting | Example |
+|---------|---------|
+| `AZURE_STORAGE_ACCOUNT_NAME` | `stagenticdevops` |
+| `AZURE_STORAGE_BLOB_ENDPOINT` | `https://stagenticdevops.blob.core.windows.net` |
+| `AZURE_STORAGE_UPLOADS_CONTAINER` | `uploads` |
+
+If none of the storage env vars is present, the `POST /v1/files/upload` endpoint returns HTTP 503 and the frontend hides the attach button — so it is safe to deploy without storage configured (e.g. for local dev).
+
+### Important: plan-time-known toggles
+
+Terraform requires `count` values to be known at plan time. Both module flags (`enable_vnet_integration` on `app-service` and `assign_app_service_role` on `storage`) are **static booleans**, not derived from other resources' attributes. If you need to disable VNet integration or the role assignment, flip the flag in `infra/main.tf` rather than emptying the related ID input. This avoids the `Invalid count argument` error that occurs when `count` depends on a value not known until apply.
+
 ## Workflow Triggers
 
 The deploy workflow runs:
@@ -111,7 +144,7 @@ Before running the workflow:
    terraform apply
    ```
 
-   Terraform creates: Resource Group, ACR, App Service Plan, App Service, Log Analytics.
+   Terraform creates: Resource Group, Virtual Network (with App Service integration + private-endpoint subnets), ACR, App Service Plan, App Service (with regional VNet integration), Log Analytics, and an Azure Storage Account (locked down behind a Blob private endpoint) for file uploads.
 
    After applying, note the outputs for GitHub Secrets:
    ```bash

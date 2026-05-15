@@ -41,9 +41,15 @@ variable "private_endpoint_subnet_id" {
 }
 
 variable "app_service_principal_id" {
-  description = "Principal ID of the App Service managed identity that needs Storage Blob Data Contributor access. Leave empty to skip the role assignment."
+  description = "Principal ID of the App Service managed identity that needs Storage Blob Data Contributor access. Only used when assign_app_service_role = true."
   type        = string
   default     = ""
+}
+
+variable "assign_app_service_role" {
+  description = "Whether to create the Storage Blob Data Contributor role assignment for app_service_principal_id. Must be a plan-time-known boolean so Terraform can resolve count statically (the principal ID from another module is not known until apply)."
+  type        = bool
+  default     = false
 }
 
 variable "public_network_access_enabled" {

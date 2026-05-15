@@ -58,9 +58,15 @@ variable "app_settings" {
 }
 
 variable "vnet_integration_subnet_id" {
-  description = "ID of the subnet for regional VNet integration. Required for the App Service to reach private endpoints. Leave empty to skip VNet integration."
+  description = "ID of the subnet for regional VNet integration. Required for the App Service to reach private endpoints. Only used when enable_vnet_integration = true."
   type        = string
   default     = ""
+}
+
+variable "enable_vnet_integration" {
+  description = "Whether to create the App Service regional VNet integration. Must be a plan-time-known boolean (not derived from another resource's attributes) so Terraform can resolve count statically."
+  type        = bool
+  default     = false
 }
 
 variable "tags" {
