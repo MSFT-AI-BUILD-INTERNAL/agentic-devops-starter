@@ -1,5 +1,6 @@
 // Message entity types
 import type { ValidationResult } from './common';
+import type { FileAttachment } from './file';
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
 
@@ -18,6 +19,7 @@ export interface Message {
   threadId: string;
   toolCalls?: import('./agui').ToolCall[];
   metadata?: MessageMetadata;
+  attachments?: FileAttachment[];
 }
 
 /**

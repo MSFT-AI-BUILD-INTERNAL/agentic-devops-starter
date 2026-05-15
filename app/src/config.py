@@ -11,7 +11,15 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     session_timeout: float = 120.0
 
-    model_config = {"env_prefix": "COPILOT_API_"}
+    azure_storage_blob_endpoint: str = ""
+    azure_storage_container_name: str = "uploads"
+
+    model_config = {
+        "env_prefix": "COPILOT_API_",
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 settings = Settings()

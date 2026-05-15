@@ -5,6 +5,7 @@ import { aguiClient } from '../services/aguiClient';
 import { logger } from '../utils/logger';
 import { generateUUID } from '../utils/uuid';
 import type { Message } from '../types/message';
+import type { FileAttachment } from '../types/file';
 
 // Approximate token count: one token ≈ 4 characters (common heuristic)
 const CHARS_PER_TOKEN_ESTIMATE = 4;
@@ -24,8 +25,8 @@ export function useChat() {
    * Send a message to the backend
    */
   const sendMessage = useCallback(
-    async (content: string) => {
-      if (!content.trim()) {
+    async (content: string, attachments?: FileAttachment[]) => {
+      if (!content.trim() && (!attachments || attachments.length === 0)) {
         logger.warn('Attempted to send empty message');
         return;
       }
@@ -40,9 +41,10 @@ export function useChat() {
       const userMessage: Message = {
         id: generateUUID(),
         role: 'user',
-        content: content.trim(),
+        content: content.trim() || '(file attached)',
         timestamp: new Date(),
         threadId,
+        attachments,
       };
 
       // Read the freshest committed history straight from the store rather
@@ -74,6 +76,14 @@ export function useChat() {
       let assistantContent = '';
 
       try {
+        // Convert attachments to the format expected by the client
+        const clientAttachments = attachments?.map((a) => ({
+          blobName: a.blobName,
+          originalFilename: a.originalFilename,
+          contentType: a.contentType,
+          sizeBytes: a.sizeBytes,
+        }));
+
         // Send to backend with SSE event handler
         await aguiClient.sendMessage(aguiMessages, threadId, (event) => {
           logger.info('Received SSE event', { type: event.type });
@@ -137,7 +147,7 @@ export function useChat() {
               assistantContent = '';
               break;
           }
-        });
+        }, clientAttachments);
 
         logger.info('Message sent successfully', { messageId: userMessage.id });
       } catch (error) {

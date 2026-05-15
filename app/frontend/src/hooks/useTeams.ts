@@ -5,6 +5,7 @@ import { getApiBaseUrl } from '../config/api';
 import { logger } from '../utils/logger';
 import { generateUUID } from '../utils/uuid';
 import type { TeamsEvent, TeamsRequest } from '../types/teams';
+import type { FileAttachment } from '../types/file';
 
 export function useTeams() {
   const patterns = useTeamsStore((s) => s.patterns);
@@ -104,7 +105,7 @@ export function useTeams() {
   );
 
   const sendTeamsMessage = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, attachments?: FileAttachment[]) => {
       if (!selectedPattern || !prompt.trim()) return;
 
       const baseUrl = getApiBaseUrl();
@@ -122,6 +123,15 @@ export function useTeams() {
         max_rounds: 3,
         thread_id: threadId,
       };
+
+      if (attachments && attachments.length > 0) {
+        request.attachments = attachments.map((a) => ({
+          blob_name: a.blobName,
+          original_filename: a.originalFilename,
+          content_type: a.contentType,
+          size_bytes: a.sizeBytes,
+        }));
+      }
 
       setError(null);
       setSummary(null);

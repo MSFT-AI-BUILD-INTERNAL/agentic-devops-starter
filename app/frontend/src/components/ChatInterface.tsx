@@ -7,6 +7,7 @@ import { TeamsMessageList } from './TeamsMessageList';
 import { useChat } from '../hooks/useChat';
 import { useTeams } from '../hooks/useTeams';
 import { logger } from '../utils/logger';
+import type { FileAttachment } from '../types/file';
 
 export function ChatInterface() {
   const { messages, sendMessage, newConversation, isInputDisabled, currentThreadId, isStreaming, streamingText } = useChat();
@@ -18,12 +19,12 @@ export function ChatInterface() {
    * Handle sending a message
    */
   const handleSendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, attachments?: FileAttachment[]) => {
       try {
         if (isTeamsMode) {
-          await sendTeamsMessage(content);
+          await sendTeamsMessage(content, attachments);
         } else {
-          await sendMessage(content);
+          await sendMessage(content, attachments);
         }
       } catch (error) {
         logger.error('Failed to send message from chat interface', error);

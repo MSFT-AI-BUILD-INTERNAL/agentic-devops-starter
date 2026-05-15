@@ -148,34 +148,71 @@ variable "log_analytics_retention_days" {
   default     = 30
 }
 
-# VNET variables - Commented out for App Service migration
-# variable "vnet_name" {
-#   description = "Name of the virtual network for AKS"
-#   type        = string
-#   default     = "vnet-agentic-devops"
-# }
-#
-# variable "vnet_address_space" {
-#   description = "Address space for the virtual network"
-#   type        = string
-#   default     = "10.1.0.0/16"
-# }
-#
-# variable "aks_subnet_name" {
-#   description = "Name of the AKS subnet"
-#   type        = string
-#   default     = "aks-subnet"
-# }
-#
-# variable "aks_subnet_prefix" {
-#   description = "Address prefix for AKS subnet"
-#   type        = string
-#   default     = "10.1.1.0/24"
-# }
+# VNet variables for App Service VNet integration and Private Endpoints
+variable "vnet_name" {
+  description = "Name of the virtual network"
+  type        = string
+  default     = "vnet-agentic-devops"
+}
+
+variable "vnet_address_space" {
+  description = "Address space for the virtual network (CIDR)"
+  type        = string
+  default     = "10.10.0.0/16"
+}
+
+variable "app_integration_subnet_prefix" {
+  description = "Address prefix for the App Service integration subnet (CIDR)"
+  type        = string
+  default     = "10.10.1.0/24"
+}
+
+variable "private_endpoint_subnet_prefix" {
+  description = "Address prefix for the private endpoint subnet (CIDR)"
+  type        = string
+  default     = "10.10.2.0/24"
+}
 
 variable "ai_foundry_resource_id" {
   description = "Resource ID of the Azure AI Foundry (Cognitive Services) account for role assignment. Leave empty to skip."
   type        = string
   default     = ""
+}
+
+# Storage Account variables
+variable "storage_account_name" {
+  description = "Name of the Azure Storage Account. Must be globally unique, 3-24 lowercase alphanumeric characters."
+  type        = string
+  default     = "stagenticdevops"
+}
+
+variable "uploads_container_name" {
+  description = "Name of the blob container for file uploads"
+  type        = string
+  default     = "uploads"
+}
+
+variable "storage_replication_type" {
+  description = "Replication type for the Storage Account (LRS, GRS, RAGRS, ZRS)"
+  type        = string
+  default     = "LRS"
+}
+
+variable "storage_public_network_access_enabled" {
+  description = "Enable public network access to Storage Account. Set to false for private-endpoint-only access."
+  type        = bool
+  default     = false
+}
+
+variable "storage_shared_access_key_enabled" {
+  description = "Enable shared access key authentication. Set to false to enforce Entra ID (RBAC) only."
+  type        = bool
+  default     = false
+}
+
+variable "storage_allowed_ip_rules" {
+  description = "List of public IPs allowed to access storage data plane (for Terraform provisioning). CIDR or single IP."
+  type        = list(string)
+  default     = []
 }
 

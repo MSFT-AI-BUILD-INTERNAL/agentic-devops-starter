@@ -5,7 +5,8 @@ resource "azurerm_linux_web_app" "main" {
   resource_group_name = var.resource_group_name
   service_plan_id     = var.service_plan_id
 
-  https_only = true
+  https_only                = true
+  virtual_network_subnet_id = var.virtual_network_subnet_id
 
   identity {
     type = "SystemAssigned"
@@ -33,10 +34,10 @@ resource "azurerm_linux_web_app" "main" {
   # Application settings (environment variables)
   app_settings = merge(
     {
-      "WEBSITES_PORT"                         = "8080"  # nginx listens on 8080
-      "WEBSITES_ENABLE_APP_SERVICE_STORAGE"   = "false"
-      "DOCKER_ENABLE_CI"                      = "true"
-      "DOCKER_REGISTRY_SERVER_URL"            = var.docker_registry_url
+      "WEBSITES_PORT"                       = "8080" # nginx listens on 8080
+      "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = "false"
+      "DOCKER_ENABLE_CI"                    = "true"
+      "DOCKER_REGISTRY_SERVER_URL"          = var.docker_registry_url
     },
     var.app_settings
   )
@@ -65,6 +66,10 @@ resource "azurerm_role_assignment" "acr_pull" {
   skip_service_principal_aad_check = true
 
   depends_on = [azurerm_linux_web_app.main]
+
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 # Role assignment: Azure AI Developer on AI Foundry for App Service Identity

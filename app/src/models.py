@@ -53,6 +53,33 @@ class ChatResponse(BaseModel):
     correlation_id: str
 
 
+class FileAttachment(BaseModel):
+    """Represents a file that has been uploaded to Azure Blob Storage."""
+
+    blob_name: str
+    original_filename: str
+    content_type: str
+    size_bytes: int = Field(ge=1, le=10_485_760)
+
+
+class UploadResult(BaseModel):
+    """Response from a successful file upload."""
+
+    blob_name: str
+    original_filename: str
+    content_type: str
+    size_bytes: int
+
+
+class UploadErrorResponse(BaseModel):
+    """Error response for upload validation failures."""
+
+    error: str
+    detail: str
+    max_size_bytes: int | None = None
+    allowed_types: list[str] | None = None
+
+
 class TeamsRequest(BaseModel):
     """Request to execute a multi-agent pattern."""
 
@@ -60,6 +87,7 @@ class TeamsRequest(BaseModel):
     prompt: str
     max_rounds: int = Field(default=3, ge=1, le=10)
     thread_id: str | None = None
+    attachments: list[FileAttachment] | None = None
 
 
 class PatternInfo(BaseModel):
