@@ -1,7 +1,13 @@
 variable "resource_group_name" {
-  description = "Name of the resource group to create"
+  description = "Name of the resource group to create or reference"
   type        = string
   default     = "rg-agentic-devops"
+}
+
+variable "create_resource_group" {
+  description = "Whether Terraform should create the resource group. Set to false to reference an existing resource group with the same name (e.g. when an earlier apply already created it and re-running fails with 'A resource with the ID ... already exists')."
+  type        = bool
+  default     = true
 }
 
 variable "location" {

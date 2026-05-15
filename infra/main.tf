@@ -22,10 +22,26 @@ data "azurerm_subscription" "current" {
 }
 
 # Resource Group
+#
+# Set ``create_resource_group = false`` in your tfvars to skip creating the
+# resource group and instead reference one that already exists in the
+# subscription (e.g. when the prior ``terraform apply`` partially succeeded
+# and re-running fails with "A resource with the ID ... already exists").
 resource "azurerm_resource_group" "main" {
+  count    = var.create_resource_group ? 1 : 0
   name     = var.resource_group_name
   location = var.location
   tags     = var.tags
+}
+
+data "azurerm_resource_group" "existing" {
+  count = var.create_resource_group ? 0 : 1
+  name  = var.resource_group_name
+}
+
+locals {
+  resource_group_name     = var.create_resource_group ? azurerm_resource_group.main[0].name : data.azurerm_resource_group.existing[0].name
+  resource_group_location = var.create_resource_group ? azurerm_resource_group.main[0].location : data.azurerm_resource_group.existing[0].location
 }
 
 # Log Analytics Module
@@ -33,8 +49,8 @@ module "log_analytics" {
   source = "./log-analytics"
 
   log_analytics_workspace_name = var.log_analytics_workspace_name
-  resource_group_name          = azurerm_resource_group.main.name
-  location                     = azurerm_resource_group.main.location
+  resource_group_name          = local.resource_group_name
+  location                     = local.resource_group_location
   sku                          = var.log_analytics_sku
   retention_in_days            = var.log_analytics_retention_days
   tags                         = var.tags
@@ -48,8 +64,8 @@ module "log_analytics" {
 #   source = "./network"
 #
 #   vnet_name            = var.vnet_name
-#   resource_group_name  = azurerm_resource_group.main.name
-#   location             = azurerm_resource_group.main.location
+#   resource_group_name  = local.resource_group_name
+#   location             = local.resource_group_location
 #   vnet_address_space   = var.vnet_address_space
 #   aks_subnet_name      = var.aks_subnet_name
 #   aks_subnet_prefix    = var.aks_subnet_prefix
@@ -65,8 +81,8 @@ module "network" {
   source = "./network"
 
   vnet_name                      = var.vnet_name
-  resource_group_name            = azurerm_resource_group.main.name
-  location                       = azurerm_resource_group.main.location
+  resource_group_name            = local.resource_group_name
+  location                       = local.resource_group_location
   vnet_address_space             = var.vnet_address_space
   app_integration_subnet_name    = var.app_integration_subnet_name
   app_integration_subnet_prefix  = var.app_integration_subnet_prefix
@@ -82,8 +98,8 @@ module "acr" {
   source = "./acr"
 
   acr_name            = var.acr_name
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
+  resource_group_name = local.resource_group_name
+  location            = local.resource_group_location
   sku                 = var.acr_sku
   admin_enabled       = var.acr_admin_enabled
   tags                = var.tags
@@ -96,8 +112,8 @@ module "acr" {
 #   source = "./aks"
 #
 #   aks_cluster_name           = var.aks_cluster_name
-#   resource_group_name        = azurerm_resource_group.main.name
-#   location                   = azurerm_resource_group.main.location
+#   resource_group_name        = local.resource_group_name
+#   location                   = local.resource_group_location
 #   dns_prefix                 = var.aks_dns_prefix
 #   kubernetes_version         = var.kubernetes_version
 #   node_count                 = var.node_count
@@ -119,8 +135,8 @@ module "acr" {
 #   source = "./managed-identity"
 #
 #   identity_name        = "${var.aks_cluster_name}-workload-identity"
-#   resource_group_name  = azurerm_resource_group.main.name
-#   location             = azurerm_resource_group.main.location
+#   resource_group_name  = local.resource_group_name
+#   location             = local.resource_group_location
 #   oidc_issuer_url      = module.aks.oidc_issuer_url
 #   kubernetes_namespace = "default"
 #   service_account_name = "agentic-devops-sa"
@@ -156,8 +172,8 @@ module "app_service_plan" {
   source = "./app-service-plan"
 
   service_plan_name   = var.app_service_plan_name
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
+  resource_group_name = local.resource_group_name
+  location            = local.resource_group_location
   sku_name            = var.app_service_plan_sku
   tags                = var.tags
 
@@ -169,8 +185,8 @@ module "app_service" {
   source = "./app-service"
 
   app_service_name       = var.app_service_name
-  resource_group_name    = azurerm_resource_group.main.name
-  location               = azurerm_resource_group.main.location
+  resource_group_name    = local.resource_group_name
+  location               = local.resource_group_location
   service_plan_id        = module.app_service_plan.service_plan_id
   sku_name               = var.app_service_plan_sku
   docker_registry_url    = "https://${module.acr.acr_login_server}"
@@ -211,8 +227,8 @@ module "storage" {
   source = "./storage"
 
   storage_account_name       = var.storage_account_name
-  resource_group_name        = azurerm_resource_group.main.name
-  location                   = azurerm_resource_group.main.location
+  resource_group_name        = local.resource_group_name
+  location                   = local.resource_group_location
   uploads_container_name     = var.uploads_container_name
   replication_type           = var.storage_replication_type
   vnet_id                    = module.network.vnet_id

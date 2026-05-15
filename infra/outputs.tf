@@ -3,12 +3,12 @@
 # Resource Group
 output "resource_group_name" {
   description = "Name of the resource group"
-  value       = azurerm_resource_group.main.name
+  value       = local.resource_group_name
 }
 
 output "resource_group_location" {
   description = "Location of the resource group"
-  value       = azurerm_resource_group.main.location
+  value       = local.resource_group_location
 }
 
 # Azure Container Registry

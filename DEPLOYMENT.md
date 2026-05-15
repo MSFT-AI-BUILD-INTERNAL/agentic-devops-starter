@@ -116,6 +116,20 @@ If none of the storage env vars is present, the `POST /v1/files/upload` endpoint
 
 Terraform requires `count` values to be known at plan time. Both module flags (`enable_vnet_integration` on `app-service` and `assign_app_service_role` on `storage`) are **static booleans**, not derived from other resources' attributes. If you need to disable VNet integration or the role assignment, flip the flag in `infra/main.tf` rather than emptying the related ID input. This avoids the `Invalid count argument` error that occurs when `count` depends on a value not known until apply.
 
+### Reusing an existing resource group
+
+If the target resource group already exists in your subscription (e.g. a previous `terraform apply` partially succeeded), `terraform apply` will fail with:
+
+```
+Error: A resource with the ID ".../resourceGroups/<rg>" already exists - to be
+managed via Terraform this resource needs to be imported into the State.
+```
+
+You have two options:
+
+1. **Reference the existing RG without importing it** — set `create_resource_group = false` in `terraform.tfvars` (default is `true`). Terraform will look up the existing RG via a `data` source instead of creating it, and all child modules will deploy into it.
+2. **Import it into state** — `terraform import azurerm_resource_group.main /subscriptions/<sub>/resourceGroups/<rg>` and re-run `terraform apply` with `create_resource_group = true`.
+
 ## Workflow Triggers
 
 The deploy workflow runs:
