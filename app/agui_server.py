@@ -15,7 +15,8 @@ from src.config import settings
 from src.logging_utils import setup_logging
 from src.observability import configure_observability
 from src.routes import router
-from src.state import SessionPool, set_client, set_session_pool
+from src.state import SessionPool, set_client, set_session_pool, set_storage_client
+from src.storage import BlobStorageClient
 
 load_dotenv()
 
@@ -30,6 +31,26 @@ async def _idle_cleanup_loop(pool: SessionPool) -> None:
     while True:
         await asyncio.sleep(30)
         await pool.cleanup_idle()
+
+
+def _build_storage_client() -> BlobStorageClient | None:
+    """Create a :class:`BlobStorageClient` from environment variables.
+
+    Returns ``None`` when neither ``AZURE_STORAGE_BLOB_ENDPOINT`` nor
+    ``AZURE_STORAGE_ACCOUNT_NAME`` is set, so local development without an
+    Azure Storage account remains a no-op for the upload endpoint.
+    """
+    endpoint = os.environ.get("AZURE_STORAGE_BLOB_ENDPOINT", "").strip()
+    account = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME", "").strip()
+    container = os.environ.get("AZURE_STORAGE_UPLOADS_CONTAINER", "uploads").strip() or "uploads"
+
+    if not endpoint and account:
+        endpoint = f"https://{account}.blob.core.windows.net"
+
+    if not endpoint:
+        return None
+
+    return BlobStorageClient(account_url=endpoint, container_name=container)
 
 
 def create_app() -> FastAPI:
@@ -48,10 +69,26 @@ def create_app() -> FastAPI:
         set_session_pool(pool)
         cleanup_task = asyncio.create_task(_idle_cleanup_loop(pool))
 
+        # Optional Blob Storage client for the file-upload feature. The
+        # account URL is derived from AZURE_STORAGE_BLOB_ENDPOINT (preferred,
+        # set by Terraform) or constructed from AZURE_STORAGE_ACCOUNT_NAME.
+        # When neither is configured the upload endpoint returns HTTP 503.
+        storage_client = _build_storage_client()
+        set_storage_client(storage_client)
+        if storage_client is not None:
+            logger.info(
+                "BlobStorageClient initialized (container=%s)",
+                storage_client.container_name,
+            )
+        else:
+            logger.info("Blob storage not configured; /v1/files/upload disabled")
+
         yield
 
         cleanup_task.cancel()
         await pool.shutdown()
+        if storage_client is not None:
+            await storage_client.close()
         await client.stop()
         logger.info("CopilotClient stopped")
 

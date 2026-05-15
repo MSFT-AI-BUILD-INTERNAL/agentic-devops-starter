@@ -179,3 +179,71 @@ variable "ai_foundry_resource_id" {
   default     = ""
 }
 
+# Virtual Network variables (used for App Service VNet integration and private endpoints)
+variable "vnet_name" {
+  description = "Name of the virtual network"
+  type        = string
+  default     = "vnet-agentic-devops"
+}
+
+variable "vnet_address_space" {
+  description = "Address space for the virtual network (CIDR)"
+  type        = string
+  default     = "10.10.0.0/16"
+}
+
+variable "app_integration_subnet_name" {
+  description = "Name of the App Service VNet integration subnet"
+  type        = string
+  default     = "app-integration-subnet"
+}
+
+variable "app_integration_subnet_prefix" {
+  description = "Address prefix for the App Service integration subnet"
+  type        = string
+  default     = "10.10.1.0/24"
+}
+
+variable "private_endpoint_subnet_name" {
+  description = "Name of the private endpoint subnet"
+  type        = string
+  default     = "private-endpoint-subnet"
+}
+
+variable "private_endpoint_subnet_prefix" {
+  description = "Address prefix for the private endpoint subnet"
+  type        = string
+  default     = "10.10.2.0/24"
+}
+
+# Blob Storage variables (for file uploads)
+variable "storage_account_name" {
+  description = "Name of the Azure Storage Account. Must be globally unique, 3-24 lowercase alphanumeric characters."
+  type        = string
+  default     = "stagenticdevops"
+}
+
+variable "uploads_container_name" {
+  description = "Name of the blob container used for file uploads"
+  type        = string
+  default     = "uploads"
+}
+
+variable "storage_replication_type" {
+  description = "Replication type for the storage account (LRS, ZRS, GRS, RAGRS)"
+  type        = string
+  default     = "LRS"
+}
+
+variable "storage_public_network_access_enabled" {
+  description = "Allow storage account public network access. Defaults to false; access is via the private endpoint only."
+  type        = bool
+  default     = false
+}
+
+variable "storage_shared_access_key_enabled" {
+  description = "Allow storage account shared key (account key) authentication. Defaults to false; access is via managed identity / Entra ID."
+  type        = bool
+  default     = false
+}
+

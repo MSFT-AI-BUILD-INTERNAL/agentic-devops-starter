@@ -58,6 +58,25 @@ module "log_analytics" {
 #   depends_on = [azurerm_resource_group.main]
 # }
 
+# Virtual Network Module
+# Provides subnets for App Service regional VNet integration and for the
+# Blob Storage private endpoint.
+module "network" {
+  source = "./network"
+
+  vnet_name                      = var.vnet_name
+  resource_group_name            = azurerm_resource_group.main.name
+  location                       = azurerm_resource_group.main.location
+  vnet_address_space             = var.vnet_address_space
+  app_integration_subnet_name    = var.app_integration_subnet_name
+  app_integration_subnet_prefix  = var.app_integration_subnet_prefix
+  private_endpoint_subnet_name   = var.private_endpoint_subnet_name
+  private_endpoint_subnet_prefix = var.private_endpoint_subnet_prefix
+  tags                           = var.tags
+
+  depends_on = [azurerm_resource_group.main]
+}
+
 # Azure Container Registry Module
 module "acr" {
   source = "./acr"
@@ -159,15 +178,51 @@ module "app_service" {
   docker_image_tag        = "latest"
   acr_id                  = module.acr.acr_id
   ai_foundry_resource_id  = var.ai_foundry_resource_id
-  
+
+  # Enable regional VNet integration so the App Service can reach the
+  # Blob Storage private endpoint.
+  vnet_integration_subnet_id = module.network.app_integration_subnet_id
+
   app_settings = {
     "AZURE_TENANT_ID"                 = data.azurerm_subscription.current.tenant_id
     "AZURE_AI_PROJECT_ENDPOINT"       = var.azure_ai_project_endpoint
     "AZURE_AI_MODEL_DEPLOYMENT_NAME"  = var.azure_ai_model_deployment_name
     "AZURE_OPENAI_API_VERSION"        = var.azure_openai_api_version
+    # File upload / blob storage settings consumed by the backend.
+    "AZURE_STORAGE_ACCOUNT_NAME"      = var.storage_account_name
+    "AZURE_STORAGE_BLOB_ENDPOINT"     = "https://${var.storage_account_name}.blob.core.windows.net"
+    "AZURE_STORAGE_UPLOADS_CONTAINER" = var.uploads_container_name
+    # Force outbound calls through the integrated VNet so the storage
+    # private endpoint is used for blob traffic.
+    "WEBSITE_VNET_ROUTE_ALL"          = "1"
   }
 
   tags = var.tags
 
-  depends_on = [azurerm_resource_group.main, module.acr, module.app_service_plan]
+  depends_on = [azurerm_resource_group.main, module.acr, module.app_service_plan, module.network]
+}
+
+# Storage Module — Blob Storage account locked down behind a private endpoint
+# in the network module's private endpoint subnet. The App Service managed
+# identity is granted Storage Blob Data Contributor at the storage scope.
+module "storage" {
+  source = "./storage"
+
+  storage_account_name          = var.storage_account_name
+  resource_group_name           = azurerm_resource_group.main.name
+  location                      = azurerm_resource_group.main.location
+  uploads_container_name        = var.uploads_container_name
+  replication_type              = var.storage_replication_type
+  vnet_id                       = module.network.vnet_id
+  private_endpoint_subnet_id    = module.network.private_endpoint_subnet_id
+  app_service_principal_id      = module.app_service.app_service_identity_principal_id
+  public_network_access_enabled = var.storage_public_network_access_enabled
+  shared_access_key_enabled     = var.storage_shared_access_key_enabled
+  tags                          = var.tags
+
+  depends_on = [
+    azurerm_resource_group.main,
+    module.network,
+    module.app_service,
+  ]
 }

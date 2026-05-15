@@ -149,6 +149,101 @@ export function useChat() {
   );
 
   /**
+   * Upload a file and process it through the Copilot SDK. Reuses the same
+   * SSE event handling as {@link sendMessage} so a streamed assistant
+   * response appears inline. The file is uploaded to Azure Blob Storage by
+   * the backend; the resulting blob is then downloaded and forwarded to
+   * Copilot for processing.
+   */
+  const uploadFile = useCallback(
+    async (file: File, prompt?: string) => {
+      // Create thread if none exists
+      let threadId = currentThread?.id;
+      if (!threadId) {
+        threadId = createThread();
+      }
+
+      const userPrompt = (prompt && prompt.trim()) || `Uploaded file: ${file.name}`;
+
+      // Show the upload as a user message so the conversation reflects it.
+      const userMessage: Message = {
+        id: generateUUID(),
+        role: 'user',
+        content: userPrompt,
+        timestamp: new Date(),
+        threadId,
+      };
+      addMessage(userMessage);
+
+      const assistantMessageId = generateUUID();
+      let assistantContent = '';
+
+      try {
+        await aguiClient.uploadFile(file, threadId, prompt, (event) => {
+          logger.info('Received SSE event', { type: event.type });
+
+          switch (event.type) {
+            case 'RUN_STARTED':
+              updateStreamingState({ isStreaming: true, buffer: '', tokenCount: 0 });
+              break;
+
+            case 'TEXT_MESSAGE_START':
+              assistantContent = '';
+              break;
+
+            case 'TEXT_MESSAGE_CONTENT':
+              if (event.delta) {
+                assistantContent += event.delta;
+                updateStreamingState({
+                  buffer: assistantContent,
+                  tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
+                });
+              }
+              break;
+
+            case 'TEXT_MESSAGE_END':
+              if (assistantContent) {
+                addMessage({
+                  id: assistantMessageId,
+                  role: 'assistant',
+                  content: assistantContent,
+                  timestamp: new Date(),
+                  threadId,
+                  metadata: {
+                    streamingComplete: true,
+                    tokenCount: Math.round(assistantContent.length / CHARS_PER_TOKEN_ESTIMATE),
+                  },
+                });
+              }
+              updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
+              break;
+
+            case 'RUN_FINISHED':
+              updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
+              break;
+
+            case 'RUN_ERROR':
+              logger.error(
+                'Backend error',
+                new Error(typeof event.message === 'string' ? event.message : 'Unknown backend error'),
+                { code: event.code }
+              );
+              assistantContent = '';
+              break;
+          }
+        });
+
+        logger.info('File uploaded successfully', { filename: file.name });
+      } catch (error) {
+        logger.error('Failed to upload file', error);
+        updateStreamingState({ isStreaming: false, buffer: '', tokenCount: 0 });
+        throw error;
+      }
+    },
+    [currentThread?.id, createThread, addMessage, updateStreamingState]
+  );
+
+  /**
    * Create a new conversation
    */
   const newConversation = useCallback(() => {
@@ -168,6 +263,7 @@ export function useChat() {
     messages,
     currentThreadId: currentThread?.id || null,
     sendMessage,
+    uploadFile,
     newConversation,
     retry,
     isInputDisabled,

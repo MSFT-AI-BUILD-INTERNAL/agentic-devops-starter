@@ -69,3 +69,30 @@ output "log_analytics_workspace_name" {
   description = "Name of the Log Analytics Workspace"
   value       = module.log_analytics.workspace_name
 }
+
+# Virtual Network
+output "vnet_id" {
+  description = "ID of the virtual network"
+  value       = module.network.vnet_id
+}
+
+output "vnet_name" {
+  description = "Name of the virtual network"
+  value       = module.network.vnet_name
+}
+
+# Storage
+output "storage_account_name" {
+  description = "Name of the Azure Storage Account for file uploads"
+  value       = module.storage.storage_account_name
+}
+
+output "storage_blob_endpoint" {
+  description = "Primary blob endpoint URL"
+  value       = module.storage.primary_blob_endpoint
+}
+
+output "storage_uploads_container_name" {
+  description = "Name of the blob container used for uploads"
+  value       = module.storage.uploads_container_name
+}

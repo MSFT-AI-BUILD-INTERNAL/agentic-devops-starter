@@ -9,7 +9,7 @@ import { useTeams } from '../hooks/useTeams';
 import { logger } from '../utils/logger';
 
 export function ChatInterface() {
-  const { messages, sendMessage, newConversation, isInputDisabled, currentThreadId, isStreaming, streamingText } = useChat();
+  const { messages, sendMessage, uploadFile, newConversation, isInputDisabled, currentThreadId, isStreaming, streamingText } = useChat();
   const { selectedPattern, sendTeamsMessage, isRunning: isTeamsRunning } = useTeams();
 
   const isTeamsMode = selectedPattern !== null;
@@ -30,6 +30,23 @@ export function ChatInterface() {
       }
     },
     [isTeamsMode, sendMessage, sendTeamsMessage]
+  );
+
+  /**
+   * Handle file upload from the input. The backend uploads the file to
+   * Blob Storage, downloads it back, and forwards it to Copilot for
+   * processing. Disabled in Teams mode (multi-agent patterns) since the
+   * upload endpoint targets the single-agent Copilot session.
+   */
+  const handleUploadFile = useCallback(
+    async (file: File) => {
+      try {
+        await uploadFile(file);
+      } catch (error) {
+        logger.error('Failed to upload file from chat interface', error);
+      }
+    },
+    [uploadFile]
   );
 
   /**
@@ -112,6 +129,7 @@ export function ChatInterface() {
       {/* Input */}
       <MessageInput
         onSendMessage={handleSendMessage}
+        onUploadFile={isTeamsMode ? undefined : handleUploadFile}
         disabled={isTeamsMode ? isTeamsRunning : isInputDisabled}
         placeholder={placeholder}
       />

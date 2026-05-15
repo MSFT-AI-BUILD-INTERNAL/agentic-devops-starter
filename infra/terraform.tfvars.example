@@ -42,3 +42,17 @@ tags = {
   ManagedBy   = "Terraform"
   Platform    = "Azure App Service"
 }
+
+# Virtual Network (for App Service VNet integration + Blob private endpoint)
+vnet_name                       = "vnet-agentic-devops"
+vnet_address_space              = "10.10.0.0/16"
+app_integration_subnet_prefix   = "10.10.1.0/24"
+private_endpoint_subnet_prefix  = "10.10.2.0/24"
+
+# Azure Blob Storage for file uploads
+# IMPORTANT: storage_account_name must be globally unique, 3-24 lowercase alphanumeric chars.
+storage_account_name                  = "stagenticdevops"  # Change this to a unique name
+uploads_container_name                = "uploads"
+storage_replication_type              = "LRS"
+storage_public_network_access_enabled = false  # Access only via private endpoint
+storage_shared_access_key_enabled     = false  # Use managed identity / Entra ID only

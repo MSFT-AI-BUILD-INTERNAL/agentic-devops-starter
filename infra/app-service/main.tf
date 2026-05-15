@@ -57,6 +57,16 @@ resource "azurerm_linux_web_app" "main" {
   tags = var.tags
 }
 
+# Regional VNet integration so the App Service can reach private endpoints
+# (e.g. the Blob Storage private endpoint).
+resource "azurerm_app_service_virtual_network_swift_connection" "main" {
+  count          = var.vnet_integration_subnet_id != "" ? 1 : 0
+  app_service_id = azurerm_linux_web_app.main.id
+  subnet_id      = var.vnet_integration_subnet_id
+
+  depends_on = [azurerm_linux_web_app.main]
+}
+
 # Grant AcrPull role to the App Service managed identity
 resource "azurerm_role_assignment" "acr_pull" {
   principal_id                     = azurerm_linux_web_app.main.identity[0].principal_id

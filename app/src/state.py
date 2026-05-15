@@ -6,7 +6,10 @@ import time
 from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
 
+from src.storage import BlobStorageClient
+
 _client: CopilotClient | None = None
+_storage: BlobStorageClient | None = None
 
 
 def set_client(client: CopilotClient) -> None:
@@ -20,6 +23,24 @@ def get_client() -> CopilotClient:
     if _client is None:
         raise RuntimeError("CopilotClient not initialized")
     return _client
+
+
+def set_storage_client(storage: BlobStorageClient | None) -> None:
+    """Store the shared :class:`BlobStorageClient` instance.
+
+    May be ``None`` if blob storage isn't configured (e.g. local dev without
+    an Azure Storage account). In that case the upload endpoint returns
+    HTTP 503.
+    """
+    global _storage
+    _storage = storage
+
+
+def get_storage_client() -> BlobStorageClient:
+    """Retrieve the shared :class:`BlobStorageClient` instance."""
+    if _storage is None:
+        raise RuntimeError("BlobStorageClient not initialized")
+    return _storage
 
 
 class SessionPool:

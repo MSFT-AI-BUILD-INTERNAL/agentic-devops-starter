@@ -127,6 +127,80 @@ class AGUIClient {
     }
   }
 
+  /**
+   * Upload a file via multipart/form-data and stream Copilot's processing
+   * response via SSE. The backend uploads the file to Azure Blob Storage,
+   * downloads it back, and forwards it to the Copilot SDK session for
+   * processing. SSE events use the same AG-UI protocol shape as
+   * {@link sendMessage} so the caller can reuse a single event handler.
+   */
+  async uploadFile(
+    file: File,
+    threadId?: string | null,
+    prompt?: string,
+    onEvent?: (event: StreamEvent) => void
+  ): Promise<ChatResponse> {
+    const correlationId = logger.generateCorrelationId();
+    logger.setCorrelationId(correlationId);
+
+    logger.info('Uploading file', {
+      filename: file.name,
+      size: file.size,
+      threadId: threadId || 'new',
+    });
+
+    const formData = new FormData();
+    formData.append('file', file);
+    if (threadId) formData.append('thread_id', threadId);
+    if (prompt) formData.append('prompt', prompt);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/v1/files/upload`, {
+        method: 'POST',
+        headers: { 'X-Correlation-ID': correlationId },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error('File upload failed', new Error(errorText), {
+          status: response.status,
+        });
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      if (response.body && onEvent) {
+        let runFinished = false;
+        const wrappedOnEvent = (event: StreamEvent) => {
+          if (event.type === 'RUN_FINISHED') runFinished = true;
+          onEvent(event);
+        };
+
+        try {
+          await processSSEStream(response, wrappedOnEvent);
+          if (!runFinished) {
+            onEvent({ type: 'ERROR', message: 'Stream ended without RUN_FINISHED event' });
+          }
+        } catch (error) {
+          logger.error('Stream processing failed', error);
+          onEvent({
+            type: 'ERROR',
+            message: error instanceof Error ? error.message : 'Stream processing failed',
+          });
+        }
+
+        return { thread_id: threadId || generateUUID() };
+      }
+
+      return await response.json();
+    } catch (error) {
+      logger.error('Failed to upload file', error);
+      throw error;
+    } finally {
+      logger.clearCorrelationId();
+    }
+  }
+
 
 }
 

@@ -57,6 +57,12 @@ variable "app_settings" {
   default     = {}
 }
 
+variable "vnet_integration_subnet_id" {
+  description = "ID of the subnet for regional VNet integration. Required for the App Service to reach private endpoints. Leave empty to skip VNet integration."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
