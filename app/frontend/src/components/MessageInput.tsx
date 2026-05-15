@@ -1,9 +1,14 @@
-// MessageInput component with keyboard submission
-import { useState, useCallback, KeyboardEvent, FormEvent, useRef } from 'react';
+// MessageInput component with keyboard submission and file attachment
+import { useState, useCallback, KeyboardEvent, FormEvent, useRef, DragEvent } from 'react';
 import { logger } from '../utils/logger';
+import { useFileUpload } from '../hooks/useFileUpload';
+import { FilePreview } from './FilePreview';
+import type { FileAttachment } from '../types/file';
+
+const ACCEPTED_FILE_TYPES = '.pdf,.png,.jpg,.jpeg,.gif,.txt,.csv,.json,.md';
 
 interface MessageInputProps {
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string, attachments?: FileAttachment[]) => void;
   disabled?: boolean;
   placeholder?: string;
 }
@@ -15,7 +20,20 @@ export function MessageInput({
 }: MessageInputProps) {
   const [inputValue, setInputValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    pendingFiles,
+    addFiles,
+    removeFile,
+    uploadAll,
+    clearFiles,
+    isUploading,
+    isAtLimit,
+    validationError,
+  } = useFileUpload();
 
   /**
    * Auto-resize textarea based on content
@@ -37,29 +55,38 @@ export function MessageInput({
 
       const message = inputValue.trim();
 
-      if (!message || disabled || isSubmitting) {
+      if ((!message && pendingFiles.length === 0) || disabled || isSubmitting || isUploading) {
         return;
       }
 
-      logger.debug('Submitting message', { length: message.length });
+      logger.debug('Submitting message', { length: message.length, files: pendingFiles.length });
 
       setIsSubmitting(true);
 
       try {
-        await onSendMessage(message);
-        setInputValue(''); // Clear input on success
-        // Reset textarea height
+        let attachments: FileAttachment[] | undefined;
+
+        if (pendingFiles.length > 0) {
+          attachments = await uploadAll();
+          if (attachments.length === 0) {
+            // All uploads failed
+            return;
+          }
+        }
+
+        await onSendMessage(message, attachments);
+        setInputValue('');
+        clearFiles();
         if (textareaRef.current) {
           textareaRef.current.style.height = 'auto';
         }
       } catch (error) {
         logger.error('Failed to send message', error);
-        // Keep the input value so user can retry
       } finally {
         setIsSubmitting(false);
       }
     },
-    [inputValue, disabled, isSubmitting, onSendMessage]
+    [inputValue, pendingFiles, disabled, isSubmitting, isUploading, onSendMessage, uploadAll, clearFiles]
   );
 
   /**
@@ -67,7 +94,6 @@ export function MessageInput({
    */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      // Submit on Enter (without Shift)
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSubmit();
@@ -84,9 +110,92 @@ export function MessageInput({
     adjustTextareaHeight();
   }, [adjustTextareaHeight]);
 
+  /**
+   * Handle file input change
+   */
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+        addFiles(e.target.files);
+      }
+      // Reset so the same file can be re-selected
+      e.target.value = '';
+    },
+    [addFiles]
+  );
+
+  /**
+   * Drag-and-drop handlers
+   */
+  const handleDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      if (e.dataTransfer.files.length > 0) {
+        addFiles(e.dataTransfer.files);
+      }
+    },
+    [addFiles]
+  );
+
+  const isSendDisabled =
+    disabled || isSubmitting || isUploading || (!inputValue.trim() && pendingFiles.length === 0);
+
   return (
-    <form onSubmit={handleSubmit} className="border-t border-border bg-primary p-4">
+    <form
+      onSubmit={handleSubmit}
+      className={`border-t border-border bg-primary p-4 ${isDragOver ? 'ring-2 ring-accent ring-inset' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragOver && (
+        <div className="text-center text-accent text-sm py-2 mb-2 border-2 border-dashed border-accent rounded-lg">
+          Drop files here
+        </div>
+      )}
+
+      {validationError && (
+        <div className="mb-2 px-4 py-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm">
+          {validationError}
+        </div>
+      )}
+
+      <FilePreview files={pendingFiles} onRemove={removeFile} />
+
       <div className="flex items-end space-x-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={ACCEPTED_FILE_TYPES}
+          onChange={handleFileChange}
+          className="hidden"
+          aria-label="Attach files"
+        />
+
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled || isAtLimit}
+          className="px-3 py-2 text-text-secondary hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          style={{ minHeight: '44px' }}
+          aria-label="Attach file"
+          title={isAtLimit ? 'Maximum files reached' : 'Attach file'}
+        >
+          📎
+        </button>
+
         <div className="flex-1">
           <textarea
             ref={textareaRef}
@@ -111,12 +220,12 @@ export function MessageInput({
 
         <button
           type="submit"
-          disabled={disabled || isSubmitting || !inputValue.trim()}
+          disabled={isSendDisabled}
           className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-border-focus focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
           style={{ minHeight: '44px' }}
           aria-label="Send message"
         >
-          {isSubmitting ? (
+          {isSubmitting || isUploading ? (
             <>
               <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                 <circle
@@ -134,7 +243,7 @@ export function MessageInput({
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
-              <span>Sending...</span>
+              <span>{isUploading ? 'Uploading...' : 'Sending...'}</span>
             </>
           ) : (
             <>

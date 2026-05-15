@@ -12,6 +12,12 @@ export interface TeamsRequest {
   prompt: string;
   max_rounds?: number;
   thread_id?: string | null;
+  attachments?: Array<{
+    blob_name: string;
+    original_filename: string;
+    content_type: string;
+    size_bytes: number;
+  }>;
 }
 
 export const ROLE_EMOJIS: Record<string, string> = {

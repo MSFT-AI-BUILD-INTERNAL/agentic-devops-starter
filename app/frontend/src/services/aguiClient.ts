@@ -49,7 +49,13 @@ class AGUIClient {
   async sendMessage(
     messages: AGUIMessage[],
     threadId?: string | null,
-    onEvent?: (event: StreamEvent) => void
+    onEvent?: (event: StreamEvent) => void,
+    attachments?: Array<{
+      blobName: string;
+      originalFilename: string;
+      contentType: string;
+      sizeBytes: number;
+    }>
   ): Promise<ChatResponse> {
     const correlationId = logger.generateCorrelationId();
     logger.setCorrelationId(correlationId);
@@ -59,11 +65,20 @@ class AGUIClient {
       threadId: threadId || 'new',
     });
 
-    const request: ChatRequest = {
+    const request: ChatRequest & { attachments?: Array<Record<string, unknown>> } = {
       messages,
       thread_id: threadId,
       stream: true,
     };
+
+    if (attachments && attachments.length > 0) {
+      request.attachments = attachments.map((a) => ({
+        blob_name: a.blobName,
+        original_filename: a.originalFilename,
+        content_type: a.contentType,
+        size_bytes: a.sizeBytes,
+      }));
+    }
 
     try {
       const response = await fetch(`${this.baseUrl}/`, {

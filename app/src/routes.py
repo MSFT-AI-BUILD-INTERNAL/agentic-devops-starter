@@ -1,6 +1,7 @@
 """API route handlers for the AG-UI server."""
 
 import asyncio
+import base64
 import json
 import uuid
 from collections.abc import AsyncGenerator
@@ -12,10 +13,18 @@ from copilot.generated.session_events import (
     SessionEvent,
     SessionIdleData,
 )
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from src.blob_storage import get_blob_service
 from src.config import settings
+from src.file_validation import (
+    ALLOWED_CONTENT_TYPES,
+    MAX_FILE_SIZE_BYTES,
+    generate_blob_name,
+    validate_file_size,
+    validate_file_type,
+)
 from src.jobs import create_job, get_job, run_fleet, run_infinite_session
 from src.logging_utils import setup_logging
 from src.models import (
@@ -24,6 +33,7 @@ from src.models import (
     JobStatusResponse,
     PatternInfo,
     TeamsRequest,
+    UploadResult,
 )
 from src.orchestrator import run_teams
 from src.patterns import PATTERNS
@@ -34,14 +44,65 @@ logger = setup_logging(settings.log_level)
 router = APIRouter()
 
 
-def _build_prompt(messages: list[dict[str, str]]) -> str:
-    """Extract the last user message content as the prompt."""
+def _build_prompt(
+    messages: list[dict[str, str]], attachments: list[dict[str, Any]] | None = None
+) -> str:
+    """Extract the last user message content as the prompt, prepending file context if present."""
     user_messages = [m for m in messages if m.get("role") == "user"]
     if user_messages:
-        return user_messages[-1].get("content", "")
-    if messages:
-        return messages[-1].get("content", "")
-    return ""
+        content = user_messages[-1].get("content", "")
+    elif messages:
+        content = messages[-1].get("content", "")
+    else:
+        content = ""
+
+    if attachments:
+        file_context = _resolve_attachments(attachments)
+        if file_context:
+            content = file_context + "\n\n" + content
+
+    return content
+
+
+def _resolve_attachments(attachments: list[dict[str, Any]]) -> str:
+    """Download attached blobs and format as context for the AI prompt."""
+    parts: list[str] = []
+    blob_service = get_blob_service()
+
+    for att in attachments:
+        blob_name = att.get("blob_name", "")
+        original_filename = att.get("original_filename", "file")
+        content_type = att.get("content_type", "")
+
+        try:
+            # Use synchronous download (azure SDK sync client)
+            container_client = blob_service._client.get_container_client(
+                blob_service._container_name
+            )
+            blob_client = container_client.get_blob_client(blob_name)
+            downloader = blob_client.download_blob()
+            content: bytes = downloader.readall()
+
+            if content_type.startswith("text/") or content_type == "application/json":
+                text = content.decode("utf-8", errors="replace")
+                parts.append(f"[File: {original_filename}]\n{text}")
+            elif content_type == "application/pdf":
+                encoded = base64.b64encode(content).decode("ascii")
+                parts.append(
+                    f"[File: {original_filename} (PDF, {len(content)} bytes, base64-encoded)]\n"
+                    f"{encoded}"
+                )
+            else:
+                encoded = base64.b64encode(content).decode("ascii")
+                parts.append(
+                    f"[File: {original_filename} ({content_type}, {len(content)} bytes, "
+                    f"base64-encoded)]\n{encoded}"
+                )
+        except Exception:
+            logger.exception("Failed to download attachment", extra={"blob_name": blob_name})
+            parts.append(f"[File: {original_filename} — failed to load]")
+
+    return "\n\n".join(parts)
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -66,8 +127,9 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
     thread_id: str = input_data.get("thread_id") or uuid.uuid4().hex[:12]
     run_id: str = input_data.get("run_id") or uuid.uuid4().hex[:12]
     messages: list[dict[str, str]] = input_data.get("messages", [])
+    attachments: list[dict[str, Any]] | None = input_data.get("attachments")
 
-    prompt = _build_prompt(messages)
+    prompt = _build_prompt(messages, attachments)
 
     async def event_generator() -> AsyncGenerator[str, None]:
         pool = get_session_pool()
@@ -158,6 +220,63 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
     )
 
 
+@router.post("/v1/files/upload")
+async def upload_file(file: UploadFile) -> JSONResponse:
+    """Upload a file to Azure Blob Storage."""
+    filename = file.filename or "unnamed"
+
+    # Validate content type
+    content_type = file.content_type or "application/octet-stream"
+    try:
+        validate_file_type(content_type, filename)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=415,
+            content={
+                "error": "INVALID_TYPE",
+                "detail": str(e),
+                "allowed_types": sorted(ALLOWED_CONTENT_TYPES),
+            },
+        )
+
+    # Read file content
+    content = await file.read()
+
+    # Validate size
+    try:
+        validate_file_size(len(content))
+    except ValueError as e:
+        status = 422 if len(content) == 0 else 413
+        return JSONResponse(
+            status_code=status,
+            content={
+                "error": "EMPTY_FILE" if len(content) == 0 else "FILE_TOO_LARGE",
+                "detail": str(e),
+                "max_size_bytes": MAX_FILE_SIZE_BYTES,
+            },
+        )
+
+    # Generate blob name and upload
+    blob_name = generate_blob_name(filename)
+    try:
+        blob_service = get_blob_service()
+        await blob_service.upload(content, blob_name, content_type)
+    except Exception:
+        logger.exception("Blob upload failed", extra={"filename": filename})
+        return JSONResponse(
+            status_code=502,
+            content={"error": "UPLOAD_FAILED", "detail": "Failed to upload file to storage"},
+        )
+
+    result = UploadResult(
+        blob_name=blob_name,
+        original_filename=filename,
+        content_type=content_type,
+        size_bytes=len(content),
+    )
+    return JSONResponse(status_code=200, content=result.model_dump())
+
+
 @router.delete("/v1/threads/{thread_id}")
 async def delete_thread(thread_id: str) -> dict[str, str]:
     """Disconnect and clean up a conversation thread."""
@@ -203,9 +322,17 @@ async def teams_stream(request: TeamsRequest) -> StreamingResponse:
     if request.pattern_id not in PATTERNS:
         raise HTTPException(status_code=404, detail="Pattern not found")
 
+    prompt = request.prompt
+    if request.attachments:
+        file_context = _resolve_attachments(
+            [att.model_dump() for att in request.attachments]
+        )
+        if file_context:
+            prompt = file_context + "\n\n" + prompt
+
     async def event_generator() -> AsyncGenerator[str, None]:
         async for event in run_teams(
-            request.pattern_id, request.prompt, request.max_rounds, request.thread_id
+            request.pattern_id, prompt, request.max_rounds, request.thread_id
         ):
             yield _sse(event)
 
