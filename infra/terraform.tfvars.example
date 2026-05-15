@@ -4,10 +4,15 @@
 # Resource Group Configuration
 resource_group_name = "rg-agentic-devops"
 
-# Whether Terraform should create the resource group. Defaults to false:
-# the RG is expected to exist (pre-provisioned by an admin / landing zone).
-# Set to true only for greenfield deployments where Terraform owns the RG.
-# create_resource_group = false
+# Per-resource create toggles. All default to ``false`` so the stack
+# references pre-existing resources and ``terraform apply`` is idempotent
+# (re-runs do not fail with ``A resource with the ID ... already exists``).
+# Flip a toggle to ``true`` only for the resources Terraform should create
+# end-to-end on a greenfield deployment.
+# create_resource_group   = false
+# create_acr              = false
+# create_app_service_plan = false
+# create_log_analytics    = false
 location            = "koreacentral"
 
 # Azure Container Registry

@@ -1,4 +1,5 @@
 resource "azurerm_container_registry" "acr" {
+  count               = var.create ? 1 : 0
   name                = var.acr_name
   resource_group_name = var.resource_group_name
   location            = var.location
@@ -15,4 +16,12 @@ resource "azurerm_container_registry" "acr" {
   }
 
   tags = var.tags
+}
+
+# When ``create = false``, reference the pre-existing ACR so downstream
+# modules (App Service, deploy pipelines) can still consume its outputs.
+data "azurerm_container_registry" "existing" {
+  count               = var.create ? 0 : 1
+  name                = var.acr_name
+  resource_group_name = var.resource_group_name
 }

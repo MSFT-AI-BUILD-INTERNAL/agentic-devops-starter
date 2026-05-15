@@ -19,6 +19,12 @@ variable "sku_name" {
   default     = "P1v3"
 }
 
+variable "create" {
+  description = "Whether Terraform should create the App Service Plan. Defaults to false: the plan is expected to exist. Set to true for greenfield deployments."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

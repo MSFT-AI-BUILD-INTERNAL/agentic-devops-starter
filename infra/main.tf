@@ -43,6 +43,7 @@ locals {
 module "log_analytics" {
   source = "./log-analytics"
 
+  create                       = var.create_log_analytics
   log_analytics_workspace_name = var.log_analytics_workspace_name
   resource_group_name          = local.resource_group_name
   location                     = local.resource_group_location
@@ -92,6 +93,7 @@ module "network" {
 module "acr" {
   source = "./acr"
 
+  create              = var.create_acr
   acr_name            = var.acr_name
   resource_group_name = local.resource_group_name
   location            = local.resource_group_location
@@ -166,6 +168,7 @@ module "acr" {
 module "app_service_plan" {
   source = "./app-service-plan"
 
+  create              = var.create_app_service_plan
   service_plan_name   = var.app_service_plan_name
   resource_group_name = local.resource_group_name
   location            = local.resource_group_location

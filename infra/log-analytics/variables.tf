@@ -35,6 +35,12 @@ variable "retention_in_days" {
   }
 }
 
+variable "create" {
+  description = "Whether Terraform should create the Log Analytics workspace (and Container Insights solution). Defaults to false: the workspace is expected to exist. Set to true for greenfield deployments."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Tags to apply to the Log Analytics Workspace"
   type        = map(string)

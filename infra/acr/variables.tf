@@ -52,6 +52,12 @@ variable "identity_type" {
   }
 }
 
+variable "create" {
+  description = "Whether Terraform should create the ACR. Defaults to false: the ACR is expected to exist (created out-of-band or in a previous apply). Set to true for greenfield deployments where Terraform owns the resource end-to-end."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Tags to apply to the ACR resource"
   type        = map(string)

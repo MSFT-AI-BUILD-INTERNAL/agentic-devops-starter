@@ -158,21 +158,40 @@ Record each assignment in `docs/infra-manual-changes.md` per the repo convention
 
 Terraform requires `count` values to be known at plan time. The `enable_vnet_integration` flag on the `app-service` module is a **static boolean**, not derived from other resources' attributes. If you need to disable VNet integration, flip the flag in `infra/main.tf` rather than emptying the related ID input. This avoids the `Invalid count argument` error that occurs when `count` depends on a value not known until apply.
 
-### Resource group: reference vs. create
+### Reference-vs-create toggles (idempotent re-runs)
 
-The resource group is **referenced** (not created) by default — `create_resource_group = false`. Terraform looks up the existing RG via a `data` source. This is the sustainable pattern because:
+The same `data`-source-or-resource pattern used for the resource group applies to every long-lived shared resource. Each module exposes a `create` input wired to a root-level `create_*` variable; **all default to `false`**, so `terraform apply` references pre-existing resources and is idempotent (re-runs no longer fail with `A resource with the ID ... already exists`).
 
-- Resource groups are typically governed by a separate landing-zone / admin process and pre-exist in the subscription.
-- It eliminates the `A resource with the ID ".../resourceGroups/<rg>" already exists` error on re-runs.
-- It avoids accidental deletion of the RG (and everything it contains) on `terraform destroy`.
+| Variable | Resource | Default |
+|----------|----------|---------|
+| `create_resource_group` | `azurerm_resource_group.main` | `false` |
+| `create_acr` | `azurerm_container_registry.acr` | `false` |
+| `create_app_service_plan` | `azurerm_service_plan.main` | `false` |
+| `create_log_analytics` | `azurerm_log_analytics_workspace.aks` (+ Container Insights solution) | `false` |
 
-Make sure the RG exists before running `terraform apply`:
+This is the sustainable pattern because:
+
+- These resources are typically governed by a separate landing-zone / admin process and pre-exist in the subscription.
+- It eliminates the `A resource with the ID ... already exists` error on re-runs.
+- It avoids accidental deletion (and everything contained) on `terraform destroy`.
+
+Make sure the resources exist before running `terraform apply`. For example:
 
 ```bash
 az group create --name <rg> --location <region>
+az acr create --name <acr> --resource-group <rg> --sku Standard
+az appservice plan create --name <plan> --resource-group <rg> --is-linux --sku P1v3
+az monitor log-analytics workspace create --resource-group <rg> --workspace-name <law>
 ```
 
-For **greenfield deployments** where Terraform should own the RG end-to-end, set `create_resource_group = true` in `terraform.tfvars`. If you previously created it manually and now want Terraform to manage it, import instead: `terraform import 'azurerm_resource_group.main[0]' /subscriptions/<sub>/resourceGroups/<rg>`.
+For **greenfield deployments** where Terraform should own a resource end-to-end, flip its `create_*` toggle to `true` in `terraform.tfvars`. If you previously created the resource manually and now want Terraform to manage it, import instead — for example:
+
+```bash
+terraform import 'azurerm_resource_group.main[0]'                  /subscriptions/<sub>/resourceGroups/<rg>
+terraform import 'module.acr.azurerm_container_registry.acr[0]'    /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ContainerRegistry/registries/<acr>
+terraform import 'module.app_service_plan.azurerm_service_plan.main[0]' /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/serverFarms/<plan>
+terraform import 'module.log_analytics.azurerm_log_analytics_workspace.aks[0]' /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.OperationalInsights/workspaces/<law>
+```
 
 ## Workflow Triggers
 

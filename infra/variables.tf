@@ -10,6 +10,28 @@ variable "create_resource_group" {
   default     = false
 }
 
+# Per-resource create toggles. Each defaults to ``false`` so the stack
+# references pre-existing resources (the typical case once the environment
+# has been bootstrapped) and ``terraform apply`` is idempotent. Flip to
+# ``true`` only for the resources Terraform should create end-to-end.
+variable "create_acr" {
+  description = "Whether to create the Azure Container Registry. Defaults to false (reference existing)."
+  type        = bool
+  default     = false
+}
+
+variable "create_app_service_plan" {
+  description = "Whether to create the App Service Plan. Defaults to false (reference existing)."
+  type        = bool
+  default     = false
+}
+
+variable "create_log_analytics" {
+  description = "Whether to create the Log Analytics workspace (and Container Insights solution). Defaults to false (reference existing)."
+  type        = bool
+  default     = false
+}
+
 variable "location" {
   description = "Azure region for resources"
   type        = string
