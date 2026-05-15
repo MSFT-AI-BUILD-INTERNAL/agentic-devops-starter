@@ -57,7 +57,10 @@ def _build_prompt(
         content = ""
 
     if attachments:
-        file_context = _resolve_attachments(attachments)
+        try:
+            file_context = _resolve_attachments(attachments)
+        except Exception:
+            file_context = ""
         if file_context:
             content = file_context + "\n\n" + content
 
@@ -262,7 +265,7 @@ async def upload_file(file: UploadFile) -> JSONResponse:
         blob_service = get_blob_service()
         await blob_service.upload(content, blob_name, content_type)
     except Exception:
-        logger.exception("Blob upload failed", extra={"filename": filename})
+        logger.exception("Blob upload failed", extra={"upload_filename": filename})
         return JSONResponse(
             status_code=502,
             content={"error": "UPLOAD_FAILED", "detail": "Failed to upload file to storage"},

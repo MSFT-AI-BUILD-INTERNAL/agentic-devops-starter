@@ -200,8 +200,8 @@ module "app_service" {
     "AZURE_AI_PROJECT_ENDPOINT"      = var.azure_ai_project_endpoint
     "AZURE_AI_MODEL_DEPLOYMENT_NAME" = var.azure_ai_model_deployment_name
     "AZURE_OPENAI_API_VERSION"       = var.azure_openai_api_version
-    "AZURE_STORAGE_BLOB_ENDPOINT"    = module.storage.primary_blob_endpoint
-    "AZURE_STORAGE_CONTAINER_NAME"   = var.uploads_container_name
+    "COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT"    = module.storage.primary_blob_endpoint
+    "COPILOT_API_AZURE_STORAGE_CONTAINER_NAME"   = var.uploads_container_name
   }
 
   tags = var.tags

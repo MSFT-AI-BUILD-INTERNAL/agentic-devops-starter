@@ -14,7 +14,12 @@ class Settings(BaseSettings):
     azure_storage_blob_endpoint: str = ""
     azure_storage_container_name: str = "uploads"
 
-    model_config = {"env_prefix": "COPILOT_API_"}
+    model_config = {
+        "env_prefix": "COPILOT_API_",
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 settings = Settings()
