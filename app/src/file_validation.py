@@ -32,7 +32,6 @@ EXTENSION_CONTENT_TYPES: dict[str, str] = {
 # Generic content types browsers/OS send when they cannot detect a specific MIME
 # type. Empty string represents a missing/absent Content-Type from the client.
 GENERIC_CONTENT_TYPES: set[str] = {"application/octet-stream", ""}
-MAX_FILENAME_LENGTH: int = 200
 
 
 def validate_file_type(content_type: str, filename: str) -> None:
@@ -83,46 +82,19 @@ def validate_file_size(size: int) -> None:
         )
 
 
-def sanitize_filename(filename: str) -> str:
-    """Sanitize a filename for safe blob storage.
+def generate_blob_name(filename: str) -> str:
+    """Generate a unique blob name from a sanitized filename.
 
-    Strips directory components, removes unsafe characters, truncates to
-    MAX_FILENAME_LENGTH, and preserves the file extension.
+    The UUID prefix guarantees uniqueness; the filename is stripped of path
+    components and unsafe characters to prevent path traversal.
     """
     # Strip directory components (path traversal prevention)
-    filename = filename.replace("\\", "/").split("/")[-1]
-
-    # Strip leading dots (hidden files)
-    filename = filename.lstrip(".")
-
-    if not filename:
-        filename = "unnamed"
-
-    # Separate name and extension
-    ext = _get_extension(filename)
-    name = filename[: -len(ext)] if ext else filename
-
-    # Remove non-ASCII and unsafe characters, keep alphanumeric, hyphens, underscores, dots
-    name = re.sub(r"[^\w\-.]", "_", name)
-    # Collapse multiple underscores/dots
-    name = re.sub(r"[_.]{2,}", "_", name)
-    # Strip leading/trailing underscores
-    name = name.strip("_")
-
-    if not name:
-        name = "file"
-
-    # Truncate name to fit within MAX_FILENAME_LENGTH (including extension)
-    max_name_len = MAX_FILENAME_LENGTH - len(ext)
-    name = name[:max_name_len]
-
-    return name + ext
-
-
-def generate_blob_name(filename: str) -> str:
-    """Generate a unique blob name from a sanitized filename."""
-    sanitized = sanitize_filename(filename)
-    return f"{uuid.uuid4().hex}_{sanitized}"
+    basename = filename.replace("\\", "/").split("/")[-1].lstrip(".")
+    if not basename:
+        basename = "unnamed"
+    # Remove characters that are unsafe in blob names
+    basename = re.sub(r"[^\w.\-]", "_", basename)
+    return f"{uuid.uuid4().hex}_{basename}"
 
 
 def _get_extension(filename: str) -> str:

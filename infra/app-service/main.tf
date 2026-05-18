@@ -56,9 +56,14 @@ resource "azurerm_linux_web_app" "main" {
   }
 
   tags = var.tags
-}
 
-# Grant AcrPull role to the App Service managed identity
+  lifecycle {
+    # app_settings is a full-replace map — Terraform would delete keys set
+    # externally (e.g. GITHUB_TOKEN set by deploy.yml). Ignore after initial
+    # creation so both Terraform and deploy workflow can coexist.
+    ignore_changes = [app_settings]
+  }
+}
 resource "azurerm_role_assignment" "acr_pull" {
   principal_id                     = azurerm_linux_web_app.main.identity[0].principal_id
   role_definition_name             = "AcrPull"

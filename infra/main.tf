@@ -173,7 +173,6 @@ module "storage" {
   public_network_access_enabled = var.storage_public_network_access_enabled
   shared_access_key_enabled     = var.storage_shared_access_key_enabled
   allowed_ip_rules              = var.storage_allowed_ip_rules
-  container_names               = [var.uploads_container_name]
   tags                          = var.tags
 
   depends_on = [azurerm_resource_group.main]
@@ -196,12 +195,12 @@ module "app_service" {
   virtual_network_subnet_id = module.network.app_integration_subnet_id
 
   app_settings = {
-    "AZURE_TENANT_ID"                = data.azurerm_subscription.current.tenant_id
-    "AZURE_AI_PROJECT_ENDPOINT"      = var.azure_ai_project_endpoint
-    "AZURE_AI_MODEL_DEPLOYMENT_NAME" = var.azure_ai_model_deployment_name
-    "AZURE_OPENAI_API_VERSION"       = var.azure_openai_api_version
-    "COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT"    = module.storage.primary_blob_endpoint
-    "COPILOT_API_AZURE_STORAGE_CONTAINER_NAME"   = var.uploads_container_name
+    "AZURE_TENANT_ID"                          = data.azurerm_subscription.current.tenant_id
+    "AZURE_AI_PROJECT_ENDPOINT"                = var.azure_ai_project_endpoint
+    "AZURE_AI_MODEL_DEPLOYMENT_NAME"           = var.azure_ai_model_deployment_name
+    "AZURE_OPENAI_API_VERSION"                 = var.azure_openai_api_version
+    "COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT"  = module.storage.primary_blob_endpoint
+    "COPILOT_API_AZURE_STORAGE_CONTAINER_NAME" = var.uploads_container_name
   }
 
   tags = var.tags

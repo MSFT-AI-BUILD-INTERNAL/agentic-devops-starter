@@ -13,12 +13,7 @@ logger: logging.Logger = setup_logging(settings.log_level)
 
 
 class BlobStorageConfigurationError(RuntimeError):
-    """Raised when blob storage settings are missing or invalid.
-
-    Distinct from runtime upload/download failures so callers can return a
-    503 (Service Unavailable) with an actionable message instead of masking
-    a misconfiguration as a generic upstream failure.
-    """
+    """Raised when blob storage settings are missing or invalid."""
 
 
 class BlobStorageService:
@@ -29,11 +24,8 @@ class BlobStorageService:
         credential = DefaultAzureCredential()
         self._client = BlobServiceClient(account_url=endpoint, credential=credential)
 
-    async def upload(self, file_content: bytes, blob_name: str, content_type: str) -> str:
-        """Upload file content to blob storage.
-
-        Returns the blob name on success.
-        """
+    def upload(self, file_content: bytes, blob_name: str, content_type: str) -> str:
+        """Upload file content to blob storage. Returns the blob name."""
         container_client = self._client.get_container_client(self._container_name)
         blob_client = container_client.get_blob_client(blob_name)
 
@@ -47,7 +39,7 @@ class BlobStorageService:
         logger.info("Blob uploaded", extra={"blob_name": blob_name, "size": len(file_content)})
         return blob_name
 
-    async def download(self, blob_name: str) -> bytes:
+    def download(self, blob_name: str) -> bytes:
         """Download blob content by name."""
         container_client = self._client.get_container_client(self._container_name)
         blob_client = container_client.get_blob_client(blob_name)
@@ -60,13 +52,9 @@ class BlobStorageService:
 
 
 def get_blob_service() -> BlobStorageService:
-    """Get the singleton BlobStorageService instance.
+    """Create a BlobStorageService from application settings.
 
-    Raises:
-        BlobStorageConfigurationError: if the configured endpoint is missing
-            or not a valid ``http(s)://host`` URL. This typically means the
-            ``COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT`` env var was not set
-            on the host (e.g. App Service app settings were not applied).
+    Raises BlobStorageConfigurationError if the endpoint is missing or invalid.
     """
     endpoint = settings.azure_storage_blob_endpoint
     if not endpoint or not endpoint.strip():
