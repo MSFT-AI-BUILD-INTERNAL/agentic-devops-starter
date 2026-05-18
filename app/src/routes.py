@@ -22,6 +22,7 @@ from src.file_validation import (
     ALLOWED_CONTENT_TYPES,
     MAX_FILE_SIZE_BYTES,
     generate_blob_name,
+    resolve_content_type,
     validate_file_size,
     validate_file_type,
 )
@@ -235,7 +236,7 @@ async def upload_file(file: UploadFile) -> JSONResponse:
     except ValueError:
         logger.warning(
             "Rejected file upload due to invalid content type",
-            extra={"filename": filename, "content_type": content_type},
+            extra={"upload_filename": filename, "content_type": content_type},
         )
         return JSONResponse(
             status_code=415,
@@ -245,6 +246,10 @@ async def upload_file(file: UploadFile) -> JSONResponse:
                 "allowed_types": sorted(ALLOWED_CONTENT_TYPES),
             },
         )
+
+    # Some clients/OS send generic types (e.g. application/octet-stream) for
+    # known extensions like .md — normalize so blob metadata is accurate.
+    content_type = resolve_content_type(content_type, filename)
 
     # Read file content
     content = await file.read()
@@ -256,7 +261,7 @@ async def upload_file(file: UploadFile) -> JSONResponse:
         status = 422 if len(content) == 0 else 413
         logger.warning(
             "Rejected file upload due to invalid file size",
-            extra={"filename": filename, "size_bytes": len(content), "status": status},
+            extra={"upload_filename": filename, "size_bytes": len(content), "status": status},
         )
         return JSONResponse(
             status_code=status,
