@@ -52,23 +52,6 @@ variable "shared_access_key_enabled" {
   default     = false
 }
 
-variable "container_names" {
-  description = "List of blob container names to create"
-  type        = list(string)
-  default     = ["uploads"]
-}
-
-variable "container_access_type" {
-  description = "Access level for blob containers (private, blob, container)"
-  type        = string
-  default     = "private"
-
-  validation {
-    condition     = contains(["private", "blob", "container"], var.container_access_type)
-    error_message = "Container access type must be private, blob, or container."
-  }
-}
-
 variable "allowed_ip_rules" {
   description = "List of public IPs allowed to access storage data plane (for provisioning). Use CIDR or single IP."
   type        = list(string)

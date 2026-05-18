@@ -1,6 +1,7 @@
 """Shared application state for the CopilotClient instance and session pool."""
 
 import asyncio
+import os
 import time
 
 from copilot import CopilotClient
@@ -51,6 +52,7 @@ class SessionPool:
                 return session
 
             client = get_client()
+            github_token = os.environ.get("GITHUB_TOKEN")
             try:
                 session = await client.resume_session(
                     thread_id,
@@ -58,6 +60,7 @@ class SessionPool:
                     system_message={"mode": "replace", "content": _SYSTEM_MESSAGE},
                     streaming=True,
                     available_tools=[],
+                    github_token=github_token,
                 )
             except Exception:
                 # Session doesn't exist on disk yet — create a new one.
@@ -67,6 +70,7 @@ class SessionPool:
                     system_message={"mode": "replace", "content": _SYSTEM_MESSAGE},
                     streaming=True,
                     available_tools=[],
+                    github_token=github_token,
                 )
 
             self._sessions[thread_id] = session

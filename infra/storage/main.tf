@@ -41,9 +41,7 @@ resource "azurerm_storage_account" "main" {
   }
 }
 
-resource "azurerm_storage_container" "containers" {
-  for_each              = toset(var.container_names)
-  name                  = each.value
-  storage_account_name  = azurerm_storage_account.main.name
-  container_access_type = var.container_access_type
-}
+# NOTE: Blob containers are NOT managed here because the azurerm provider uses
+# data-plane APIs which cannot reach the storage account when
+# public_network_access_enabled = false. Containers are created by deploy.sh
+# via `az resource create` against the ARM container resource.

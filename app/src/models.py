@@ -38,20 +38,6 @@ class JobStatusResponse(BaseModel):
     completed_at: str | None = None
 
 
-class ChatRequest(BaseModel):
-    """Request for basic (non-AG-UI) chat."""
-
-    prompt: str
-    system_message: str | None = None
-    streaming: bool = False
-
-
-class ChatResponse(BaseModel):
-    """Response for non-streaming chat."""
-
-    response: str
-    correlation_id: str
-
 
 class FileAttachment(BaseModel):
     """Represents a file that has been uploaded to Azure Blob Storage."""
@@ -69,15 +55,6 @@ class UploadResult(BaseModel):
     original_filename: str
     content_type: str
     size_bytes: int
-
-
-class UploadErrorResponse(BaseModel):
-    """Error response for upload validation failures."""
-
-    error: str
-    detail: str
-    max_size_bytes: int | None = None
-    allowed_types: list[str] | None = None
 
 
 class TeamsRequest(BaseModel):

@@ -79,23 +79,11 @@ def _resolve_attachments(attachments: list[dict[str, Any]]) -> str:
         content_type = att.get("content_type", "")
 
         try:
-            # Use synchronous download (azure SDK sync client)
-            container_client = blob_service._client.get_container_client(
-                blob_service._container_name
-            )
-            blob_client = container_client.get_blob_client(blob_name)
-            downloader = blob_client.download_blob()
-            content: bytes = downloader.readall()
+            content = blob_service.download(blob_name)
 
             if content_type.startswith("text/") or content_type == "application/json":
                 text = content.decode("utf-8", errors="replace")
                 parts.append(f"[File: {original_filename}]\n{text}")
-            elif content_type == "application/pdf":
-                encoded = base64.b64encode(content).decode("ascii")
-                parts.append(
-                    f"[File: {original_filename} (PDF, {len(content)} bytes, base64-encoded)]\n"
-                    f"{encoded}"
-                )
             else:
                 encoded = base64.b64encode(content).decode("ascii")
                 parts.append(
@@ -276,7 +264,7 @@ async def upload_file(file: UploadFile) -> JSONResponse:
     blob_name = generate_blob_name(filename)
     try:
         blob_service = get_blob_service()
-        await blob_service.upload(content, blob_name, content_type)
+        blob_service.upload(content, blob_name, content_type)
     except BlobStorageConfigurationError:
         logger.exception(
             "Blob upload failed: storage is not configured",
