@@ -29,7 +29,8 @@ EXTENSION_CONTENT_TYPES: dict[str, str] = {
     ".json": "application/json",
     ".md": "text/markdown",
 }
-# Generic content types browsers/OS send when they cannot detect a specific MIME type.
+# Generic content types browsers/OS send when they cannot detect a specific MIME
+# type. Empty string represents a missing/absent Content-Type from the client.
 GENERIC_CONTENT_TYPES: set[str] = {"application/octet-stream", ""}
 MAX_FILENAME_LENGTH: int = 200
 
@@ -63,7 +64,7 @@ def validate_file_type(content_type: str, filename: str) -> None:
 
 def resolve_content_type(content_type: str, filename: str) -> str:
     """Return a specific content type, inferring from the extension when generic."""
-    if content_type and content_type not in GENERIC_CONTENT_TYPES:
+    if content_type not in GENERIC_CONTENT_TYPES:
         return content_type
     ext = _get_extension(filename)
     return EXTENSION_CONTENT_TYPES.get(ext, content_type or "application/octet-stream")
