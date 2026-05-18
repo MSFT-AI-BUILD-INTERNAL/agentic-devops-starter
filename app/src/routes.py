@@ -16,7 +16,7 @@ from copilot.generated.session_events import (
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.blob_storage import get_blob_service
+from src.blob_storage import BlobStorageConfigurationError, get_blob_service
 from src.config import settings
 from src.file_validation import (
     ALLOWED_CONTENT_TYPES,
@@ -277,6 +277,22 @@ async def upload_file(file: UploadFile) -> JSONResponse:
     try:
         blob_service = get_blob_service()
         await blob_service.upload(content, blob_name, content_type)
+    except BlobStorageConfigurationError:
+        logger.exception(
+            "Blob upload failed: storage is not configured",
+            extra={"upload_filename": filename},
+        )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "STORAGE_NOT_CONFIGURED",
+                "detail": (
+                    "Blob storage is not configured on this server. "
+                    "Set COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT to a valid "
+                    "https://<account>.blob.core.windows.net URL."
+                ),
+            },
+        )
     except Exception:
         logger.exception("Blob upload failed", extra={"upload_filename": filename})
         return JSONResponse(
