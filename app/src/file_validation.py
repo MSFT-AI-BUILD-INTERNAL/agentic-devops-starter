@@ -18,26 +18,56 @@ ALLOWED_CONTENT_TYPES: set[str] = {
 ALLOWED_EXTENSIONS: set[str] = {
     ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".txt", ".csv", ".json", ".md",
 }
+EXTENSION_CONTENT_TYPES: dict[str, str] = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".txt": "text/plain",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".md": "text/markdown",
+}
+# Generic content types browsers/OS send when they cannot detect a specific MIME
+# type. Empty string represents a missing/absent Content-Type from the client.
+GENERIC_CONTENT_TYPES: set[str] = {"application/octet-stream", ""}
 MAX_FILENAME_LENGTH: int = 200
 
 
 def validate_file_type(content_type: str, filename: str) -> None:
     """Validate that the file type is allowed.
 
-    Raises ValueError if the content type or extension is not supported.
+    The file extension is the source of truth: browsers and operating systems
+    are inconsistent about the ``Content-Type`` they attach to common file
+    types (for example ``.md`` is often sent as ``application/octet-stream``).
+    A specific content type, when provided, must still match the allow list.
+
+    Raises ValueError if the extension is not supported, or if a specific
+    (non-generic) content type is provided but not in the allowed set.
     """
-    if content_type not in ALLOWED_CONTENT_TYPES:
-        allowed = ", ".join(sorted(ALLOWED_EXTENSIONS))
+    allowed_exts = ", ".join(sorted(ALLOWED_EXTENSIONS))
+    ext = _get_extension(filename)
+    if ext not in ALLOWED_EXTENSIONS:
         raise ValueError(
-            f"Unsupported file type '{content_type}'. Supported extensions: {allowed}"
+            f"Unsupported file extension '{ext}'. Supported extensions: {allowed_exts}"
         )
 
-    ext = _get_extension(filename)
-    if ext and ext not in ALLOWED_EXTENSIONS:
-        allowed = ", ".join(sorted(ALLOWED_EXTENSIONS))
+    if content_type in GENERIC_CONTENT_TYPES:
+        return
+
+    if content_type not in ALLOWED_CONTENT_TYPES:
         raise ValueError(
-            f"Unsupported file extension '{ext}'. Supported extensions: {allowed}"
+            f"Unsupported file type '{content_type}'. Supported extensions: {allowed_exts}"
         )
+
+
+def resolve_content_type(content_type: str, filename: str) -> str:
+    """Return a specific content type, inferring from the extension when generic."""
+    if content_type not in GENERIC_CONTENT_TYPES:
+        return content_type
+    ext = _get_extension(filename)
+    return EXTENSION_CONTENT_TYPES.get(ext, content_type or "application/octet-stream")
 
 
 def validate_file_size(size: int) -> None:
