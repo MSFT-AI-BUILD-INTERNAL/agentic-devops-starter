@@ -5,3 +5,7 @@ coverage/
 .vscode/
 .idea/
 *.log
+e2e/
+playwright-report/
+test-results/
+playwright.config.ts
