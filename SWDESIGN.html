@@ -1,0 +1,1579 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agentic DevOps Starter - Software Design</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #5c667a;
+      --line: #d9deea;
+      --accent: #2563eb;
+      --accent-soft: #eaf1ff;
+      --code-bg: #0f172a;
+      --code-text: #e5e7eb;
+      --warn-bg: #fff7ed;
+      --warn-line: #fdba74;
+      --ok-bg: #ecfdf5;
+      --ok-line: #6ee7b7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+
+    header {
+      background: linear-gradient(135deg, #0f172a, #1d4ed8);
+      color: white;
+      padding: 48px 32px;
+    }
+
+    header h1 {
+      margin: 0 0 12px;
+      font-size: 34px;
+      line-height: 1.2;
+    }
+
+    header p {
+      max-width: 980px;
+      margin: 0;
+      color: #dbeafe;
+      font-size: 17px;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    nav.toc {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 20px 24px;
+      margin-bottom: 28px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    }
+
+    nav.toc h2 {
+      margin-top: 0;
+    }
+
+    nav.toc ol {
+      columns: 2;
+      padding-left: 24px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 26px 28px;
+      margin: 22px 0;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.045);
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--accent-soft);
+      color: #0f172a;
+    }
+
+    h3 {
+      margin-top: 28px;
+      color: #1e3a8a;
+    }
+
+    h4 {
+      margin-bottom: 8px;
+      color: #334155;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 9px 11px;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--accent-soft);
+      text-align: left;
+      color: #1e3a8a;
+    }
+
+    code {
+      background: #eef2ff;
+      color: #1e3a8a;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: var(--code-bg);
+      color: var(--code-text);
+      border-radius: 12px;
+      padding: 16px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    pre.diagram {
+      background: #f8fafc;
+      color: #0f172a;
+      border: 1px solid var(--line);
+    }
+
+    .note,
+    .warning,
+    .good {
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin: 16px 0;
+    }
+
+    .note {
+      background: var(--accent-soft);
+      border-left: 5px solid var(--accent);
+    }
+
+    .warning {
+      background: var(--warn-bg);
+      border-left: 5px solid var(--warn-line);
+    }
+
+    .good {
+      background: var(--ok-bg);
+      border-left: 5px solid var(--ok-line);
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .meta div {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #dbeafe;
+      color: #1d4ed8;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 760px) {
+      nav.toc ol {
+        columns: 1;
+      }
+
+      main {
+        padding: 16px;
+      }
+
+      section {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Agentic DevOps Starter 소프트웨어 설계 문서</h1>
+    <p>
+      현재 코드베이스 기준의 상세 설계 문서이다. FastAPI 백엔드, GitHub Copilot SDK 세션,
+      AG-UI 스타일 SSE 스트리밍, React/Vite 프론트엔드, Azure App Service 배포 인프라를
+      코드 레벨 구성요소와 런타임 흐름 중심으로 설명한다.
+    </p>
+    <div class="meta">
+      <div><strong>문서 파일</strong><br>SWDESIGN.html</div>
+      <div><strong>대상 저장소</strong><br>agentic-devops-starter</div>
+      <div><strong>주요 런타임</strong><br>Python 3.12, FastAPI, React 18, Vite</div>
+      <div><strong>배포 대상</strong><br>Azure App Service + ACR + Blob Storage</div>
+    </div>
+  </header>
+
+  <main>
+    <nav class="toc">
+      <h2>목차</h2>
+      <ol>
+        <li><a href="#overview">시스템 개요</a></li>
+        <li><a href="#architecture">전체 아키텍처</a></li>
+        <li><a href="#backend">백엔드 상세 설계</a></li>
+        <li><a href="#backend-code">백엔드 코드 레벨 매핑</a></li>
+        <li><a href="#chat-flow">일반 채팅 스트리밍 흐름</a></li>
+        <li><a href="#session-pool">Copilot 세션 풀 설계</a></li>
+        <li><a href="#upload">파일 업로드/Blob 설계</a></li>
+        <li><a href="#jobs">Fleet/Infinite Session 작업 설계</a></li>
+        <li><a href="#teams">Agent Teams 설계</a></li>
+        <li><a href="#frontend">프론트엔드 상세 설계</a></li>
+        <li><a href="#frontend-code">프론트엔드 코드 레벨 매핑</a></li>
+        <li><a href="#data-model">데이터 모델 및 이벤트 스키마</a></li>
+        <li><a href="#deployment">배포/인프라 설계</a></li>
+        <li><a href="#security">보안 설계</a></li>
+        <li><a href="#observability">로깅/관측성</a></li>
+        <li><a href="#limitations">제한 사항과 개선 후보</a></li>
+      </ol>
+    </nav>
+
+    <section id="overview">
+      <h2>1. 시스템 개요</h2>
+      <p>
+        Agentic DevOps Starter는 브라우저 기반 채팅 UI에서 입력한 메시지를 FastAPI 백엔드로
+        전달하고, 백엔드가 GitHub Copilot SDK 세션을 통해 응답을 생성한 뒤 SSE로 프론트엔드에
+        스트리밍하는 풀스택 애플리케이션이다. 단일 채팅뿐 아니라 파일 첨부, 병렬 프롬프트 실행,
+        반복 추론, 역할 기반 다중 에이전트 팀 실행을 지원한다.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>영역</th>
+            <th>현재 구현</th>
+            <th>주요 코드</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>AI 런타임</td>
+            <td>GitHub Copilot SDK의 <code>CopilotClient</code>, <code>CopilotSession</code> 사용</td>
+            <td><code>app/agui_server.py</code>, <code>app/src/state.py</code></td>
+          </tr>
+          <tr>
+            <td>API</td>
+            <td>FastAPI + StreamingResponse 기반 SSE</td>
+            <td><code>app/src/routes.py</code></td>
+          </tr>
+          <tr>
+            <td>프론트엔드</td>
+            <td>React 18, TypeScript, Vite, Zustand</td>
+            <td><code>app/frontend/src/*</code></td>
+          </tr>
+          <tr>
+            <td>파일 저장</td>
+            <td>Azure Blob Storage, <code>DefaultAzureCredential</code></td>
+            <td><code>blob_storage.py</code>, <code>file_validation.py</code></td>
+          </tr>
+          <tr>
+            <td>배포</td>
+            <td>nginx + FastAPI 단일 컨테이너를 Azure App Service에 배포</td>
+            <td><code>app/Dockerfile.appservice</code>, <code>infra/*</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="architecture">
+      <h2>2. 전체 아키텍처</h2>
+      <pre class="diagram">+-------------------+
+| Browser / React   |
+| - ChatInterface   |
+| - TeamsSidebar    |
+| - Zustand Stores  |
++---------+---------+
+          |
+          | /api/*  (dev: Vite proxy, prod: nginx)
+          v
++-------------------+        +------------------------+
+| Proxy Layer       |        | Static Frontend        |
+| - Vite dev server |        | - nginx serves dist    |
+| - nginx :8080     |        | - SPA fallback         |
++---------+---------+        +------------------------+
+          |
+          | prefix stripped: /api/v1/... -> /v1/...
+          v
++-----------------------------+
+| FastAPI Backend :5100       |
+| - routes.py                 |
+| - SessionPool               |
+| - Job Manager               |
+| - Team Orchestrator         |
+| - BlobStorageService        |
++------+----------+----------+
+       |          |
+       |          +--------------------+
+       v                               v
++----------------------+       +----------------------+
+| GitHub Copilot SDK   |       | Azure Blob Storage   |
+| CopilotClient        |       | uploads container    |
+| CopilotSession       |       | private endpoint     |
++----------------------+       +----------------------+</pre>
+
+      <h3>2.1 핵심 설계 원칙</h3>
+      <ul>
+        <li><strong>프록시 경계 명확화:</strong> 백엔드에는 <code>/api</code> prefix를 두지 않고, Vite/nginx 계층에서만 사용한다.</li>
+        <li><strong>세션 단위 대화 유지:</strong> <code>thread_id</code>별 Copilot SDK 세션을 유지해 멀티턴 대화 맥락을 보존한다.</li>
+        <li><strong>SSE 우선:</strong> 채팅과 Agent Teams 모두 fetch 기반 HTTP streaming으로 구현한다.</li>
+        <li><strong>역할 분리:</strong> API 라우팅, 세션 관리, 작업 관리, 팀 오케스트레이션, Blob 접근을 별도 모듈로 분리한다.</li>
+        <li><strong>운영 단순성:</strong> App Service 단일 컨테이너 안에서 nginx와 FastAPI를 supervisor로 함께 실행한다.</li>
+      </ul>
+    </section>
+
+    <section id="backend">
+      <h2>3. 백엔드 상세 설계</h2>
+
+      <h3>3.1 FastAPI 앱 생명주기</h3>
+      <p>
+        <code>app/agui_server.py</code>의 <code>create_app()</code> 함수가 FastAPI 앱을 생성한다.
+        앱 lifespan에서 Copilot SDK 클라이언트를 시작하고, 세션 풀과 유휴 세션 정리 task를 설정한다.
+      </p>
+
+      <pre><code>def create_app() -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        github_token = os.environ.get("GITHUB_TOKEN")
+        config = SubprocessConfig(github_token=github_token) if github_token else None
+        client = CopilotClient(config)
+        await client.start()
+        set_client(client)
+
+        pool = SessionPool(idle_timeout=settings.session_timeout)
+        set_session_pool(pool)
+        cleanup_task = asyncio.create_task(_idle_cleanup_loop(pool))
+
+        yield
+
+        cleanup_task.cancel()
+        await pool.shutdown()
+        await client.stop()</code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>단계</th>
+            <th>코드 레벨 동작</th>
+            <th>설계 의도</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>환경 로드</td>
+            <td><code>load_dotenv()</code>, <code>Settings</code></td>
+            <td>로컬 개발과 운영 환경 변수 사용 방식 통일</td>
+          </tr>
+          <tr>
+            <td>Copilot client 시작</td>
+            <td><code>CopilotClient(config)</code>, <code>await client.start()</code></td>
+            <td>요청마다 client를 만들지 않고 앱 단위 singleton으로 재사용</td>
+          </tr>
+          <tr>
+            <td>SessionPool 설정</td>
+            <td><code>set_session_pool(pool)</code></td>
+            <td>라우트에서 전역 accessor로 thread별 세션 접근</td>
+          </tr>
+          <tr>
+            <td>idle cleanup</td>
+            <td>30초마다 <code>pool.cleanup_idle()</code></td>
+            <td>장시간 미사용 Copilot 세션 정리</td>
+          </tr>
+          <tr>
+            <td>종료 처리</td>
+            <td><code>pool.shutdown()</code>, <code>client.stop()</code></td>
+            <td>프로세스 종료 시 SDK subprocess와 세션 연결 정리</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>3.2 미들웨어와 보안 헤더</h3>
+      <p>
+        FastAPI 미들웨어는 모든 응답에 기본 보안 헤더를 추가한다. 운영 컨테이너의 nginx도 동일한
+        계열의 헤더를 추가하므로 프록시 및 직접 접근 모두에서 방어적 기본값을 갖는다.
+      </p>
+
+      <pre><code>@app.middleware("http")
+async def add_security_headers(request: Request, call_next: Any) -> Response:
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response</code></pre>
+
+      <h3>3.3 CORS</h3>
+      <p>
+        <code>CORS_ORIGINS</code> 환경 변수가 비어 있으면 기본값은
+        <code>http://localhost:5173</code>, <code>http://127.0.0.1:5173</code>이다.
+        현재 Vite dev server는 <code>8080</code>을 사용하므로 실제 개발은 프록시 경유가 기본 흐름이다.
+      </p>
+    </section>
+
+    <section id="backend-code">
+      <h2>4. 백엔드 코드 레벨 매핑</h2>
+
+      <h3>4.1 모듈별 책임</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>파일</th>
+            <th>핵심 함수/클래스</th>
+            <th>책임</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>app/agui_server.py</code></td>
+            <td><code>create_app()</code>, <code>_idle_cleanup_loop()</code></td>
+            <td>FastAPI 앱 생성, CopilotClient lifecycle, 미들웨어, CORS, router 등록</td>
+          </tr>
+          <tr>
+            <td><code>app/src/routes.py</code></td>
+            <td><code>agent_endpoint()</code>, <code>upload_file()</code>, <code>teams_stream()</code></td>
+            <td>HTTP 라우트와 SSE 응답 구성</td>
+          </tr>
+          <tr>
+            <td><code>app/src/state.py</code></td>
+            <td><code>SessionPool</code>, <code>get_client()</code>, <code>get_session_pool()</code></td>
+            <td>CopilotClient singleton 및 thread별 CopilotSession 관리</td>
+          </tr>
+          <tr>
+            <td><code>app/src/jobs.py</code></td>
+            <td><code>create_job()</code>, <code>run_fleet()</code>, <code>run_infinite_session()</code></td>
+            <td>메모리 기반 비동기 작업 관리</td>
+          </tr>
+          <tr>
+            <td><code>app/src/orchestrator.py</code></td>
+            <td><code>run_teams()</code>, <code>_stream_agent()</code>, flow runner들</td>
+            <td>다중 역할 Copilot session 오케스트레이션</td>
+          </tr>
+          <tr>
+            <td><code>app/src/patterns.py</code></td>
+            <td><code>Pattern</code>, <code>AgentRole</code>, <code>PATTERNS</code></td>
+            <td>Agent Team 패턴과 역할별 system prompt 정의</td>
+          </tr>
+          <tr>
+            <td><code>app/src/blob_storage.py</code></td>
+            <td><code>BlobStorageService</code>, <code>get_blob_service()</code></td>
+            <td>Azure Blob upload/download</td>
+          </tr>
+          <tr>
+            <td><code>app/src/file_validation.py</code></td>
+            <td><code>validate_file_type()</code>, <code>validate_file_size()</code>, <code>generate_blob_name()</code></td>
+            <td>파일 확장자/MIME/크기/파일명 sanitization</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>4.2 API 라우트와 함수 매핑</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>HTTP</th>
+            <th>라우트</th>
+            <th>함수</th>
+            <th>반환 타입/형태</th>
+            <th>주요 의존성</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GET</td>
+            <td><code>/health</code></td>
+            <td><code>health_check()</code></td>
+            <td><code>{"status": "healthy"}</code></td>
+            <td>없음</td>
+          </tr>
+          <tr>
+            <td>POST</td>
+            <td><code>/</code></td>
+            <td><code>agent_endpoint()</code></td>
+            <td><code>StreamingResponse(text/event-stream)</code></td>
+            <td><code>SessionPool</code>, <code>CopilotSession</code>, <code>_resolve_attachments()</code></td>
+          </tr>
+          <tr>
+            <td>POST</td>
+            <td><code>/v1/files/upload</code></td>
+            <td><code>upload_file()</code></td>
+            <td><code>UploadResult</code> 또는 error JSON</td>
+            <td><code>file_validation</code>, <code>BlobStorageService</code></td>
+          </tr>
+          <tr>
+            <td>DELETE</td>
+            <td><code>/v1/threads/{thread_id}</code></td>
+            <td><code>delete_thread()</code></td>
+            <td><code>{"status": "deleted"}</code></td>
+            <td><code>SessionPool.disconnect()</code></td>
+          </tr>
+          <tr>
+            <td>POST</td>
+            <td><code>/v1/fleet</code></td>
+            <td><code>fleet_endpoint()</code></td>
+            <td>202 + <code>{"job_id": ...}</code></td>
+            <td><code>create_job()</code>, <code>run_fleet()</code></td>
+          </tr>
+          <tr>
+            <td>POST</td>
+            <td><code>/v1/infinite-session</code></td>
+            <td><code>infinite_session_endpoint()</code></td>
+            <td>202 + <code>{"job_id": ...}</code></td>
+            <td><code>create_job()</code>, <code>run_infinite_session()</code></td>
+          </tr>
+          <tr>
+            <td>GET</td>
+            <td><code>/v1/patterns</code></td>
+            <td><code>list_patterns()</code></td>
+            <td><code>list[PatternInfo]</code></td>
+            <td><code>PATTERNS</code></td>
+          </tr>
+          <tr>
+            <td>POST</td>
+            <td><code>/v1/teams/stream</code></td>
+            <td><code>teams_stream()</code></td>
+            <td><code>StreamingResponse(text/event-stream)</code></td>
+            <td><code>run_teams()</code>, <code>_resolve_attachments()</code></td>
+          </tr>
+          <tr>
+            <td>GET</td>
+            <td><code>/v1/jobs/{job_id}</code></td>
+            <td><code>job_status_endpoint()</code></td>
+            <td><code>JobStatusResponse</code></td>
+            <td><code>get_job()</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="chat-flow">
+      <h2>5. 일반 채팅 스트리밍 흐름</h2>
+
+      <h3>5.1 서버 내부 알고리즘</h3>
+      <p>
+        <code>agent_endpoint()</code>는 요청 body에서 thread/run/message/attachment 정보를 추출한 뒤,
+        내부 async generator를 만들어 <code>StreamingResponse</code>로 반환한다.
+      </p>
+
+      <pre><code>input_data = await request.json()
+thread_id = input_data.get("thread_id") or uuid.uuid4().hex[:12]
+run_id = input_data.get("run_id") or uuid.uuid4().hex[:12]
+messages = input_data.get("messages", [])
+attachments = input_data.get("attachments")
+
+prompt = _build_prompt(messages, attachments)</code></pre>
+
+      <h4>프롬프트 생성 규칙</h4>
+      <ol>
+        <li><code>messages</code> 중 마지막 <code>role == "user"</code> 메시지를 선택한다.</li>
+        <li>사용자 메시지가 없으면 마지막 메시지를 fallback으로 사용한다.</li>
+        <li>첨부 파일이 있으면 <code>_resolve_attachments()</code>로 파일 컨텍스트를 앞에 붙인다.</li>
+      </ol>
+
+      <pre><code>def _build_prompt(messages, attachments=None) -> str:
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    if user_messages:
+        content = user_messages[-1].get("content", "")
+    elif messages:
+        content = messages[-1].get("content", "")
+    else:
+        content = ""
+
+    if attachments:
+        file_context = _resolve_attachments(attachments)
+        if file_context:
+            content = file_context + "\n\n" + content
+
+    return content</code></pre>
+
+      <h3>5.2 Copilot SDK 이벤트 변환</h3>
+      <p>
+        Copilot SDK callback은 동기 함수 형태로 호출되므로, FastAPI async generator와 안전하게
+        연결하기 위해 <code>loop.call_soon_threadsafe()</code>와 <code>asyncio.Queue</code>를 사용한다.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Copilot SDK 이벤트</th>
+            <th>서버 내부 큐 메시지</th>
+            <th>SSE 이벤트</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>AssistantMessageDeltaData</code></td>
+            <td><code>{"type": "delta", "content": delta.delta_content}</code></td>
+            <td><code>TEXT_MESSAGE_CONTENT</code></td>
+          </tr>
+          <tr>
+            <td><code>SessionErrorData</code></td>
+            <td><code>{"type": "error", "content": err.message}</code></td>
+            <td><code>RUN_ERROR</code></td>
+          </tr>
+          <tr>
+            <td><code>SessionIdleData</code></td>
+            <td><code>idle_event.set()</code></td>
+            <td>스트림 종료 준비</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <pre class="diagram">Frontend                  FastAPI                         CopilotSession
+   | POST /api/              |                                  |
+   |------------------------>|                                  |
+   |                         | get_or_create(thread_id)         |
+   |                         |--------------------------------->|
+   |                         | session.send(prompt)             |
+   |                         |--------------------------------->|
+   | &lt;-- RUN_STARTED --------|                                  |
+   | &lt;-- TEXT_MESSAGE_START -| &lt;-- AssistantMessageDeltaData ---|
+   | &lt;-- CONTENT delta* -----|                                  |
+   |                         | &lt;-- SessionIdleData -------------|
+   | &lt;-- TEXT_MESSAGE_END ---|                                  |
+   | &lt;-- RUN_FINISHED -------|                                  |</pre>
+
+      <h3>5.3 SSE wire format</h3>
+      <p>
+        서버의 <code>_sse()</code> 헬퍼는 JSON 객체를 SSE data line으로 감싼다.
+      </p>
+
+      <pre><code>def _sse(event: dict[str, Any]) -> str:
+    return f"data: {json.dumps(event)}\n\n"</code></pre>
+
+      <p>예시:</p>
+      <pre><code>data: {"type": "RUN_STARTED", "thread_id": "abc123", "run_id": "def456"}
+
+data: {"type": "TEXT_MESSAGE_START", "message_id": "m001"}
+
+data: {"type": "TEXT_MESSAGE_CONTENT", "delta": "안녕하세요"}
+
+data: {"type": "TEXT_MESSAGE_END", "message_id": "m001"}
+
+data: {"type": "RUN_FINISHED", "thread_id": "abc123", "run_id": "def456"}</code></pre>
+    </section>
+
+    <section id="session-pool">
+      <h2>6. Copilot 세션 풀 설계</h2>
+
+      <p>
+        <code>SessionPool</code>은 <code>thread_id</code>별 Copilot SDK 세션을 유지한다. 동일 thread에 대한
+        동시 접근을 막기 위해 thread별 <code>asyncio.Lock</code>을 사용하고, pool dictionary 자체는
+        <code>_pool_lock</code>으로 보호한다.
+      </p>
+
+      <pre><code>class SessionPool:
+    def __init__(self, idle_timeout: float = 120.0) -> None:
+        self._sessions: dict[str, CopilotSession] = {}
+        self._last_active: dict[str, float] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._pool_lock = asyncio.Lock()
+        self._idle_timeout = idle_timeout</code></pre>
+
+      <h3>6.1 get_or_create(thread_id)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>단계</th>
+            <th>코드 동작</th>
+            <th>의미</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>락 준비</td>
+            <td><code>if thread_id not in self._locks: self._locks[thread_id] = asyncio.Lock()</code></td>
+            <td>thread별 직렬화 보장</td>
+          </tr>
+          <tr>
+            <td>기존 세션 반환</td>
+            <td><code>session = self._sessions.get(thread_id)</code></td>
+            <td>이미 활성화된 세션이면 재사용</td>
+          </tr>
+          <tr>
+            <td>resume 시도</td>
+            <td><code>client.resume_session(thread_id, ...)</code></td>
+            <td>SDK가 저장한 세션을 이어받음</td>
+          </tr>
+          <tr>
+            <td>create fallback</td>
+            <td><code>client.create_session(session_id=thread_id, ...)</code></td>
+            <td>resume 실패 시 신규 세션 생성</td>
+          </tr>
+          <tr>
+            <td>활성 시간 기록</td>
+            <td><code>self._last_active[thread_id] = time.monotonic()</code></td>
+            <td>idle cleanup 판단 기준</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="warning">
+        <strong>운영상 주의:</strong> 세션 풀은 프로세스 메모리에 있다. App Service scale-out으로 인스턴스가
+        여러 개가 되면 thread별 세션이 인스턴스 간 공유되지 않는다. Sticky session 또는 외부 session
+        coordination이 필요한 요구사항이 생길 수 있다.
+      </div>
+    </section>
+
+    <section id="upload">
+      <h2>7. 파일 업로드/Blob 설계</h2>
+
+      <h3>7.1 업로드 처리 순서</h3>
+      <pre class="diagram">Browser
+  -> fileUploadService.uploadFile()
+  -> XMLHttpRequest POST /api/v1/files/upload
+  -> FastAPI upload_file(file: UploadFile)
+  -> validate_file_type(content_type, filename)
+  -> resolve_content_type(content_type, filename)
+  -> await file.read()
+  -> validate_file_size(len(content))
+  -> generate_blob_name(filename)
+  -> BlobStorageService.upload(content, blob_name, content_type)
+  -> UploadResult JSON</pre>
+
+      <h3>7.2 서버 검증 코드</h3>
+      <pre><code>MAX_FILE_SIZE_BYTES = 10_485_760
+ALLOWED_EXTENSIONS = {
+    ".pdf", ".png", ".jpg", ".jpeg", ".gif",
+    ".txt", ".csv", ".json", ".md",
+}
+
+def validate_file_size(size: int) -> None:
+    if size &lt;= 0:
+        raise ValueError("File is empty")
+    if size &gt; MAX_FILE_SIZE_BYTES:
+        raise ValueError("File exceeds maximum size of 10MB")</code></pre>
+
+      <h3>7.3 파일명 sanitization</h3>
+      <p>
+        <code>generate_blob_name()</code>은 경로 traversal을 방지하기 위해 <code>\</code>와 <code>/</code>를
+        모두 고려해 basename만 추출하고, 선행 dot을 제거한 뒤 안전하지 않은 문자를 underscore로 바꾼다.
+      </p>
+
+      <pre><code>def generate_blob_name(filename: str) -> str:
+    basename = filename.replace("\\", "/").split("/")[-1].lstrip(".")
+    if not basename:
+        basename = "unnamed"
+    basename = re.sub(r"[^\w.\-]", "_", basename)
+    return f"{uuid.uuid4().hex}_{basename}"</code></pre>
+
+      <h3>7.4 오류 응답 설계</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>조건</th>
+            <th>HTTP</th>
+            <th>error</th>
+            <th>프론트엔드 처리</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>허용되지 않은 확장자/MIME</td>
+            <td>415</td>
+            <td><code>INVALID_TYPE</code></td>
+            <td><code>UploadError.detail</code> 표시</td>
+          </tr>
+          <tr>
+            <td>빈 파일</td>
+            <td>422</td>
+            <td><code>EMPTY_FILE</code></td>
+            <td>업로드 실패 상태</td>
+          </tr>
+          <tr>
+            <td>10MB 초과</td>
+            <td>413</td>
+            <td><code>FILE_TOO_LARGE</code></td>
+            <td>최대 크기 안내</td>
+          </tr>
+          <tr>
+            <td>Blob endpoint 미설정</td>
+            <td>503</td>
+            <td><code>STORAGE_NOT_CONFIGURED</code></td>
+            <td>서버 설정 오류로 표시</td>
+          </tr>
+          <tr>
+            <td>Blob 업로드 실패</td>
+            <td>502</td>
+            <td><code>UPLOAD_FAILED</code></td>
+            <td>재시도 가능 오류</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>7.5 첨부 파일 프롬프트 주입</h3>
+      <p>
+        채팅과 Agent Teams 모두 attachment metadata를 받으면 서버에서 Blob을 다운로드해 prompt 앞부분에
+        파일 컨텍스트를 삽입한다. 텍스트/JSON은 문자열로, 그 외는 base64로 포함한다.
+      </p>
+    </section>
+
+    <section id="jobs">
+      <h2>8. Fleet / Infinite Session 작업 설계</h2>
+
+      <p>
+        <code>jobs.py</code>는 외부 큐 없이 프로세스 메모리에 작업 상태를 저장하는 단순 job manager이다.
+        API는 작업을 즉시 실행하지 않고 job id를 반환하며, 실제 실행은 <code>asyncio.create_task()</code>로
+        백그라운드에서 진행된다.
+      </p>
+
+      <pre><code>_jobs: dict[str, JobStatusResponse] = {}
+
+def create_job() -> str:
+    job_id = uuid.uuid4().hex[:12]
+    _jobs[job_id] = JobStatusResponse(
+        job_id=job_id,
+        status="pending",
+        created_at=datetime.now(UTC).isoformat(),
+    )
+    return job_id</code></pre>
+
+      <h3>8.1 Fleet</h3>
+      <ul>
+        <li><code>FleetRequest.items</code>는 Pydantic에서 최소 1개, 최대 20개로 제한된다.</li>
+        <li>각 item은 별도 Copilot session으로 실행된다.</li>
+        <li>내부 semaphore도 20으로 설정되어 API 제한과 실행 제한이 일치한다.</li>
+        <li>개별 item 실패는 전체 실패가 아니라 <code>ERROR: ...</code> 문자열로 결과 배열에 들어간다.</li>
+      </ul>
+
+      <pre><code>async def run_fleet(job_id: str, items: list[tuple[str, str | None]]) -> None:
+    job = _jobs[job_id]
+    job.status = "running"
+    semaphore = asyncio.Semaphore(20)
+
+    async def _process(prompt: str, system_message: str | None) -> str:
+        async with semaphore:
+            return await _call_session(prompt, system_message)</code></pre>
+
+      <h3>8.2 Infinite Session</h3>
+      <p>
+        Infinite Session은 output chaining 방식이다. 첫 prompt 결과가 다음 prompt가 되며, 마지막 결과만
+        <code>job.result</code>에 저장된다. <code>iterations</code>는 모델에서 1~10으로 제한된다.
+      </p>
+
+      <pre><code>current_prompt = prompt
+for _ in range(iterations):
+    current_prompt = await _call_session(current_prompt, system_message)
+
+job.result = current_prompt
+job.status = "completed"</code></pre>
+    </section>
+
+    <section id="teams">
+      <h2>9. Agent Teams 설계</h2>
+
+      <h3>9.1 패턴 정의</h3>
+      <p>
+        <code>patterns.py</code>는 <code>Pattern</code>과 <code>AgentRole</code> 모델을 정의하고,
+        패턴 ID별 역할 목록과 flow type을 선언한다.
+      </p>
+
+      <pre><code>class AgentRole(BaseModel):
+    name: str
+    emoji: str
+    system_prompt: str
+
+class Pattern(BaseModel):
+    id: str
+    name: str
+    description: str
+    roles: list[AgentRole]
+    flow_type: str
+    max_rounds: int = 3</code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>패턴 ID</th>
+            <th>flow_type</th>
+            <th>실행 함수</th>
+            <th>역할 구조</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>debate-critic</code></td>
+            <td><code>sequential_rounds</code></td>
+            <td><code>_run_sequential_rounds()</code></td>
+            <td>Proposer, Opponent, Critic, Synthesizer, Scribe</td>
+          </tr>
+          <tr>
+            <td><code>generator-evaluator</code></td>
+            <td><code>feedback_loop</code></td>
+            <td><code>_run_feedback_loop()</code></td>
+            <td>Generator, Evaluator, Refiner, Scribe</td>
+          </tr>
+          <tr>
+            <td><code>leadership</code></td>
+            <td><code>fan_out_sequential</code></td>
+            <td><code>_run_fan_out_sequential()</code></td>
+            <td>CEO, CTO, CISO, CFO, CPO, ChiefOfStaff</td>
+          </tr>
+          <tr>
+            <td><code>planner-executor</code></td>
+            <td><code>sequential_tasks</code></td>
+            <td><code>_run_sequential_tasks()</code></td>
+            <td>Planner, Executor, Validator, Scribe</td>
+          </tr>
+          <tr>
+            <td><code>research-report</code></td>
+            <td><code>research_loop</code></td>
+            <td><code>_run_research_loop()</code></td>
+            <td>Researcher, Reasoner, Reporter</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>9.2 에이전트 실행 단위</h3>
+      <p>
+        <code>_stream_agent()</code>는 하나의 역할을 하나의 Copilot session으로 실행하고,
+        session delta를 Agent Teams SSE 이벤트로 변환한다.
+      </p>
+
+      <pre><code>async def _stream_agent(role: AgentRole, prompt: str, context: str, round_num: int | None = None):
+    client = get_client()
+    sys_content = role.system_prompt + "\n\nContext:\n" + context
+    session = await client.create_session(
+        on_permission_request=PermissionHandler.approve_all,
+        system_message={"mode": "replace", "content": sys_content},
+        streaming=True,
+        available_tools=[],
+    )
+    await session.send(prompt)
+    yield {"type": "AGENT_STARTED", "agent_role": f"{role.emoji} {role.name}"}</code></pre>
+
+      <h3>9.3 팀 히스토리</h3>
+      <p>
+        <code>_teams_history</code>는 <code>thread_id</code>별 이전 실행 결과를 최대 10개 보관한다.
+        다음 실행 시 <code>Previous team discussions</code> 컨텍스트로 삽입된다.
+      </p>
+
+      <pre><code>_teams_history: dict[str, list[str]] = {}
+_MAX_HISTORY_TURNS = 10
+
+def _append_history(thread_id: str | None, run_summary: str) -> None:
+    if not thread_id:
+        return
+    _teams_history.setdefault(thread_id, []).append(run_summary)
+    if len(_teams_history[thread_id]) &gt; _MAX_HISTORY_TURNS:
+        _teams_history[thread_id] = _teams_history[thread_id][-_MAX_HISTORY_TURNS:]</code></pre>
+
+      <div class="warning">
+        <strong>제한:</strong> 팀 히스토리는 in-memory이므로 서버 재시작 또는 scale-out 시 공유되지 않는다.
+        장기 대화/운영 안정성이 필요하면 Redis, Cosmos DB, Azure Table Storage 같은 외부 저장소가 필요하다.
+      </div>
+    </section>
+
+    <section id="frontend">
+      <h2>10. 프론트엔드 상세 설계</h2>
+
+      <h3>10.1 최상위 레이아웃</h3>
+      <p>
+        <code>App.tsx</code>는 좌측 팀 패턴 사이드바와 우측 채팅 인터페이스를 배치한다.
+        테마는 <code>useTheme()</code>로 초기화되며, 앱 시작 시 logger에 endpoint와 theme가 기록된다.
+      </p>
+
+      <pre><code>function App() {
+  const { currentTheme } = useTheme();
+
+  useEffect(() =&gt; {
+    logger.info('Application started', {
+      environment: import.meta.env.MODE,
+      endpoint: getApiBaseUrl(),
+      theme: currentTheme,
+    });
+  }, [currentTheme]);
+
+  return (
+    &lt;div className="min-h-screen bg-primary flex"&gt;
+      &lt;TeamsSidebar /&gt;
+      &lt;div className="flex-1 flex flex-col h-screen"&gt;
+        &lt;ChatInterface /&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+
+      <h3>10.2 API endpoint 결정</h3>
+      <pre><code>export function getApiBaseUrl(): string {
+  return import.meta.env.VITE_AGUI_ENDPOINT || '/api';
+}</code></pre>
+
+      <p>
+        개발/운영 모두 기본값 <code>/api</code>를 사용하므로 프론트엔드 코드는 환경별 백엔드 URL을
+        직접 알 필요가 없다. 개발에서는 Vite proxy, 운영에서는 nginx proxy가 실제 백엔드로 전달한다.
+      </p>
+
+      <h3>10.3 상태 저장소 분리</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Store</th>
+            <th>파일</th>
+            <th>상태</th>
+            <th>용도</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Chat Store</td>
+            <td><code>stores/chatStore.ts</code></td>
+            <td><code>currentThread</code>, <code>messages</code>, <code>streamingState</code>, <code>connection</code></td>
+            <td>일반 채팅 UI 상태</td>
+          </tr>
+          <tr>
+            <td>Teams Store</td>
+            <td><code>stores/teamsStore.ts</code></td>
+            <td><code>patterns</code>, <code>selectedPattern</code>, <code>teamsMessages</code>, <code>threadId</code></td>
+            <td>Agent Teams UI 상태</td>
+          </tr>
+          <tr>
+            <td>Theme Store/Hook</td>
+            <td><code>hooks/useTheme.ts</code>, <code>types/theme.ts</code></td>
+            <td>현재 테마</td>
+            <td>채팅 테마 선택</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="frontend-code">
+      <h2>11. 프론트엔드 코드 레벨 매핑</h2>
+
+      <h3>11.1 일반 채팅 전송</h3>
+      <p>
+        <code>useChat.sendMessage()</code>는 메시지 생성, 최신 store snapshot 확보, AG-UI message 변환,
+        첨부 metadata 변환, SSE 이벤트별 상태 업데이트까지 담당한다.
+      </p>
+
+      <pre><code>const priorMessages = useChatStore.getState().messages;
+addMessage(userMessage);
+
+const aguiMessages = [...priorMessages, userMessage]
+  .filter((m) =&gt; m.role === 'user' || m.role === 'assistant')
+  .map((m) =&gt; ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+  }));</code></pre>
+
+      <h4>이벤트별 UI 상태 변경</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>SSE 이벤트</th>
+            <th><code>useChat</code> 처리</th>
+            <th>UI 효과</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>RUN_STARTED</code></td>
+            <td><code>isStreaming=true</code>, buffer 초기화</td>
+            <td>스트리밍 응답 버블 준비</td>
+          </tr>
+          <tr>
+            <td><code>TEXT_MESSAGE_START</code></td>
+            <td><code>assistantContent=""</code></td>
+            <td>assistant 응답 누적 시작</td>
+          </tr>
+          <tr>
+            <td><code>TEXT_MESSAGE_CONTENT</code></td>
+            <td>delta를 <code>assistantContent</code>와 streaming buffer에 누적</td>
+            <td>실시간 토큰 렌더링</td>
+          </tr>
+          <tr>
+            <td><code>TEXT_MESSAGE_END</code></td>
+            <td>assistant 메시지를 <code>messages</code>에 commit</td>
+            <td>완성 메시지로 전환</td>
+          </tr>
+          <tr>
+            <td><code>RUN_FINISHED</code></td>
+            <td>streaming state 정리</td>
+            <td>입력 가능 상태 복구</td>
+          </tr>
+          <tr>
+            <td><code>RUN_ERROR</code></td>
+            <td>logger 기록, 누적 content 초기화</td>
+            <td>오류 상태 표시 가능</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>11.2 AGUIClient</h3>
+      <p>
+        <code>AGUIClient.sendMessage()</code>는 fetch 요청과 SSE stream 처리를 담당한다.
+        요청마다 correlation id를 생성하고 <code>X-Correlation-ID</code> header로 전달한다.
+      </p>
+
+      <pre><code>const response = await fetch(`${this.baseUrl}/`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Correlation-ID': correlationId,
+  },
+  body: JSON.stringify(request),
+});</code></pre>
+
+      <p>
+        stream이 닫혔는데 <code>RUN_FINISHED</code>가 수신되지 않으면 protocol violation으로 보고
+        caller에 <code>ERROR</code> 이벤트를 전달한다.
+      </p>
+
+      <h3>11.3 Teams Hook</h3>
+      <p>
+        <code>useTeams()</code>는 mount 시 <code>/v1/patterns</code>를 호출해 패턴 목록을 가져오고,
+        사용자가 실행하면 <code>/v1/teams/stream</code>을 직접 읽어 이벤트별로 store를 갱신한다.
+      </p>
+
+      <pre><code>fetch(`${baseUrl}/v1/patterns`)
+  .then((res) =&gt; {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  })
+  .then((data: unknown) =&gt; {
+    if (Array.isArray(data)) {
+      setPatterns(data);
+    }
+  });</code></pre>
+
+      <h3>11.4 업로드 클라이언트</h3>
+      <p>
+        <code>fileUploadService.uploadFile()</code>는 progress event가 필요한 이유로 <code>XMLHttpRequest</code>를 사용한다.
+      </p>
+
+      <pre><code>xhr.upload.addEventListener('progress', (event) =&gt; {
+  if (event.lengthComputable &amp;&amp; onProgress) {
+    const percent = Math.round((event.loaded / event.total) * 100);
+    onProgress(percent);
+  }
+});</code></pre>
+    </section>
+
+    <section id="data-model">
+      <h2>12. 데이터 모델 및 이벤트 스키마</h2>
+
+      <h3>12.1 백엔드 Pydantic 모델</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>모델</th>
+            <th>주요 필드</th>
+            <th>검증/제약</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>FleetRequest</code></td>
+            <td><code>items: list[FleetItem]</code>, <code>callback_url</code></td>
+            <td><code>min_length=1</code>, <code>max_length=20</code></td>
+          </tr>
+          <tr>
+            <td><code>InfiniteSessionRequest</code></td>
+            <td><code>prompt</code>, <code>iterations</code>, <code>system_message</code></td>
+            <td><code>iterations</code>: 1~10</td>
+          </tr>
+          <tr>
+            <td><code>FileAttachment</code></td>
+            <td><code>blob_name</code>, <code>original_filename</code>, <code>content_type</code>, <code>size_bytes</code></td>
+            <td><code>size_bytes</code>: 1~10,485,760</td>
+          </tr>
+          <tr>
+            <td><code>TeamsRequest</code></td>
+            <td><code>pattern_id</code>, <code>prompt</code>, <code>max_rounds</code>, <code>thread_id</code>, <code>attachments</code></td>
+            <td><code>max_rounds</code>: 1~10</td>
+          </tr>
+          <tr>
+            <td><code>JobStatusResponse</code></td>
+            <td><code>job_id</code>, <code>status</code>, <code>result</code>, <code>results</code>, <code>error</code></td>
+            <td>작업 상태 조회 응답</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>12.2 프론트엔드 TypeScript 타입</h3>
+      <pre><code>export interface Message {
+  id: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string;
+  timestamp: Date;
+  threadId: string;
+  toolCalls?: ToolCall[];
+  metadata?: MessageMetadata;
+  attachments?: FileAttachment[];
+}</code></pre>
+
+      <pre><code>export interface FileAttachment {
+  blobName: string;
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: number;
+}</code></pre>
+
+      <pre><code>export interface TeamsEvent {
+  type:
+    | 'TEAMS_STARTED'
+    | 'AGENT_STARTED'
+    | 'AGENT_MESSAGE_DELTA'
+    | 'AGENT_MESSAGE_END'
+    | 'ROUND_COMPLETED'
+    | 'TEAMS_FINISHED'
+    | 'TEAMS_ERROR';
+  agent_role?: string;
+  round?: number;
+  delta?: string;
+  content?: string;
+  pattern_id?: string;
+  run_id?: string;
+  converged?: boolean;
+  summary?: string;
+  message?: string;
+}</code></pre>
+
+      <h3>12.3 저장 위치별 영속성</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>데이터</th>
+            <th>저장 위치</th>
+            <th>영속성</th>
+            <th>코드</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>채팅 메시지</td>
+            <td>브라우저 Zustand memory</td>
+            <td>새로고침 시 소실</td>
+            <td><code>chatStore.ts</code></td>
+          </tr>
+          <tr>
+            <td>Copilot 세션</td>
+            <td>백엔드 <code>SessionPool</code> + SDK resume</td>
+            <td>프로세스/SDK 상태에 의존</td>
+            <td><code>state.py</code></td>
+          </tr>
+          <tr>
+            <td>비동기 job</td>
+            <td>백엔드 <code>_jobs</code> dict</td>
+            <td>프로세스 재시작 시 소실</td>
+            <td><code>jobs.py</code></td>
+          </tr>
+          <tr>
+            <td>Teams history</td>
+            <td>백엔드 <code>_teams_history</code> dict</td>
+            <td>프로세스 재시작 시 소실</td>
+            <td><code>orchestrator.py</code></td>
+          </tr>
+          <tr>
+            <td>업로드 파일</td>
+            <td>Azure Blob Storage</td>
+            <td>영속</td>
+            <td><code>blob_storage.py</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="deployment">
+      <h2>13. 배포/인프라 설계</h2>
+
+      <h3>13.1 Dockerfile.appservice</h3>
+      <p>
+        운영 이미지는 multi-stage build로 구성된다. frontend build stage에서 Vite 정적 산출물을 만들고,
+        Python backend stage에서 uv로 Python 의존성을 설치한 뒤, final stage에서 nginx와 supervisor를
+        설정한다.
+      </p>
+
+      <pre class="diagram">Stage 1: node:20-alpine
+  WORKDIR /app/frontend
+  npm ci
+  VITE_AGUI_ENDPOINT=/api npm run build
+
+Stage 2: python:3.12-slim
+  install curl/gcc/nginx/supervisor
+  copy uv
+  uv sync --frozen --no-dev
+  copy backend app
+
+Final:
+  copy frontend dist -> /usr/share/nginx/html
+  nginx listens :8080
+  /api/ -> http://127.0.0.1:5100/
+  /health -> http://127.0.0.1:5100/health
+  supervisor starts nginx and backend</pre>
+
+      <h3>13.2 nginx 경로 설계</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>외부 경로</th>
+            <th>nginx 처리</th>
+            <th>백엔드 도달 경로</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/</code>, SPA route</td>
+            <td><code>try_files $uri $uri/ /index.html</code></td>
+            <td>백엔드 미도달</td>
+          </tr>
+          <tr>
+            <td><code>/api/</code></td>
+            <td><code>proxy_pass http://127.0.0.1:5100/</code></td>
+            <td><code>/</code></td>
+          </tr>
+          <tr>
+            <td><code>/api/v1/files/upload</code></td>
+            <td><code>/api</code> prefix 제거</td>
+            <td><code>/v1/files/upload</code></td>
+          </tr>
+          <tr>
+            <td><code>/health</code></td>
+            <td>backend health로 proxy</td>
+            <td><code>/health</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>13.3 Terraform 리소스</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>모듈/리소스</th>
+            <th>역할</th>
+            <th>설계 포인트</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>acr</code></td>
+            <td>컨테이너 이미지 저장소</td>
+            <td>admin disabled, App Service managed identity에 AcrPull</td>
+          </tr>
+          <tr>
+            <td><code>app-service-plan</code></td>
+            <td>Linux App Service compute</td>
+            <td>기본 SKU P1v3</td>
+          </tr>
+          <tr>
+            <td><code>app-service</code></td>
+            <td>웹 앱 런타임</td>
+            <td><code>WEBSITES_PORT=8080</code>, managed identity, VNet integration</td>
+          </tr>
+          <tr>
+            <td><code>storage</code></td>
+            <td>업로드 Blob 저장</td>
+            <td>public network off, shared key off 기본값</td>
+          </tr>
+          <tr>
+            <td><code>network</code></td>
+            <td>VNet/subnet</td>
+            <td>App integration subnet과 private endpoint subnet 분리</td>
+          </tr>
+          <tr>
+            <td><code>log-analytics</code></td>
+            <td>로그/모니터링</td>
+            <td>기본 retention 30일</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>13.4 GitHub Actions</h3>
+      <ul>
+        <li><code>ci.yml</code>: Python 3.12, uv sync, ruff, pytest 실행</li>
+        <li><code>deploy.yml</code>: Azure OIDC 로그인, Docker build/push, App Service 배포, health check</li>
+        <li>이미지 tag는 commit SHA와 <code>latest</code>를 함께 사용한다.</li>
+        <li>정적 인프라 설정은 Terraform, secret 기반 설정은 deploy workflow가 담당한다.</li>
+      </ul>
+    </section>
+
+    <section id="security">
+      <h2>14. 보안 설계</h2>
+
+      <h3>14.1 인증과 권한</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>대상</th>
+            <th>방식</th>
+            <th>코드/설정</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GitHub Copilot SDK 로컬 인증</td>
+            <td>GitHub CLI 인증 상태 사용</td>
+            <td><code>gh auth login</code>, <code>GITHUB_TOKEN</code> 미설정 가능</td>
+          </tr>
+          <tr>
+            <td>GitHub Copilot SDK 운영 인증</td>
+            <td>App Service env <code>GITHUB_TOKEN</code></td>
+            <td><code>deploy.yml</code>에서 <code>COPILOT_GITHUB_TOKEN</code> 주입</td>
+          </tr>
+          <tr>
+            <td>Azure 배포 인증</td>
+            <td>GitHub Actions OIDC</td>
+            <td><code>azure/login@v2</code></td>
+          </tr>
+          <tr>
+            <td>ACR pull</td>
+            <td>App Service managed identity</td>
+            <td>Terraform <code>AcrPull</code> role assignment</td>
+          </tr>
+          <tr>
+            <td>Blob 접근</td>
+            <td><code>DefaultAzureCredential</code></td>
+            <td>managed identity/Entra ID 기반</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>14.2 권한 승인 정책</h3>
+      <div class="warning">
+        <strong>중요:</strong> 현재 Copilot session 생성 시 <code>PermissionHandler.approve_all</code>이 사용된다.
+        단, <code>available_tools=[]</code>로 도구 목록은 비워져 있다. 향후 외부 도구 실행을 활성화한다면
+        approve-all 정책은 반드시 재검토해야 한다.
+      </div>
+
+      <h3>14.3 업로드 방어</h3>
+      <ul>
+        <li>확장자와 MIME allow-list를 모두 검사한다.</li>
+        <li>generic MIME은 확장자를 기준으로 보정한다.</li>
+        <li>파일 크기 10MB 제한과 빈 파일 거부가 있다.</li>
+        <li>파일명에서 경로 컴포넌트와 unsafe 문자를 제거한다.</li>
+        <li>Blob name에 UUID prefix를 붙여 충돌을 방지한다.</li>
+      </ul>
+    </section>
+
+    <section id="observability">
+      <h2>15. 로깅/관측성</h2>
+
+      <h3>15.1 백엔드 로깅</h3>
+      <p>
+        <code>logging_utils.py</code>는 <code>copilot_api</code> logger를 만들고 stdout handler를 등록한다.
+        <code>CorrelationFilter</code>가 log record에 <code>correlation_id</code>를 주입한다.
+      </p>
+
+      <pre><code>correlation_id: ContextVar[str] = ContextVar("correlation_id", default="")
+
+class CorrelationFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.correlation_id = correlation_id.get("")
+        return True</code></pre>
+
+      <h3>15.2 프론트엔드 correlation</h3>
+      <p>
+        프론트엔드 <code>AGUIClient</code>는 요청마다 correlation id를 생성해 header에 추가한다.
+        현재 백엔드에서 이 header를 contextvar에 자동 연결하는 미들웨어는 별도로 보이지 않으므로,
+        end-to-end correlation을 강화하려면 <code>X-Correlation-ID</code>를 읽어
+        <code>correlation_id.set(...)</code>하는 FastAPI 미들웨어 추가가 필요하다.
+      </p>
+
+      <h3>15.3 Azure Monitor</h3>
+      <p>
+        <code>observability.py</code>는 <code>APPLICATIONINSIGHTS_CONNECTION_STRING</code>이 있을 때만
+        <code>configure_azure_monitor()</code>를 호출한다. 환경 변수가 없으면 로컬 개발 모드로 no-op이다.
+      </p>
+
+      <pre><code>connection_string = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
+if not connection_string:
+    logger.info("APPLICATIONINSIGHTS_CONNECTION_STRING not set; tracing disabled")
+    return False
+
+os.environ.setdefault("OTEL_SERVICE_NAME", "agentic-devops-starter")
+configure_azure_monitor(connection_string=connection_string)</code></pre>
+    </section>
+
+    <section id="limitations">
+      <h2>16. 제한 사항과 개선 후보</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>현재 설계</th>
+            <th>제한/리스크</th>
+            <th>개선 후보</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>_jobs</code> in-memory dict</td>
+            <td>재시작/scale-out 시 작업 상태 유실</td>
+            <td>Azure Queue/Service Bus + Table/Cosmos DB</td>
+          </tr>
+          <tr>
+            <td><code>_teams_history</code> in-memory dict</td>
+            <td>인스턴스 간 팀 대화 이력 공유 불가</td>
+            <td>Redis 또는 Cosmos DB 기반 shared history</td>
+          </tr>
+          <tr>
+            <td>브라우저 memory 기반 chat store</td>
+            <td>새로고침 시 메시지 유실</td>
+            <td>localStorage persistence 또는 서버 저장 API</td>
+          </tr>
+          <tr>
+            <td>첨부 파일 전체 내용을 prompt에 삽입</td>
+            <td>큰 파일/바이너리의 토큰 비용과 응답 품질 문제</td>
+            <td>텍스트 추출, 요약, chunking, RAG pipeline</td>
+          </tr>
+          <tr>
+            <td><code>PermissionHandler.approve_all</code></td>
+            <td>향후 도구 활성화 시 과도한 권한 승인 가능</td>
+            <td>도구별 allow-list와 사용자 승인 flow</td>
+          </tr>
+          <tr>
+            <td>Terraform local state 예시</td>
+            <td>팀 협업 시 state 충돌 가능</td>
+            <td>Azure Storage remote backend 구성</td>
+          </tr>
+          <tr>
+            <td>Chat/Teams SSE parser 분리</td>
+            <td>중복 parsing 로직 유지보수 비용</td>
+            <td>공통 SSE parser utility로 통합</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>16.1 우선순위 높은 개선</h3>
+      <ol>
+        <li>백엔드 correlation middleware 추가로 프론트엔드 <code>X-Correlation-ID</code>와 로그 연결</li>
+        <li>Job/Teams history 외부 저장소 도입으로 scale-out 대응</li>
+        <li>파일 첨부 전처리 pipeline 추가로 prompt 크기와 품질 관리</li>
+        <li>Agent Teams 이벤트 contract를 OpenAPI 또는 별도 schema로 고정</li>
+        <li>Terraform remote backend와 운영 monitoring/alert rule 문서화</li>
+      </ol>
+
+      <div class="good">
+        <strong>현재 구조의 장점:</strong> 단일 프로세스/단일 App Service 인스턴스 기준으로는 구성요소가 단순하고,
+        기능별 코드 책임이 비교적 명확하다. 실습/스타터 프로젝트로서 로컬 개발, 컨테이너 배포, Azure 인프라,
+        GitHub Actions CI/CD까지 한 흐름으로 파악하기 좋다.
+      </div>
+    </section>
+  </main>
+</body>
+</html>
