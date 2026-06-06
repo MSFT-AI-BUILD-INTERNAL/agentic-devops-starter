@@ -166,6 +166,8 @@ by frontend/proxy layers.
 | `COPILOT_API_SESSION_TIMEOUT` | No | `120.0` | Idle session timeout in seconds |
 | `COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT` | File upload | unset | Blob endpoint, for example `https://<account>.blob.core.windows.net` |
 | `COPILOT_API_AZURE_STORAGE_CONTAINER_NAME` | No | `uploads` | Upload container name |
+| `COPILOT_API_SKILL_DIRECTORIES` | No | unset | Extra directories (`os.pathsep`- or comma-separated) scanned for Agent Skills (`SKILL.md`), in addition to built-in `app/skills/` |
+| `COPILOT_API_DISABLED_SKILLS` | No | unset | Comma-separated skill names to disable |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | No | unset | Enables Azure Monitor OpenTelemetry export |
 | `OTEL_SERVICE_NAME` | No | `agentic-devops-starter` | OpenTelemetry service name |
 | `VITE_AGUI_ENDPOINT` | No | `/api` | Frontend API base URL |

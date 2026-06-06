@@ -244,6 +244,7 @@
         <li><a href="#upload">파일 업로드/Blob 설계</a></li>
         <li><a href="#jobs">Fleet/Infinite Session 작업 설계</a></li>
         <li><a href="#teams">Agent Teams 설계</a></li>
+        <li><a href="#skills">Agent Skills 설계</a></li>
         <li><a href="#frontend">프론트엔드 상세 설계</a></li>
         <li><a href="#frontend-code">프론트엔드 코드 레벨 매핑</a></li>
         <li><a href="#data-model">데이터 모델 및 이벤트 스키마</a></li>
@@ -477,6 +478,11 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
             <td><code>app/src/patterns.py</code></td>
             <td><code>Pattern</code>, <code>AgentRole</code>, <code>PATTERNS</code></td>
             <td>Agent Team 패턴과 역할별 system prompt 정의</td>
+          </tr>
+          <tr>
+            <td><code>app/src/skills.py</code></td>
+            <td><code>load_skills()</code>, <code>get_skill_directories()</code>, <code>get_disabled_skills()</code></td>
+            <td>SKILL.md 디렉터리 디스커버리 및 SDK 전달용 경로 해석</td>
           </tr>
           <tr>
             <td><code>app/src/blob_storage.py</code></td>
@@ -962,6 +968,8 @@ class Pattern(BaseModel):
         system_message={"mode": "replace", "content": sys_content},
         streaming=True,
         available_tools=[],
+        skill_directories=get_skill_directories(),
+        disabled_skills=get_disabled_skills(),
     )
     await session.send(prompt)
     yield {"type": "AGENT_STARTED", "agent_role": f"{role.emoji} {role.name}"}</code></pre>
@@ -988,10 +996,122 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
       </div>
     </section>
 
-    <section id="frontend">
-      <h2>10. 프론트엔드 상세 설계</h2>
+    <section id="skills">
+      <h2>10. Agent Skills 설계</h2>
+      <p>
+        Agent Skills는 open <a href="https://github.com/anthropics/skills">SKILL.md</a> 포맷으로 작성된
+        디스크 상의 스킬을 Copilot SDK에 전달해, <strong>에이전트(모델)가 사용자 turn에 따라 스스로 필요한
+        스킬을 선택해 적용</strong>하도록 하는 기능이다. 애플리케이션은 스킬을 직접 실행하거나 프롬프트에
+        통째로 주입하지 않는다. 단지 <code>SKILL.md</code>가 들어 있는 디렉터리 경로만 SDK에 넘기고,
+        <strong>로딩·라우팅·적용은 전적으로 SDK가 담당</strong>한다.
+      </p>
 
-      <h3>10.1 최상위 레이아웃</h3>
+      <h3>10.1 동작 원리 (Progressive Disclosure)</h3>
+      <p>
+        각 스킬은 <code>&lt;skill-name&gt;/SKILL.md</code> 형태의 폴더이며, YAML frontmatter
+        (<code>name</code>, <code>description</code>)와 Markdown 본문(지시문)으로 구성된다. SDK는 점진적
+        공개(progressive disclosure) 모델로 스킬을 다룬다.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>단계</th>
+            <th>동작</th>
+            <th>설계 의도</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>메타데이터 노출</td>
+            <td>모든 스킬의 <code>description</code>만 모델 컨텍스트에 노출</td>
+            <td>본문 전체를 항상 로드하지 않아 토큰 비용 최소화</td>
+          </tr>
+          <tr>
+            <td>자체 라우팅</td>
+            <td>모델이 사용자 turn과 <code>description</code>을 보고 관련 스킬을 스스로 선택</td>
+            <td>앱 코드가 분기하지 않고 에이전트가 판단</td>
+          </tr>
+          <tr>
+            <td>본문 on-demand 로드</td>
+            <td>선택된 스킬의 본문(instruction body)만 그때 로드</td>
+            <td>관련 없는 turn에서는 컨텍스트를 차지하지 않음</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        즉, <strong>전체 Context를 항상 로드하는 구조가 아니다.</strong> 상시 컨텍스트에 올라가는 것은 가벼운
+        <code>description</code> 메타데이터뿐이고, 무거운 본문은 모델이 관련성을 판단했을 때만 들어간다.
+        따라서 스킬을 추가해도 토큰 비용이 선형으로 폭증하지 않는다.
+      </p>
+
+      <h3>10.2 스킬 디스커버리</h3>
+      <p>
+        <code>src.skills.load_skills()</code>는 앱 시작 시 한 번 실행되어 스킬 디렉터리를 탐색·캐싱한다.
+        애플리케이션은 <strong>스킬 레지스트리가 아니다</strong> — 스킬을 API로 나열하거나 서빙하지 않으며,
+        SDK가 스캔할 파일시스템 경로만 결정한다.
+      </p>
+      <pre><code>def load_skills() -&gt; list[str]:
+    candidates = [_REPO_SKILLS_DIR, *_extra_directories_from_env()]
+    resolved = []
+    for directory in candidates:
+        if not _has_any_skill(directory):   # &lt;name&gt;/SKILL.md 존재 여부 확인
+            continue
+        resolved.append(str(directory))
+    return resolved</code></pre>
+      <table>
+        <thead>
+          <tr>
+            <th>소스</th>
+            <th>결정 방식</th>
+            <th>비고</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>내장 스킬</td>
+            <td><code>app/skills/</code> 디렉터리</td>
+            <td>저장소에 함께 배포되는 기본 스킬</td>
+          </tr>
+          <tr>
+            <td>추가 디렉터리</td>
+            <td><code>COPILOT_API_SKILL_DIRECTORIES</code> (<code>os.pathsep</code> 또는 <code>,</code> 구분)</td>
+            <td>운영 환경에서 외부 스킬 경로 주입</td>
+          </tr>
+          <tr>
+            <td>비활성화</td>
+            <td><code>COPILOT_API_DISABLED_SKILLS</code> (<code>,</code> 구분)</td>
+            <td>파일 삭제 없이 특정 스킬만 끄기</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>존재하지 않거나 <code>SKILL.md</code>가 없는 디렉터리는 오류가 아니라 조용히 건너뛴다.</p>
+
+      <h3>10.3 SDK 세션 연결</h3>
+      <p>
+        <code>orchestrator.py</code>의 모든 Copilot session 생성 지점은 <code>create_session()</code> 호출 시
+        <code>skill_directories</code>와 <code>disabled_skills</code> 인자를 전달한다. 이 계약 덕분에 일반
+        채팅과 Agent Teams 양쪽 세션 모두 동일하게 스킬을 활용할 수 있다.
+      </p>
+      <pre><code>session = await client.create_session(
+    on_permission_request=PermissionHandler.approve_all,
+    system_message={"mode": "replace", "content": sys_content},
+    streaming=True,
+    available_tools=[],
+    skill_directories=get_skill_directories(),
+    disabled_skills=get_disabled_skills(),
+)</code></pre>
+      <div class="warning">
+        <strong>전제:</strong> 위의 "자체 판단" 동작은 <code>github-copilot-sdk</code>의
+        <code>create_session(skill_directories=...)</code>가 progressive-disclosure 라우팅을 구현한다는 데
+        의존한다. 앱 코드는 경로 전달만 책임지고 라우팅은 SDK에 위임하므로, SDK가 SKILL.md 포맷을 지원하는 한
+        의도대로 동작한다.
+      </div>
+    </section>
+
+    <section id="frontend">
+      <h2>11. 프론트엔드 상세 설계</h2>
+
+      <h3>11.1 최상위 레이아웃</h3>
       <p>
         <code>App.tsx</code>는 좌측 팀 패턴 사이드바와 우측 채팅 인터페이스를 배치한다.
         테마는 <code>useTheme()</code>로 초기화되며, 앱 시작 시 logger에 endpoint와 theme가 기록된다.
@@ -1018,7 +1138,7 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
   );
 }</code></pre>
 
-      <h3>10.2 API endpoint 결정</h3>
+      <h3>11.2 API endpoint 결정</h3>
       <pre><code>export function getApiBaseUrl(): string {
   return import.meta.env.VITE_AGUI_ENDPOINT || '/api';
 }</code></pre>
@@ -1028,7 +1148,7 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
         직접 알 필요가 없다. 개발에서는 Vite proxy, 운영에서는 nginx proxy가 실제 백엔드로 전달한다.
       </p>
 
-      <h3>10.3 상태 저장소 분리</h3>
+      <h3>11.3 상태 저장소 분리</h3>
       <table>
         <thead>
           <tr>
@@ -1062,9 +1182,9 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
     </section>
 
     <section id="frontend-code">
-      <h2>11. 프론트엔드 코드 레벨 매핑</h2>
+      <h2>12. 프론트엔드 코드 레벨 매핑</h2>
 
-      <h3>11.1 일반 채팅 전송</h3>
+      <h3>12.1 일반 채팅 전송</h3>
       <p>
         <code>useChat.sendMessage()</code>는 메시지 생성, 최신 store snapshot 확보, AG-UI message 변환,
         첨부 metadata 변환, SSE 이벤트별 상태 업데이트까지 담당한다.
@@ -1124,7 +1244,7 @@ const aguiMessages = [...priorMessages, userMessage]
         </tbody>
       </table>
 
-      <h3>11.2 AGUIClient</h3>
+      <h3>12.2 AGUIClient</h3>
       <p>
         <code>AGUIClient.sendMessage()</code>는 fetch 요청과 SSE stream 처리를 담당한다.
         요청마다 correlation id를 생성하고 <code>X-Correlation-ID</code> header로 전달한다.
@@ -1144,7 +1264,7 @@ const aguiMessages = [...priorMessages, userMessage]
         caller에 <code>ERROR</code> 이벤트를 전달한다.
       </p>
 
-      <h3>11.3 Teams Hook</h3>
+      <h3>12.3 Teams Hook</h3>
       <p>
         <code>useTeams()</code>는 mount 시 <code>/v1/patterns</code>를 호출해 패턴 목록을 가져오고,
         사용자가 실행하면 <code>/v1/teams/stream</code>을 직접 읽어 이벤트별로 store를 갱신한다.
@@ -1161,7 +1281,7 @@ const aguiMessages = [...priorMessages, userMessage]
     }
   });</code></pre>
 
-      <h3>11.4 업로드 클라이언트</h3>
+      <h3>12.4 업로드 클라이언트</h3>
       <p>
         <code>fileUploadService.uploadFile()</code>는 progress event가 필요한 이유로 <code>XMLHttpRequest</code>를 사용한다.
       </p>
@@ -1175,9 +1295,9 @@ const aguiMessages = [...priorMessages, userMessage]
     </section>
 
     <section id="data-model">
-      <h2>12. 데이터 모델 및 이벤트 스키마</h2>
+      <h2>13. 데이터 모델 및 이벤트 스키마</h2>
 
-      <h3>12.1 백엔드 Pydantic 모델</h3>
+      <h3>13.1 백엔드 Pydantic 모델</h3>
       <table>
         <thead>
           <tr>
@@ -1215,7 +1335,7 @@ const aguiMessages = [...priorMessages, userMessage]
         </tbody>
       </table>
 
-      <h3>12.2 프론트엔드 TypeScript 타입</h3>
+      <h3>13.2 프론트엔드 TypeScript 타입</h3>
       <pre><code>export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -1254,7 +1374,7 @@ const aguiMessages = [...priorMessages, userMessage]
   message?: string;
 }</code></pre>
 
-      <h3>12.3 저장 위치별 영속성</h3>
+      <h3>13.3 저장 위치별 영속성</h3>
       <table>
         <thead>
           <tr>
@@ -1300,9 +1420,9 @@ const aguiMessages = [...priorMessages, userMessage]
     </section>
 
     <section id="deployment">
-      <h2>13. 배포/인프라 설계</h2>
+      <h2>14. 배포/인프라 설계</h2>
 
-      <h3>13.1 Dockerfile.appservice</h3>
+      <h3>14.1 Dockerfile.appservice</h3>
       <p>
         운영 이미지는 multi-stage build로 구성된다. frontend build stage에서 Vite 정적 산출물을 만들고,
         Python backend stage에서 uv로 Python 의존성을 설치한 뒤, final stage에서 nginx와 supervisor를
@@ -1327,7 +1447,7 @@ Final:
   /health -> http://127.0.0.1:5100/health
   supervisor starts nginx and backend</pre>
 
-      <h3>13.2 nginx 경로 설계</h3>
+      <h3>14.2 nginx 경로 설계</h3>
       <table>
         <thead>
           <tr>
@@ -1360,7 +1480,7 @@ Final:
         </tbody>
       </table>
 
-      <h3>13.3 Terraform 리소스</h3>
+      <h3>14.3 Terraform 리소스</h3>
       <table>
         <thead>
           <tr>
@@ -1403,7 +1523,7 @@ Final:
         </tbody>
       </table>
 
-      <h3>13.4 GitHub Actions</h3>
+      <h3>14.4 GitHub Actions</h3>
       <ul>
         <li><code>ci.yml</code>: Python 3.12, uv sync, ruff, pytest 실행</li>
         <li><code>deploy.yml</code>: Azure OIDC 로그인, Docker build/push, App Service 배포, health check</li>
@@ -1413,9 +1533,9 @@ Final:
     </section>
 
     <section id="security">
-      <h2>14. 보안 설계</h2>
+      <h2>15. 보안 설계</h2>
 
-      <h3>14.1 인증과 권한</h3>
+      <h3>15.1 인증과 권한</h3>
       <table>
         <thead>
           <tr>
@@ -1453,14 +1573,14 @@ Final:
         </tbody>
       </table>
 
-      <h3>14.2 권한 승인 정책</h3>
+      <h3>15.2 권한 승인 정책</h3>
       <div class="warning">
         <strong>중요:</strong> 현재 Copilot session 생성 시 <code>PermissionHandler.approve_all</code>이 사용된다.
         단, <code>available_tools=[]</code>로 도구 목록은 비워져 있다. 향후 외부 도구 실행을 활성화한다면
         approve-all 정책은 반드시 재검토해야 한다.
       </div>
 
-      <h3>14.3 업로드 방어</h3>
+      <h3>15.3 업로드 방어</h3>
       <ul>
         <li>확장자와 MIME allow-list를 모두 검사한다.</li>
         <li>generic MIME은 확장자를 기준으로 보정한다.</li>
@@ -1471,9 +1591,9 @@ Final:
     </section>
 
     <section id="observability">
-      <h2>15. 로깅/관측성</h2>
+      <h2>16. 로깅/관측성</h2>
 
-      <h3>15.1 백엔드 로깅</h3>
+      <h3>16.1 백엔드 로깅</h3>
       <p>
         <code>logging_utils.py</code>는 <code>copilot_api</code> logger를 만들고 stdout handler를 등록한다.
         <code>CorrelationFilter</code>가 log record에 <code>correlation_id</code>를 주입한다.
@@ -1486,7 +1606,7 @@ class CorrelationFilter(logging.Filter):
         record.correlation_id = correlation_id.get("")
         return True</code></pre>
 
-      <h3>15.2 프론트엔드 correlation</h3>
+      <h3>16.2 프론트엔드 correlation</h3>
       <p>
         프론트엔드 <code>AGUIClient</code>는 요청마다 correlation id를 생성해 header에 추가한다.
         현재 백엔드에서 이 header를 contextvar에 자동 연결하는 미들웨어는 별도로 보이지 않으므로,
@@ -1494,7 +1614,7 @@ class CorrelationFilter(logging.Filter):
         <code>correlation_id.set(...)</code>하는 FastAPI 미들웨어 추가가 필요하다.
       </p>
 
-      <h3>15.3 Azure Monitor</h3>
+      <h3>16.3 Azure Monitor</h3>
       <p>
         <code>observability.py</code>는 <code>APPLICATIONINSIGHTS_CONNECTION_STRING</code>이 있을 때만
         <code>configure_azure_monitor()</code>를 호출한다. 환경 변수가 없으면 로컬 개발 모드로 no-op이다.
@@ -1510,7 +1630,7 @@ configure_azure_monitor(connection_string=connection_string)</code></pre>
     </section>
 
     <section id="limitations">
-      <h2>16. 제한 사항과 개선 후보</h2>
+      <h2>17. 제한 사항과 개선 후보</h2>
 
       <table>
         <thead>
@@ -1559,7 +1679,7 @@ configure_azure_monitor(connection_string=connection_string)</code></pre>
         </tbody>
       </table>
 
-      <h3>16.1 우선순위 높은 개선</h3>
+      <h3>17.1 우선순위 높은 개선</h3>
       <ol>
         <li>백엔드 correlation middleware 추가로 프론트엔드 <code>X-Correlation-ID</code>와 로그 연결</li>
         <li>Job/Teams history 외부 저장소 도입으로 scale-out 대응</li>

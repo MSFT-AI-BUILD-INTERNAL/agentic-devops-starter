@@ -21,13 +21,14 @@
 7. [파일 업로드/Blob 설계](#7-파일-업로드blob-설계)
 8. [Fleet / Infinite Session 작업 설계](#8-fleet--infinite-session-작업-설계)
 9. [Agent Teams 설계](#9-agent-teams-설계)
-10. [프론트엔드 상세 설계](#10-프론트엔드-상세-설계)
-11. [프론트엔드 코드 레벨 매핑](#11-프론트엔드-코드-레벨-매핑)
-12. [데이터 모델 및 이벤트 스키마](#12-데이터-모델-및-이벤트-스키마)
-13. [배포/인프라 설계](#13-배포인프라-설계)
-14. [보안 설계](#14-보안-설계)
-15. [로깅/관측성](#15-로깅관측성)
-16. [제한 사항과 개선 후보](#16-제한-사항과-개선-후보)
+10. [Agent Skills 설계](#10-agent-skills-설계)
+11. [프론트엔드 상세 설계](#11-프론트엔드-상세-설계)
+12. [프론트엔드 코드 레벨 매핑](#12-프론트엔드-코드-레벨-매핑)
+13. [데이터 모델 및 이벤트 스키마](#13-데이터-모델-및-이벤트-스키마)
+14. [배포/인프라 설계](#14-배포인프라-설계)
+15. [보안 설계](#15-보안-설계)
+16. [로깅/관측성](#16-로깅관측성)
+17. [제한 사항과 개선 후보](#17-제한-사항과-개선-후보)
 
 ## 1. 시스템 개요
 
@@ -153,6 +154,7 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
 | `app/src/jobs.py` | `create_job()`, `run_fleet()`, `run_infinite_session()` | 메모리 기반 비동기 작업 관리 |
 | `app/src/orchestrator.py` | `run_teams()`, `_stream_agent()`, flow runner들 | 다중 역할 Copilot session 오케스트레이션 |
 | `app/src/patterns.py` | `Pattern`, `AgentRole`, `PATTERNS` | Agent Team 패턴과 역할별 system prompt 정의 |
+| `app/src/skills.py` | `load_skills()`, `get_skill_directories()`, `get_disabled_skills()` | SKILL.md 디렉터리 디스커버리 및 SDK 전달용 경로 해석 |
 | `app/src/blob_storage.py` | `BlobStorageService`, `get_blob_service()` | Azure Blob upload/download |
 | `app/src/file_validation.py` | `validate_file_type()`, `validate_file_size()`, `generate_blob_name()` | 파일 확장자/MIME/크기/파일명 sanitization |
 
@@ -436,6 +438,8 @@ async def _stream_agent(role: AgentRole, prompt: str, context: str, round_num: i
         system_message={"mode": "replace", "content": sys_content},
         streaming=True,
         available_tools=[],
+        skill_directories=get_skill_directories(),
+        disabled_skills=get_disabled_skills(),
     )
     await session.send(prompt)
     yield {"type": "AGENT_STARTED", "agent_role": f"{role.emoji} {role.name}"}
@@ -459,9 +463,65 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
 
 제한: 팀 히스토리는 in-memory이므로 서버 재시작 또는 scale-out 시 공유되지 않는다. 장기 대화/운영 안정성이 필요하면 Redis, Cosmos DB, Azure Table Storage 같은 외부 저장소가 필요하다.
 
-## 10. 프론트엔드 상세 설계
+## 10. Agent Skills 설계
 
-### 10.1 최상위 레이아웃
+Agent Skills는 open [SKILL.md](https://github.com/anthropics/skills) 포맷으로 작성된 디스크 상의 스킬을 Copilot SDK에 전달해, **에이전트(모델)가 사용자 turn에 따라 스스로 필요한 스킬을 선택해 적용**하도록 하는 기능이다. 애플리케이션은 스킬을 직접 실행하거나 프롬프트에 통째로 주입하지 않는다. 단지 `SKILL.md`가 들어 있는 디렉터리 경로만 SDK에 넘기고, **로딩·라우팅·적용은 전적으로 SDK가 담당**한다.
+
+### 10.1 동작 원리 (Progressive Disclosure)
+
+각 스킬은 `<skill-name>/SKILL.md` 형태의 폴더이며, YAML frontmatter(`name`, `description`)와 Markdown 본문(지시문)으로 구성된다. SDK는 점진적 공개(progressive disclosure) 모델로 스킬을 다룬다.
+
+| 단계 | 동작 | 설계 의도 |
+| --- | --- | --- |
+| 메타데이터 노출 | 모든 스킬의 `description`만 모델 컨텍스트에 노출 | 본문 전체를 항상 로드하지 않아 토큰 비용 최소화 |
+| 자체 라우팅 | 모델이 사용자 turn과 `description`을 보고 관련 스킬을 스스로 선택 | 앱 코드가 분기하지 않고 에이전트가 판단 |
+| 본문 on-demand 로드 | 선택된 스킬의 본문(instruction body)만 그때 로드 | 관련 없는 turn에서는 컨텍스트를 차지하지 않음 |
+
+즉, **전체 Context를 항상 로드하는 구조가 아니다.** 상시 컨텍스트에 올라가는 것은 가벼운 `description` 메타데이터뿐이고, 무거운 본문은 모델이 관련성을 판단했을 때만 들어간다. 따라서 스킬을 추가해도 토큰 비용이 선형으로 폭증하지 않는다.
+
+### 10.2 스킬 디스커버리
+
+`src.skills.load_skills()`는 앱 시작 시 한 번 실행되어 스킬 디렉터리를 탐색·캐싱한다. 애플리케이션은 **스킬 레지스트리가 아니다** — 스킬을 API로 나열하거나 서빙하지 않으며, SDK가 스캔할 파일시스템 경로만 결정한다.
+
+```
+def load_skills() -> list[str]:
+    candidates = [_REPO_SKILLS_DIR, *_extra_directories_from_env()]
+    resolved = []
+    for directory in candidates:
+        if not _has_any_skill(directory):   # <name>/SKILL.md 존재 여부 확인
+            continue
+        resolved.append(str(directory))
+    return resolved
+```
+
+| 소스 | 결정 방식 | 비고 |
+| --- | --- | --- |
+| 내장 스킬 | `app/skills/` 디렉터리 | 저장소에 함께 배포되는 기본 스킬 |
+| 추가 디렉터리 | `COPILOT_API_SKILL_DIRECTORIES` (`os.pathsep` 또는 `,` 구분) | 운영 환경에서 외부 스킬 경로 주입 |
+| 비활성화 | `COPILOT_API_DISABLED_SKILLS` (`,` 구분) | 파일 삭제 없이 특정 스킬만 끄기 |
+
+존재하지 않거나 `SKILL.md`가 없는 디렉터리는 오류가 아니라 조용히 건너뛴다.
+
+### 10.3 SDK 세션 연결
+
+`orchestrator.py`의 모든 Copilot session 생성 지점은 `create_session()` 호출 시 `skill_directories`와 `disabled_skills` 인자를 전달한다. 이 계약 덕분에 일반 채팅과 Agent Teams 양쪽 세션 모두 동일하게 스킬을 활용할 수 있다.
+
+```
+session = await client.create_session(
+    on_permission_request=PermissionHandler.approve_all,
+    system_message={"mode": "replace", "content": sys_content},
+    streaming=True,
+    available_tools=[],
+    skill_directories=get_skill_directories(),
+    disabled_skills=get_disabled_skills(),
+)
+```
+
+전제: 위의 "자체 판단" 동작은 `github-copilot-sdk`의 `create_session(skill_directories=...)`가 progressive-disclosure 라우팅을 구현한다는 데 의존한다. 앱 코드는 경로 전달만 책임지고 라우팅은 SDK에 위임하므로, SDK가 SKILL.md 포맷을 지원하는 한 의도대로 동작한다.
+
+## 11. 프론트엔드 상세 설계
+
+### 11.1 최상위 레이아웃
 
 `App.tsx`는 좌측 팀 패턴 사이드바와 우측 채팅 인터페이스를 배치한다. 테마는 `useTheme()`로 초기화되며, 앱 시작 시 logger에 endpoint와 theme가 기록된다.
 
@@ -488,7 +548,7 @@ function App() {
 }
 ```
 
-### 10.2 API endpoint 결정
+### 11.2 API endpoint 결정
 
 ```
 export function getApiBaseUrl(): string {
@@ -498,7 +558,7 @@ export function getApiBaseUrl(): string {
 
 개발/운영 모두 기본값 `/api`를 사용하므로 프론트엔드 코드는 환경별 백엔드 URL을 직접 알 필요가 없다. 개발에서는 Vite proxy, 운영에서는 nginx proxy가 실제 백엔드로 전달한다.
 
-### 10.3 상태 저장소 분리
+### 11.3 상태 저장소 분리
 
 | Store | 파일 | 상태 | 용도 |
 | --- | --- | --- | --- |
@@ -506,9 +566,9 @@ export function getApiBaseUrl(): string {
 | Teams Store | `stores/teamsStore.ts` | `patterns`, `selectedPattern`, `teamsMessages`, `threadId` | Agent Teams UI 상태 |
 | Theme Store/Hook | `hooks/useTheme.ts`, `types/theme.ts` | 현재 테마 | 채팅 테마 선택 |
 
-## 11. 프론트엔드 코드 레벨 매핑
+## 12. 프론트엔드 코드 레벨 매핑
 
-### 11.1 일반 채팅 전송
+### 12.1 일반 채팅 전송
 
 `useChat.sendMessage()`는 메시지 생성, 최신 store snapshot 확보, AG-UI message 변환, 첨부 metadata 변환, SSE 이벤트별 상태 업데이트까지 담당한다.
 
@@ -536,7 +596,7 @@ const aguiMessages = [...priorMessages, userMessage]
 | `RUN_FINISHED` | streaming state 정리 | 입력 가능 상태 복구 |
 | `RUN_ERROR` | logger 기록, 누적 content 초기화 | 오류 상태 표시 가능 |
 
-### 11.2 AGUIClient
+### 12.2 AGUIClient
 
 `AGUIClient.sendMessage()`는 fetch 요청과 SSE stream 처리를 담당한다. 요청마다 correlation id를 생성하고 `X-Correlation-ID` header로 전달한다.
 
@@ -553,7 +613,7 @@ const response = await fetch(`${this.baseUrl}/`, {
 
 stream이 닫혔는데 `RUN_FINISHED`가 수신되지 않으면 protocol violation으로 보고 caller에 `ERROR` 이벤트를 전달한다.
 
-### 11.3 Teams Hook
+### 12.3 Teams Hook
 
 `useTeams()`는 mount 시 `/v1/patterns`를 호출해 패턴 목록을 가져오고, 사용자가 실행하면 `/v1/teams/stream`을 직접 읽어 이벤트별로 store를 갱신한다.
 
@@ -570,7 +630,7 @@ fetch(`${baseUrl}/v1/patterns`)
   });
 ```
 
-### 11.4 업로드 클라이언트
+### 12.4 업로드 클라이언트
 
 `fileUploadService.uploadFile()`는 progress event가 필요한 이유로 `XMLHttpRequest`를 사용한다.
 
@@ -583,9 +643,9 @@ xhr.upload.addEventListener('progress', (event) => {
 });
 ```
 
-## 12. 데이터 모델 및 이벤트 스키마
+## 13. 데이터 모델 및 이벤트 스키마
 
-### 12.1 백엔드 Pydantic 모델
+### 13.1 백엔드 Pydantic 모델
 
 | 모델 | 주요 필드 | 검증/제약 |
 | --- | --- | --- |
@@ -595,7 +655,7 @@ xhr.upload.addEventListener('progress', (event) => {
 | `TeamsRequest` | `pattern_id`, `prompt`, `max_rounds`, `thread_id`, `attachments` | `max_rounds`: 1~10 |
 | `JobStatusResponse` | `job_id`, `status`, `result`, `results`, `error` | 작업 상태 조회 응답 |
 
-### 12.2 프론트엔드 TypeScript 타입
+### 13.2 프론트엔드 TypeScript 타입
 
 ```
 export interface Message {
@@ -641,7 +701,7 @@ export interface TeamsEvent {
 }
 ```
 
-### 12.3 저장 위치별 영속성
+### 13.3 저장 위치별 영속성
 
 | 데이터 | 저장 위치 | 영속성 | 코드 |
 | --- | --- | --- | --- |
@@ -651,9 +711,9 @@ export interface TeamsEvent {
 | Teams history | 백엔드 `_teams_history` dict | 프로세스 재시작 시 소실 | `orchestrator.py` |
 | 업로드 파일 | Azure Blob Storage | 영속 | `blob_storage.py` |
 
-## 13. 배포/인프라 설계
+## 14. 배포/인프라 설계
 
-### 13.1 Dockerfile.appservice
+### 14.1 Dockerfile.appservice
 
 운영 이미지는 multi-stage build로 구성된다. frontend build stage에서 Vite 정적 산출물을 만들고, Python backend stage에서 uv로 Python 의존성을 설치한 뒤, final stage에서 nginx와 supervisor를 설정한다.
 
@@ -677,7 +737,7 @@ Final:
   supervisor starts nginx and backend
 ```
 
-### 13.2 nginx 경로 설계
+### 14.2 nginx 경로 설계
 
 | 외부 경로 | nginx 처리 | 백엔드 도달 경로 |
 | --- | --- | --- |
@@ -686,7 +746,7 @@ Final:
 | `/api/v1/files/upload` | `/api` prefix 제거 | `/v1/files/upload` |
 | `/health` | backend health로 proxy | `/health` |
 
-### 13.3 Terraform 리소스
+### 14.3 Terraform 리소스
 
 | 모듈/리소스 | 역할 | 설계 포인트 |
 | --- | --- | --- |
@@ -697,16 +757,16 @@ Final:
 | `network` | VNet/subnet | App integration subnet과 private endpoint subnet 분리 |
 | `log-analytics` | 로그/모니터링 | 기본 retention 30일 |
 
-### 13.4 GitHub Actions
+### 14.4 GitHub Actions
 
 - `ci.yml`: Python 3.12, uv sync, ruff, pytest 실행
 - `deploy.yml`: Azure OIDC 로그인, Docker build/push, App Service 배포, health check
 - 이미지 tag는 commit SHA와 `latest`를 함께 사용한다.
 - 정적 인프라 설정은 Terraform, secret 기반 설정은 deploy workflow가 담당한다.
 
-## 14. 보안 설계
+## 15. 보안 설계
 
-### 14.1 인증과 권한
+### 15.1 인증과 권한
 
 | 대상 | 방식 | 코드/설정 |
 | --- | --- | --- |
@@ -716,11 +776,11 @@ Final:
 | ACR pull | App Service managed identity | Terraform `AcrPull` role assignment |
 | Blob 접근 | `DefaultAzureCredential` | managed identity/Entra ID 기반 |
 
-### 14.2 권한 승인 정책
+### 15.2 권한 승인 정책
 
 중요: 현재 Copilot session 생성 시 `PermissionHandler.approve_all`이 사용된다. 단, `available_tools=[]`로 도구 목록은 비워져 있다. 향후 외부 도구 실행을 활성화한다면 approve-all 정책은 반드시 재검토해야 한다.
 
-### 14.3 업로드 방어
+### 15.3 업로드 방어
 
 - 확장자와 MIME allow-list를 모두 검사한다.
 - generic MIME은 확장자를 기준으로 보정한다.
@@ -728,9 +788,9 @@ Final:
 - 파일명에서 경로 컴포넌트와 unsafe 문자를 제거한다.
 - Blob name에 UUID prefix를 붙여 충돌을 방지한다.
 
-## 15. 로깅/관측성
+## 16. 로깅/관측성
 
-### 15.1 백엔드 로깅
+### 16.1 백엔드 로깅
 
 `logging_utils.py`는 `copilot_api` logger를 만들고 stdout handler를 등록한다. `CorrelationFilter`가 log record에 `correlation_id`를 주입한다.
 
@@ -743,11 +803,11 @@ class CorrelationFilter(logging.Filter):
         return True
 ```
 
-### 15.2 프론트엔드 correlation
+### 16.2 프론트엔드 correlation
 
 프론트엔드 `AGUIClient`는 요청마다 correlation id를 생성해 header에 추가한다. 현재 백엔드에서 이 header를 contextvar에 자동 연결하는 미들웨어는 별도로 보이지 않으므로, end-to-end correlation을 강화하려면 `X-Correlation-ID`를 읽어 `correlation_id.set(...)`하는 FastAPI 미들웨어 추가가 필요하다.
 
-### 15.3 Azure Monitor
+### 16.3 Azure Monitor
 
 `observability.py`는 `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있을 때만 `configure_azure_monitor()`를 호출한다. 환경 변수가 없으면 로컬 개발 모드로 no-op이다.
 
@@ -761,7 +821,7 @@ os.environ.setdefault("OTEL_SERVICE_NAME", "agentic-devops-starter")
 configure_azure_monitor(connection_string=connection_string)
 ```
 
-## 16. 제한 사항과 개선 후보
+## 17. 제한 사항과 개선 후보
 
 | 현재 설계 | 제한/리스크 | 개선 후보 |
 | --- | --- | --- |
@@ -773,7 +833,7 @@ configure_azure_monitor(connection_string=connection_string)
 | Terraform local state 예시 | 팀 협업 시 state 충돌 가능 | Azure Storage remote backend 구성 |
 | Chat/Teams SSE parser 분리 | 중복 parsing 로직 유지보수 비용 | 공통 SSE parser utility로 통합 |
 
-### 16.1 우선순위 높은 개선
+### 17.1 우선순위 높은 개선
 
 1. 백엔드 correlation middleware 추가로 프론트엔드 `X-Correlation-ID`와 로그 연결
 1. Job/Teams history 외부 저장소 도입으로 scale-out 대응

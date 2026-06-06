@@ -17,6 +17,7 @@ from copilot.session import PermissionHandler
 
 from src.config import settings
 from src.models import JobStatusResponse
+from src.skills import get_disabled_skills, get_skill_directories
 from src.state import get_client
 
 _jobs: dict[str, JobStatusResponse] = {}
@@ -45,6 +46,8 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
         system_message={"mode": "replace", "content": sys_content},
         streaming=True,
         available_tools=[],
+        skill_directories=get_skill_directories(),
+        disabled_skills=get_disabled_skills(),
     )
     loop = asyncio.get_running_loop()
     idle_event = asyncio.Event()
