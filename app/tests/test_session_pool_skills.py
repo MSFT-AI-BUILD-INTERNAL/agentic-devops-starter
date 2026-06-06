@@ -8,7 +8,7 @@ import pytest
 
 import src.skills as skills_module
 import src.state as state_module
-from src.state import SessionPool, set_client
+from src.state import SessionPool
 
 
 class _FakeSession:
@@ -29,21 +29,17 @@ class _FakeClient:
 
 
 @pytest.mark.asyncio
-async def test_session_pool_enables_sdk_skills_when_directories_loaded() -> None:
+async def test_session_pool_enables_sdk_skills_when_directories_loaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The Copilot SDK must receive enable_skills=True with skill directories."""
     client = _FakeClient()
-    set_client(client)  # type: ignore[arg-type]
-    skills_module._skill_directories = ["/tmp/example-skills"]
-    skills_module._loaded_skill_names = ["example"]
+    monkeypatch.setattr(state_module, "_client", client)
+    monkeypatch.setattr(skills_module, "_skill_directories", ["/tmp/example-skills"])
 
-    try:
-        pool = SessionPool()
-        await pool.get_or_create("thread-with-skills")
+    pool = SessionPool()
+    await pool.get_or_create("thread-with-skills")
 
-        assert client.create_kwargs is not None
-        assert client.create_kwargs["enable_skills"] is True
-        assert client.create_kwargs["skill_directories"] == ["/tmp/example-skills"]
-    finally:
-        skills_module._skill_directories = []
-        skills_module._loaded_skill_names = []
-        state_module._client = None
+    assert client.create_kwargs is not None
+    assert client.create_kwargs["enable_skills"] is True
+    assert client.create_kwargs["skill_directories"] == ["/tmp/example-skills"]
