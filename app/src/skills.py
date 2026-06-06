@@ -112,8 +112,10 @@ def get_skill_directories() -> list[str]:
 def should_enable_skills() -> bool | None:
     """Return the SDK skill toggle for sessions.
 
-    The Copilot SDK requires ``enable_skills=True`` to activate Agent Skills,
-    but leaving it unset preserves SDK defaults when no skills are configured.
+    Passing only ``skill_directories`` lets the Copilot SDK discover paths, but
+    it does not turn on Agent Skills. The SDK also requires
+    ``enable_skills=True`` to activate them; leaving it unset preserves SDK
+    defaults when no skills are configured.
     """
     return True if _skill_directories else None
 
