@@ -30,18 +30,17 @@ class _FakeClient:
         return _FakeSession()
 
 
-@pytest.fixture
-def reset_session_state() -> Generator[None]:
+@pytest.fixture(autouse=True)
+def reset_skills_and_client(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
+    monkeypatch.setattr(skills_module, "_skill_directories", [])
+    monkeypatch.setattr(skills_module, "_loaded_skill_names", [])
+    monkeypatch.setattr(state_module, "_client", None)
     yield
-    skills_module._skill_directories = []
-    skills_module._loaded_skill_names = []
-    state_module._client = None
 
 
 @pytest.mark.asyncio
 async def test_session_pool_enables_sdk_skills_when_directories_loaded(
     monkeypatch: pytest.MonkeyPatch,
-    reset_session_state: None,
 ) -> None:
     """The Copilot SDK must receive enable_skills=True with skill directories."""
     client = _FakeClient()
