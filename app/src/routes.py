@@ -57,6 +57,12 @@ def _build_prompt(
     Optionally prepends file attachment context and any matching Agent Skills
     (resolved via the shared :class:`~src.skills.SkillRegistry`) so the
     downstream model receives the appropriate domain-specific instructions.
+
+    ``skill_ids`` semantics:
+
+    * ``None`` (field omitted): auto-select skills by keyword match.
+    * non-empty list: activate exactly those skills (unknown ids ignored).
+    * empty list ``[]``: suppress auto-selection — no skills are applied.
     """
     user_messages = [m for m in messages if m.get("role") == "user"]
     if user_messages:
@@ -97,8 +103,9 @@ def _resolve_skills(
         return ""
 
     skills: list[AgentSkill]
-    if skill_ids:
-        skills = registry.resolve(skill_ids)
+    if skill_ids is not None:
+        # Explicit list (including empty) — caller is in full control.
+        skills = registry.resolve(skill_ids) if skill_ids else []
     else:
         skills = registry.select_for(prompt)
 
