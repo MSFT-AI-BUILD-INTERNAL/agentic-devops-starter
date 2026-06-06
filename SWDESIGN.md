@@ -99,8 +99,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         github_token = os.environ.get("GITHUB_TOKEN")
-        config = SubprocessConfig(github_token=github_token) if github_token else None
-        client = CopilotClient(config)
+        client = CopilotClient(github_token=github_token) if github_token else CopilotClient()
         await client.start()
         set_client(client)
 
