@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from copilot import CopilotClient, SubprocessConfig
+from copilot import CopilotClient
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,8 +48,7 @@ def create_app() -> FastAPI:
         # Copilot SDK can load and apply them across all sessions.
         load_skills()
 
-        config = SubprocessConfig(github_token=github_token) if github_token else None
-        client = CopilotClient(config)
+        client = CopilotClient(github_token=github_token) if github_token else CopilotClient()
         await client.start()
         set_client(client)
         logger.info("CopilotClient started (GitHub Copilot SDK)")
