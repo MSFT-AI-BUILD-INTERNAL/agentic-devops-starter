@@ -7,7 +7,7 @@ import time
 from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
 
-from src.skills import get_disabled_skills, get_enable_skills, get_skill_directories
+from src.skills import get_disabled_skills, get_skill_directories, should_enable_skills
 
 _client: CopilotClient | None = None
 
@@ -55,7 +55,7 @@ class SessionPool:
 
             client = get_client()
             github_token = os.environ.get("GITHUB_TOKEN")
-            enable_skills = get_enable_skills()
+            enable_skills = should_enable_skills()
             skill_directories = get_skill_directories()
             disabled_skills = get_disabled_skills()
             try:

@@ -109,7 +109,7 @@ def get_skill_directories() -> list[str]:
     return list(_skill_directories)
 
 
-def get_enable_skills() -> bool | None:
+def should_enable_skills() -> bool | None:
     """Return the SDK skill toggle for sessions.
 
     The Copilot SDK requires ``enable_skills=True`` to activate Agent Skills,

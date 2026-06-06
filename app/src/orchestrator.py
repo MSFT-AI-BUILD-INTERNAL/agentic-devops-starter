@@ -23,7 +23,7 @@ from copilot.session import PermissionHandler
 from src.config import settings
 from src.logging_utils import setup_logging
 from src.patterns import AgentRole, get_pattern
-from src.skills import get_disabled_skills, get_enable_skills, get_skill_directories
+from src.skills import get_disabled_skills, get_skill_directories, should_enable_skills
 from src.state import get_client
 
 logger = setup_logging(settings.log_level)
@@ -69,7 +69,7 @@ async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[st
         system_message={"mode": "replace", "content": sys_content},
         streaming=True,
         available_tools=[],
-        enable_skills=get_enable_skills(),
+        enable_skills=should_enable_skills(),
         skill_directories=get_skill_directories(),
         disabled_skills=get_disabled_skills(),
     )
@@ -113,7 +113,7 @@ async def _stream_agent(
         system_message={"mode": "replace", "content": sys_content},
         streaming=True,
         available_tools=[],
-        enable_skills=get_enable_skills(),
+        enable_skills=should_enable_skills(),
         skill_directories=get_skill_directories(),
         disabled_skills=get_disabled_skills(),
     )
