@@ -23,6 +23,7 @@ from copilot.session import PermissionHandler
 from src.config import settings
 from src.logging_utils import setup_logging
 from src.patterns import AgentRole, get_pattern
+from src.skills import get_disabled_skills, get_skill_directories
 from src.state import get_client
 
 logger = setup_logging(settings.log_level)
@@ -68,6 +69,8 @@ async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[st
         system_message={"mode": "replace", "content": sys_content},
         streaming=True,
         available_tools=[],
+        skill_directories=get_skill_directories(),
+        disabled_skills=get_disabled_skills(),
     )
     loop = asyncio.get_running_loop()
     idle_event = asyncio.Event()
@@ -109,6 +112,8 @@ async def _stream_agent(
         system_message={"mode": "replace", "content": sys_content},
         streaming=True,
         available_tools=[],
+        skill_directories=get_skill_directories(),
+        disabled_skills=get_disabled_skills(),
     )
     loop = asyncio.get_running_loop()
     idle_event = asyncio.Event()

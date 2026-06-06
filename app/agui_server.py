@@ -15,6 +15,7 @@ from src.config import settings
 from src.logging_utils import setup_logging
 from src.observability import configure_observability
 from src.routes import router
+from src.skills import load_skills
 from src.state import SessionPool, set_client, set_session_pool
 
 load_dotenv()
@@ -42,6 +43,11 @@ def create_app() -> FastAPI:
             "GitHub token configuration loaded",
             extra={"has_github_token": bool(github_token)},
         )
+
+        # Discover predefined Agent Skills (SKILL.md open format) so the
+        # Copilot SDK can load and apply them across all sessions.
+        load_skills()
+
         config = SubprocessConfig(github_token=github_token) if github_token else None
         client = CopilotClient(config)
         await client.start()
