@@ -31,14 +31,11 @@ class _FakeClient:
 
 
 @pytest.fixture(autouse=True)
-def reset_skills_and_client(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
+def isolate_skills_and_client(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     monkeypatch.setattr(skills_module, "_skill_directories", [])
     monkeypatch.setattr(skills_module, "_loaded_skill_names", [])
     monkeypatch.setattr(state_module, "_client", None)
     yield
-    skills_module._skill_directories = []
-    skills_module._loaded_skill_names = []
-    state_module._client = None
 
 
 @pytest.mark.asyncio
