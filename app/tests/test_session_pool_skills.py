@@ -36,6 +36,9 @@ def reset_skills_and_client(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     monkeypatch.setattr(skills_module, "_loaded_skill_names", [])
     monkeypatch.setattr(state_module, "_client", None)
     yield
+    skills_module._skill_directories = []
+    skills_module._loaded_skill_names = []
+    state_module._client = None
 
 
 @pytest.mark.asyncio
@@ -49,8 +52,11 @@ async def test_session_pool_enables_sdk_skills_when_directories_loaded(
     set_client(cast(Any, client))
 
     pool = SessionPool()
-    await pool.get_or_create("thread-with-skills")
+    try:
+        await pool.get_or_create("thread-with-skills")
 
-    assert client.create_kwargs is not None
-    assert client.create_kwargs["enable_skills"] is True
-    assert client.create_kwargs["skill_directories"] == skill_directories
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["enable_skills"] is True
+        assert client.create_kwargs["skill_directories"] == skill_directories
+    finally:
+        await pool.shutdown()
