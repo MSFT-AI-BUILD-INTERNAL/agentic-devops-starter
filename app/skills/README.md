@@ -20,10 +20,11 @@ app/skills/
 
 ## How they are used
 
-At application startup, `src.skills.discover_skill_directories()` collects
+At application startup, `src.skills.load_skills()` collects
 this directory (plus any extra paths from the
-`COPILOT_API_SKILL_DIRECTORIES` env var, `os.pathsep`-separated) and passes
-them to the GitHub Copilot SDK via the `skill_directories` argument on
+`COPILOT_API_SKILL_DIRECTORIES` env var, `os.pathsep`- or comma-separated)
+and passes them to the GitHub Copilot SDK via the `skill_directories`
+argument on
 `create_session` / `resume_session`. The SDK then loads every `SKILL.md` it
 finds and decides — based on each skill's `description` — whether to apply
 that skill to a given user turn.
