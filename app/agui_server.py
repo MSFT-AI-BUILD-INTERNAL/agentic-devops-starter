@@ -15,7 +15,8 @@ from src.config import settings
 from src.logging_utils import setup_logging
 from src.observability import configure_observability
 from src.routes import router
-from src.state import SessionPool, set_client, set_session_pool
+from src.skills import build_default_registry
+from src.state import SessionPool, set_client, set_session_pool, set_skill_registry
 
 load_dotenv()
 
@@ -47,6 +48,13 @@ def create_app() -> FastAPI:
         await client.start()
         set_client(client)
         logger.info("CopilotClient started (GitHub Copilot SDK)")
+
+        skill_registry = build_default_registry()
+        set_skill_registry(skill_registry)
+        logger.info(
+            "Agent skill registry loaded",
+            extra={"skill_count": len(skill_registry)},
+        )
 
         pool = SessionPool(idle_timeout=settings.session_timeout)
         set_session_pool(pool)

@@ -33,12 +33,14 @@ from src.models import (
     InfiniteSessionRequest,
     JobStatusResponse,
     PatternInfo,
+    SkillInfo,
     TeamsRequest,
     UploadResult,
 )
 from src.orchestrator import run_teams
 from src.patterns import PATTERNS
-from src.state import get_session_pool
+from src.skills import AgentSkill, format_skills_context
+from src.state import get_session_pool, get_skill_registry
 
 logger = setup_logging(settings.log_level)
 
@@ -46,9 +48,16 @@ router = APIRouter()
 
 
 def _build_prompt(
-    messages: list[dict[str, str]], attachments: list[dict[str, Any]] | None = None
+    messages: list[dict[str, str]],
+    attachments: list[dict[str, Any]] | None = None,
+    skill_ids: list[str] | None = None,
 ) -> str:
-    """Extract the last user message content as the prompt, prepending file context if present."""
+    """Extract the last user message content as the prompt.
+
+    Optionally prepends file attachment context and any matching Agent Skills
+    (resolved via the shared :class:`~src.skills.SkillRegistry`) so the
+    downstream model receives the appropriate domain-specific instructions.
+    """
     user_messages = [m for m in messages if m.get("role") == "user"]
     if user_messages:
         content = user_messages[-1].get("content", "")
@@ -65,7 +74,35 @@ def _build_prompt(
         if file_context:
             content = file_context + "\n\n" + content
 
+    skills_context = _resolve_skills(content, skill_ids)
+    if skills_context:
+        content = skills_context + "\n\n" + content
+
     return content
+
+
+def _resolve_skills(
+    prompt: str, skill_ids: list[str] | None = None
+) -> str:
+    """Return a system-prompt prefix block describing the active skills.
+
+    If *skill_ids* is provided, those skills are activated explicitly.
+    Otherwise the registry auto-selects matching skills based on prompt
+    keywords. Failures fall back to an empty string so a missing registry
+    can never break the chat path.
+    """
+    try:
+        registry = get_skill_registry()
+    except RuntimeError:
+        return ""
+
+    skills: list[AgentSkill]
+    if skill_ids:
+        skills = registry.resolve(skill_ids)
+    else:
+        skills = registry.select_for(prompt)
+
+    return format_skills_context(skills)
 
 
 def _resolve_attachments(attachments: list[dict[str, Any]]) -> str:
@@ -120,8 +157,9 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
     run_id: str = input_data.get("run_id") or uuid.uuid4().hex[:12]
     messages: list[dict[str, str]] = input_data.get("messages", [])
     attachments: list[dict[str, Any]] | None = input_data.get("attachments")
+    skill_ids: list[str] | None = input_data.get("skill_ids")
 
-    prompt = _build_prompt(messages, attachments)
+    prompt = _build_prompt(messages, attachments, skill_ids)
 
     async def event_generator() -> AsyncGenerator[str, None]:
         pool = get_session_pool()
@@ -334,6 +372,34 @@ async def list_patterns() -> list[PatternInfo]:
         )
         for p in PATTERNS.values()
     ]
+
+
+def _skill_to_info(skill: AgentSkill) -> SkillInfo:
+    return SkillInfo(
+        id=skill.id,
+        name=skill.name,
+        description=skill.description,
+        keywords=skill.keywords,
+        tags=skill.tags,
+        version=skill.version,
+    )
+
+
+@router.get("/v1/skills")
+async def list_skills() -> list[SkillInfo]:
+    """List Agent Skills available in the registry."""
+    registry = get_skill_registry()
+    return [_skill_to_info(s) for s in registry.list_all()]
+
+
+@router.get("/v1/skills/{skill_id}")
+async def get_skill(skill_id: str) -> SkillInfo:
+    """Return the details of a single Agent Skill."""
+    registry = get_skill_registry()
+    skill = registry.get(skill_id)
+    if skill is None:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return _skill_to_info(skill)
 
 
 @router.post("/v1/teams/stream")

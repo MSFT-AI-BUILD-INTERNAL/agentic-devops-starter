@@ -67,6 +67,17 @@ class TeamsRequest(BaseModel):
     attachments: list[FileAttachment] | None = None
 
 
+class SkillInfo(BaseModel):
+    """Summary of an agent skill for listing via the REST API."""
+
+    id: str
+    name: str
+    description: str
+    keywords: list[str]
+    tags: list[str]
+    version: str
+
+
 class PatternInfo(BaseModel):
     """Summary of an agent team pattern for listing."""
 

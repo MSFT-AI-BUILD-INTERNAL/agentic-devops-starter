@@ -7,7 +7,23 @@ import time
 from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
 
+from src.skills import SkillRegistry
+
 _client: CopilotClient | None = None
+_skill_registry: SkillRegistry | None = None
+
+
+def set_skill_registry(registry: SkillRegistry) -> None:
+    """Store the shared :class:`SkillRegistry` instance."""
+    global _skill_registry
+    _skill_registry = registry
+
+
+def get_skill_registry() -> SkillRegistry:
+    """Retrieve the shared :class:`SkillRegistry` instance."""
+    if _skill_registry is None:
+        raise RuntimeError("SkillRegistry not initialized")
+    return _skill_registry
 
 
 def set_client(client: CopilotClient) -> None:

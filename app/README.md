@@ -89,6 +89,24 @@ uv run agui_client.py
 | `POST /v1/fleet` | Fleet execution | Run up to 20 prompts in parallel |
 | `POST /v1/infinite-session` | Chained reasoning | Output N → Input N+1, up to 10 iterations |
 | `GET /v1/jobs/{job_id}` | Job status | Poll async job results |
+| `GET /v1/patterns` | Agent team patterns | List built-in multi-agent collaboration patterns |
+| `GET /v1/skills` | Agent skill registry | List Agent Skills loaded at startup (Registry Pattern) |
+| `GET /v1/skills/{skill_id}` | Agent skill detail | Retrieve a single Agent Skill descriptor |
+
+### Agent Skill Registry
+
+Agent Skills are reusable, domain-specific behaviors described in JSON files
+under `src/skills_data/` (DevOps troubleshooting, security auditing, code
+review, documentation, Azure architecture). They are loaded once at app
+startup into an in-process `SkillRegistry` and applied automatically:
+
+* On every `POST /` chat request the user prompt is keyword-matched against
+  every registered skill; the matched skills' system prompts are prepended
+  to the prompt as `[Agent Skills Activated]` context.
+* Clients can override auto-selection by sending `skill_ids: [...]` in the
+  request body to activate specific skills explicitly.
+* New skills can be added by dropping a new `*.json` descriptor into
+  `src/skills_data/` — no code changes required.
 
 ## Environment Variables
 
