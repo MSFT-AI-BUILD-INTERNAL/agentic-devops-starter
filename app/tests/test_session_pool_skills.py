@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from typing import Any, cast
 
 import pytest
 
+import src.skills as skills_module
+import src.state as state_module
 from src.skills import load_skills
 from src.state import SessionPool, set_client
 
@@ -27,9 +30,18 @@ class _FakeClient:
         return _FakeSession()
 
 
+@pytest.fixture
+def reset_session_state() -> Generator[None]:
+    yield
+    skills_module._skill_directories = []
+    skills_module._loaded_skill_names = []
+    state_module._client = None
+
+
 @pytest.mark.asyncio
 async def test_session_pool_enables_sdk_skills_when_directories_loaded(
     monkeypatch: pytest.MonkeyPatch,
+    reset_session_state: None,
 ) -> None:
     """The Copilot SDK must receive enable_skills=True with skill directories."""
     client = _FakeClient()
