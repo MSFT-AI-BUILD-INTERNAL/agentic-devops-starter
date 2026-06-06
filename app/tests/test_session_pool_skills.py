@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
-import src.skills as skills_module
-import src.state as state_module
-from src.state import SessionPool
+from src.skills import load_skills
+from src.state import SessionPool, set_client
 
 
 class _FakeSession:
     async def disconnect(self) -> None:
-        return None
+        pass
 
 
 class _FakeClient:
@@ -34,12 +33,13 @@ async def test_session_pool_enables_sdk_skills_when_directories_loaded(
 ) -> None:
     """The Copilot SDK must receive enable_skills=True with skill directories."""
     client = _FakeClient()
-    monkeypatch.setattr(state_module, "_client", client)
-    monkeypatch.setattr(skills_module, "_skill_directories", ["/tmp/example-skills"])
+    monkeypatch.delenv("COPILOT_API_SKILL_DIRECTORIES", raising=False)
+    skill_directories = load_skills()
+    set_client(cast(Any, client))
 
     pool = SessionPool()
     await pool.get_or_create("thread-with-skills")
 
     assert client.create_kwargs is not None
     assert client.create_kwargs["enable_skills"] is True
-    assert client.create_kwargs["skill_directories"] == ["/tmp/example-skills"]
+    assert client.create_kwargs["skill_directories"] == skill_directories
