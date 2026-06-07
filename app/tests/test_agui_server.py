@@ -84,3 +84,26 @@ def test_github_token_uses_client_config(monkeypatch: pytest.MonkeyPatch) -> Non
         response = test_client.get("/health")
 
     assert response.status_code == 200
+
+
+def test_missing_github_token_uses_default_client_constructor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that local-dev startup keeps the SDK default client constructor."""
+    mock_client = MagicMock()
+    mock_client.start = AsyncMock()
+    mock_client.stop = AsyncMock()
+
+    def create_mock_client(*args: object, **kwargs: object) -> MagicMock:
+        assert args == ()
+        assert kwargs == {}
+        return mock_client
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr("agui_server.CopilotClient", create_mock_client)
+    from agui_server import create_app
+
+    with TestClient(create_app()) as test_client:
+        response = test_client.get("/health")
+
+    assert response.status_code == 200

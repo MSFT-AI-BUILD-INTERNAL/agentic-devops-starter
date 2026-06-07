@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
         load_skills()
 
         client_config = SubprocessConfig(github_token=github_token) if github_token else None
-        client = CopilotClient(client_config)
+        client = CopilotClient(client_config) if client_config else CopilotClient()
         await client.start()
         set_client(client)
         logger.info("CopilotClient started (GitHub Copilot SDK)")
