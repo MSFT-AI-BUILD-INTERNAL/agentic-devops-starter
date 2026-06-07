@@ -55,5 +55,8 @@ async def test_session_pool_enables_sdk_skills_when_directories_loaded(
         assert client.create_kwargs is not None
         assert "enable_skills" not in client.create_kwargs
         assert client.create_kwargs["skill_directories"] == skill_directories
+        # An empty available_tools allowlist disables every tool (including the
+        # skill-loading tool), which silently neutralizes skills. Guard against it.
+        assert client.create_kwargs.get("available_tools") != []
     finally:
         await pool.shutdown()
