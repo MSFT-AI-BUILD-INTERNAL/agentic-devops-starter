@@ -60,3 +60,22 @@ async def test_session_pool_enables_sdk_skills_when_directories_loaded(
         assert client.create_kwargs.get("available_tools") != []
     finally:
         await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_passes_allowed_tool_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When configured, only the configured SDK tools are allowlisted."""
+    client = _FakeClient()
+    monkeypatch.setenv("COPILOT_API_ALLOWED_TOOLS", "bash, read_file ,")
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-with-tool-allowlist")
+
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["available_tools"] == ["bash", "read_file"]
+    finally:
+        await pool.shutdown()
