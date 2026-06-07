@@ -57,3 +57,22 @@ async def test_session_pool_enables_sdk_skills_when_directories_loaded(
         assert client.create_kwargs["skill_directories"] == skill_directories
     finally:
         await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_passes_github_token_to_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Session auth should use GITHUB_TOKEN without configuring CopilotClient."""
+    client = _FakeClient()
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-with-token")
+
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["github_token"] == "test-token"
+    finally:
+        await pool.shutdown()

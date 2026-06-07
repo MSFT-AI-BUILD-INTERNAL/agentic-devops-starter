@@ -48,6 +48,7 @@ def create_app() -> FastAPI:
         # Copilot SDK can load and apply them across all sessions.
         load_skills()
 
+        # GITHUB_TOKEN is passed to the SDK when sessions are created or resumed.
         client = CopilotClient()
         await client.start()
         set_client(client)
