@@ -18,8 +18,8 @@ def _get_allowed_tools() -> list[str] | None:
     if value is None:
         return None
 
-    parsed = [tool.strip() for tool in value.split(",") if tool.strip()]
-    return parsed or None
+    non_empty_tools = [tool.strip() for tool in value.split(",") if tool.strip()]
+    return non_empty_tools or None
 
 
 def set_client(client: CopilotClient) -> None:
