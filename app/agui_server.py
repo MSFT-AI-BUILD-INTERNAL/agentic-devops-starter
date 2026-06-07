@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
         # Copilot SDK can load and apply them across all sessions.
         load_skills()
 
-        client = CopilotClient(github_token=github_token) if github_token else CopilotClient()
+        client = CopilotClient()
         await client.start()
         set_client(client)
         logger.info("CopilotClient started (GitHub Copilot SDK)")
