@@ -63,7 +63,7 @@ async def test_session_pool_enables_sdk_skills_when_directories_loaded(
 
 
 @pytest.mark.asyncio
-async def test_session_pool_passes_allowed_tool_allowlist(
+async def test_session_pool_passes_tool_allowlist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When configured, only the configured SDK tools are allowlisted."""
@@ -77,5 +77,24 @@ async def test_session_pool_passes_allowed_tool_allowlist(
 
         assert client.create_kwargs is not None
         assert client.create_kwargs["available_tools"] == ["bash", "read_file"]
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_omits_empty_tool_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Blank COPILOT_API_ALLOWED_TOOLS should not pass an empty allowlist."""
+    client = _FakeClient()
+    monkeypatch.setenv("COPILOT_API_ALLOWED_TOOLS", "  ,   ")
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-with-empty-tool-allowlist")
+
+        assert client.create_kwargs is not None
+        assert "available_tools" not in client.create_kwargs
     finally:
         await pool.shutdown()
