@@ -360,7 +360,9 @@
       <pre><code>def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        client = CopilotClient()
+        github_token = os.environ.get("GITHUB_TOKEN")
+        client_config = SubprocessConfig(github_token=github_token) if github_token else None
+        client = CopilotClient(client_config)
         await client.start()
         set_client(client)
 
@@ -390,7 +392,7 @@
           </tr>
           <tr>
             <td>Copilot client 시작</td>
-            <td><code>CopilotClient()</code>, <code>await client.start()</code></td>
+            <td><code>CopilotClient(client_config)</code>, <code>await client.start()</code></td>
             <td>요청마다 client를 만들지 않고 앱 단위 singleton으로 재사용</td>
           </tr>
           <tr>

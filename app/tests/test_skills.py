@@ -17,7 +17,6 @@ from src.skills import (
     get_loaded_skill_names,
     get_skill_directories,
     load_skills,
-    should_enable_skills,
 )
 
 REPO_SKILLS = (Path(__file__).resolve().parent.parent / "skills").resolve()
@@ -57,7 +56,6 @@ def test_load_skills_discovers_repo_directory() -> None:
         assert "secure-coding-advisor" in names
         # get_skill_directories returns the cached list
         assert get_skill_directories() == dirs
-        assert should_enable_skills() is True
     finally:
         _reset_cache()
 
@@ -109,4 +107,3 @@ def test_get_skill_directories_empty_before_load() -> None:
     _reset_cache()
     assert get_skill_directories() == []
     assert get_loaded_skill_names() == []
-    assert should_enable_skills() is None

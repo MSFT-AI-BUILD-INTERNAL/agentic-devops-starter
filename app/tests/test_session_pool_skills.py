@@ -39,10 +39,10 @@ def isolate_skills_and_client(monkeypatch: pytest.MonkeyPatch) -> Generator[None
 
 
 @pytest.mark.asyncio
-async def test_session_pool_enables_sdk_skills_when_directories_loaded(
+async def test_session_pool_passes_sdk_skill_directories_when_loaded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The Copilot SDK must receive enable_skills=True with skill directories."""
+    """The Copilot SDK must receive loaded skill directories."""
     client = _FakeClient()
     monkeypatch.delenv("COPILOT_API_SKILL_DIRECTORIES", raising=False)
     skill_directories = load_skills()
@@ -53,7 +53,6 @@ async def test_session_pool_enables_sdk_skills_when_directories_loaded(
         await pool.get_or_create("thread-with-skills")
 
         assert client.create_kwargs is not None
-        assert client.create_kwargs["enable_skills"] is True
         assert client.create_kwargs["skill_directories"] == skill_directories
     finally:
         await pool.shutdown()

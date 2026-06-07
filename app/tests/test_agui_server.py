@@ -59,18 +59,24 @@ def test_security_headers(client: TestClient) -> None:
     assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
 
 
-def test_github_token_does_not_change_client_constructor(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that startup does not pass unsupported auth kwargs to CopilotClient."""
+def test_github_token_uses_client_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that startup passes GITHUB_TOKEN via the SDK client config."""
     mock_client = MagicMock()
     mock_client.start = AsyncMock()
     mock_client.stop = AsyncMock()
+    client_config = object()
+
+    def create_config(*, github_token: str) -> object:
+        assert github_token == "test-token"
+        return client_config
 
     def create_mock_client(*args: object, **kwargs: object) -> MagicMock:
-        assert args == ()
+        assert args == (client_config,)
         assert kwargs == {}
         return mock_client
 
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr("agui_server.SubprocessConfig", create_config)
     monkeypatch.setattr("agui_server.CopilotClient", create_mock_client)
     from agui_server import create_app
 
