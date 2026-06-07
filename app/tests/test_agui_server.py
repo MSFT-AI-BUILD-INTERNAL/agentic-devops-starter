@@ -14,10 +14,11 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     """Create app with mocked CopilotClient so no real auth is needed."""
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     mock_client = MagicMock()
     mock_client.start = AsyncMock()
     mock_client.stop = AsyncMock()
-    monkeypatch.setattr("agui_server.CopilotClient", lambda *_args, **_kwargs: mock_client)
+    monkeypatch.setattr("agui_server.CopilotClient", lambda: mock_client)
     from agui_server import create_app
 
     return create_app()
@@ -46,6 +47,23 @@ def test_health_check_endpoint(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
+
+
+def test_lifespan_starts_client_with_github_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Startup must not pass GITHUB_TOKEN to the CopilotClient constructor."""
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    mock_client = MagicMock()
+    mock_client.start = AsyncMock()
+    mock_client.stop = AsyncMock()
+    copilot_client = MagicMock(return_value=mock_client)
+    monkeypatch.setattr("agui_server.CopilotClient", copilot_client)
+    from agui_server import create_app
+
+    with TestClient(create_app()) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    copilot_client.assert_called_once_with()
 
 
 def test_security_headers(client: TestClient) -> None:
