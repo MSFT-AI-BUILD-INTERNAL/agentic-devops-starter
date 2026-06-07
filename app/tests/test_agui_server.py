@@ -57,3 +57,24 @@ def test_security_headers(client: TestClient) -> None:
     assert response.headers.get("X-Frame-Options") == "DENY"
     assert response.headers.get("X-XSS-Protection") == "1; mode=block"
     assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+
+
+def test_github_token_does_not_change_client_constructor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that startup does not pass unsupported auth kwargs to CopilotClient."""
+    mock_client = MagicMock()
+    mock_client.start = AsyncMock()
+    mock_client.stop = AsyncMock()
+
+    def create_mock_client(*args: object, **kwargs: object) -> MagicMock:
+        assert args == ()
+        assert kwargs == {}
+        return mock_client
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr("agui_server.CopilotClient", create_mock_client)
+    from agui_server import create_app
+
+    with TestClient(create_app()) as test_client:
+        response = test_client.get("/health")
+
+    assert response.status_code == 200

@@ -177,7 +177,7 @@ Browser → React (useChat hook)
 
 **Authentication flow:**
 - **Local dev**: SDK spawns bundled CLI → uses `gh auth` token automatically
-- **Production**: `GITHUB_TOKEN` env var → `CopilotClient(github_token=...)` → CLI authenticates via PAT
+- **Production**: `GITHUB_TOKEN` env var → session creation/resume auth → CLI authenticates via PAT
 
 ## License
 
