@@ -68,7 +68,6 @@ async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[st
         on_permission_request=PermissionHandler.approve_all,
         system_message={"mode": "replace", "content": sys_content},
         streaming=True,
-        available_tools=[],
         skill_directories=get_skill_directories(),
         disabled_skills=get_disabled_skills(),
     )
@@ -111,7 +110,6 @@ async def _stream_agent(
         on_permission_request=PermissionHandler.approve_all,
         system_message={"mode": "replace", "content": sys_content},
         streaming=True,
-        available_tools=[],
         skill_directories=get_skill_directories(),
         disabled_skills=get_disabled_skills(),
     )

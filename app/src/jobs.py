@@ -45,7 +45,6 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
         on_permission_request=PermissionHandler.approve_all,
         system_message={"mode": "replace", "content": sys_content},
         streaming=True,
-        available_tools=[],
         skill_directories=get_skill_directories(),
         disabled_skills=get_disabled_skills(),
     )

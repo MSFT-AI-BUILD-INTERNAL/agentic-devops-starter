@@ -12,6 +12,16 @@ from src.skills import get_disabled_skills, get_skill_directories
 _client: CopilotClient | None = None
 
 
+def _get_allowed_tools() -> list[str] | None:
+    """Return optional SDK tool allowlist from COPILOT_API_ALLOWED_TOOLS."""
+    value = os.environ.get("COPILOT_API_ALLOWED_TOOLS")
+    if value is None:
+        return None
+
+    non_empty_tools = [tool.strip() for tool in value.split(",") if tool.strip()]
+    return non_empty_tools or None
+
+
 def set_client(client: CopilotClient) -> None:
     """Store the shared CopilotClient instance."""
     global _client
@@ -57,28 +67,27 @@ class SessionPool:
             github_token = os.environ.get("GITHUB_TOKEN")
             skill_directories = get_skill_directories()
             disabled_skills = get_disabled_skills()
+            allowed_tools = _get_allowed_tools()
+            session_kwargs = {
+                "on_permission_request": PermissionHandler.approve_all,
+                "system_message": {"mode": "replace", "content": _SYSTEM_MESSAGE},
+                "streaming": True,
+                "skill_directories": skill_directories,
+                "disabled_skills": disabled_skills,
+                "github_token": github_token,
+            }
+            if allowed_tools is not None:
+                session_kwargs["available_tools"] = allowed_tools
             try:
                 session = await client.resume_session(
                     thread_id,
-                    on_permission_request=PermissionHandler.approve_all,
-                    system_message={"mode": "replace", "content": _SYSTEM_MESSAGE},
-                    streaming=True,
-                    available_tools=[],
-                    skill_directories=skill_directories,
-                    disabled_skills=disabled_skills,
-                    github_token=github_token,
+                    **session_kwargs,
                 )
             except Exception:
                 # Session doesn't exist on disk yet — create a new one.
                 session = await client.create_session(
                     session_id=thread_id,
-                    on_permission_request=PermissionHandler.approve_all,
-                    system_message={"mode": "replace", "content": _SYSTEM_MESSAGE},
-                    streaming=True,
-                    available_tools=[],
-                    skill_directories=skill_directories,
-                    disabled_skills=disabled_skills,
-                    github_token=github_token,
+                    **session_kwargs,
                 )
 
             self._sessions[thread_id] = session
