@@ -17,6 +17,11 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.blob_storage import BlobStorageConfigurationError, get_blob_service
+from src.chat_fleet import (
+    build_augmented_chat_prompt,
+    build_conversation_context,
+    run_chat_fleet,
+)
 from src.config import settings
 from src.file_validation import (
     ALLOWED_CONTENT_TYPES,
@@ -122,6 +127,7 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
     attachments: list[dict[str, Any]] | None = input_data.get("attachments")
 
     prompt = _build_prompt(messages, attachments)
+    conversation_context = build_conversation_context(messages)
 
     async def event_generator() -> AsyncGenerator[str, None]:
         pool = get_session_pool()
@@ -161,7 +167,8 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
         unsubscribe = None
         try:
             unsubscribe = session.on(on_event)
-            await session.send(prompt)
+            fleet_results = await run_chat_fleet(prompt, conversation_context)
+            await session.send(build_augmented_chat_prompt(prompt, fleet_results))
 
             while not idle_event.is_set():
                 try:

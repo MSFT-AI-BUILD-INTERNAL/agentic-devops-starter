@@ -3,6 +3,7 @@
 import asyncio
 import os
 import time
+from typing import Any
 
 from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
@@ -68,7 +69,7 @@ class SessionPool:
             skill_directories = get_skill_directories()
             disabled_skills = get_disabled_skills()
             allowed_tools = _get_allowed_tools()
-            session_kwargs = {
+            session_kwargs: dict[str, Any] = {
                 "on_permission_request": PermissionHandler.approve_all,
                 "system_message": {"mode": "replace", "content": _SYSTEM_MESSAGE},
                 "streaming": True,

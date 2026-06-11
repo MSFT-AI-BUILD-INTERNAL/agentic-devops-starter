@@ -1,6 +1,9 @@
 """Tests for agent team platform endpoints (patterns + teams)."""
 
+from unittest.mock import AsyncMock
+
 import pytest
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from agui_server import create_app
@@ -42,17 +45,17 @@ def test_get_pattern_unknown_returns_none() -> None:
 
 
 @pytest.fixture
-def app():
+def app() -> FastAPI:
     return create_app()
 
 
 @pytest.mark.asyncio
-async def test_list_patterns_endpoint(app, monkeypatch) -> None:
+async def test_list_patterns_endpoint(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> None:
     """GET /v1/patterns returns all 5 patterns."""
-    monkeypatch.setattr("agui_server.CopilotClient", lambda: type("M", (), {
-        "start": pytest.importorskip("unittest.mock").AsyncMock(),
-        "stop": pytest.importorskip("unittest.mock").AsyncMock(),
-    })())
+    monkeypatch.setattr(
+        "agui_server.CopilotClient",
+        lambda: type("M", (), {"start": AsyncMock(), "stop": AsyncMock()})(),
+    )
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -74,12 +77,14 @@ async def test_list_patterns_endpoint(app, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_teams_stream_unknown_pattern(app, monkeypatch) -> None:
+async def test_teams_stream_unknown_pattern(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """POST /v1/teams/stream with unknown pattern returns 404."""
-    monkeypatch.setattr("agui_server.CopilotClient", lambda: type("M", (), {
-        "start": pytest.importorskip("unittest.mock").AsyncMock(),
-        "stop": pytest.importorskip("unittest.mock").AsyncMock(),
-    })())
+    monkeypatch.setattr(
+        "agui_server.CopilotClient",
+        lambda: type("M", (), {"start": AsyncMock(), "stop": AsyncMock()})(),
+    )
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -93,12 +98,14 @@ async def test_teams_stream_unknown_pattern(app, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_teams_stream_validation_max_rounds(app, monkeypatch) -> None:
+async def test_teams_stream_validation_max_rounds(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """POST /v1/teams/stream rejects max_rounds > 10."""
-    monkeypatch.setattr("agui_server.CopilotClient", lambda: type("M", (), {
-        "start": pytest.importorskip("unittest.mock").AsyncMock(),
-        "stop": pytest.importorskip("unittest.mock").AsyncMock(),
-    })())
+    monkeypatch.setattr(
+        "agui_server.CopilotClient",
+        lambda: type("M", (), {"start": AsyncMock(), "stop": AsyncMock()})(),
+    )
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
