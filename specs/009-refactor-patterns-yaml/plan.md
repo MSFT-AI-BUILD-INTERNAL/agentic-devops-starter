@@ -12,7 +12,7 @@ Refactor the Agent Team Pattern registry so the current five predefined patterns
 
 **Language/Version**: Python 3.12+ backend; TypeScript frontend is a consumer only and requires no behavior change.
 
-**Primary Dependencies**: Existing Pydantic v2 models; add PyYAML `>=6.0.2` only if no YAML loader is already present in the app environment. GitHub Advisory check found no known vulnerabilities for PyYAML 6.0.2.
+**Primary Dependencies**: Existing Pydantic v2 models; add PyYAML `>=6.0.3` only if no YAML loader is already present in the app environment. GitHub Advisory check found no known vulnerabilities for PyYAML 6.0.3.
 
 **Storage**: Repository-packaged YAML file under `app/src/` or `app/src/data/`; no database, remote configuration, runtime edits, or user uploads.
 
