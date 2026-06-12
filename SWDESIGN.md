@@ -399,7 +399,8 @@ job.status = "completed"
 
 ### 9.1 패턴 정의
 
-`patterns.py`는 `Pattern`과 `AgentRole` 모델을 정의하고, 패턴 ID별 역할 목록과 flow type을 선언한다.
+`patterns.py`는 `Pattern`과 `AgentRole` 모델을 정의하고, 서버 로드 시 `src/data/patterns.yaml`에서
+패턴 ID별 역할 목록과 flow type을 불러온다.
 
 ```
 class AgentRole(BaseModel):
