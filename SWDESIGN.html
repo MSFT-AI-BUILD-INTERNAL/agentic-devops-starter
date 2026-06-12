@@ -895,7 +895,7 @@ job.status = "completed"</code></pre>
       <h3>9.1 패턴 정의</h3>
       <p>
         <code>patterns.py</code>는 <code>Pattern</code>과 <code>AgentRole</code> 모델을 정의하고,
-        패턴 ID별 역할 목록과 flow type을 선언한다.
+        서버 로드 시 <code>src/data/patterns.yaml</code>에서 패턴 ID별 역할 목록과 flow type을 불러온다.
       </p>
 
       <pre><code>class AgentRole(BaseModel):
