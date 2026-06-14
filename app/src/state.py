@@ -117,7 +117,6 @@ class SessionPool:
             if session is None:
                 return False
             await session.abort()
-            self._last_active[thread_id] = time.monotonic()
             return True
 
     async def cleanup_idle(self) -> None:
