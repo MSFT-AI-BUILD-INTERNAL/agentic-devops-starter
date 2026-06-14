@@ -90,7 +90,7 @@ async def abort_active_team_sessions(thread_id: str) -> bool:
     errors = [result for result in results if isinstance(result, Exception)]
     if errors:
         for error in errors:
-            logger.error("Failed to abort team session for thread %s: %s", thread_id, error)
+            logger.error("Failed to abort team session for thread %s: %r", thread_id, error)
         raise errors[0]
     return True
 
