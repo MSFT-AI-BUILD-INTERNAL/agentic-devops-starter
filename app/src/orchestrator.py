@@ -84,7 +84,14 @@ async def abort_active_team_sessions(thread_id: str) -> bool:
     if not sessions:
         return False
 
-    await asyncio.gather(*(session.abort() for session in sessions))
+    results = await asyncio.gather(
+        *(session.abort() for session in sessions), return_exceptions=True
+    )
+    errors = [result for result in results if isinstance(result, Exception)]
+    if errors:
+        for error in errors:
+            logger.error("Failed to abort team session for thread %s: %s", thread_id, error)
+        raise errors[0]
     return True
 
 

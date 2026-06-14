@@ -51,6 +51,14 @@ class FakeTeamSession:
         self.aborted = True
 
 
+class FailingTeamSession(FakeTeamSession):
+    """Fake Copilot session that fails after recording abort."""
+
+    async def abort(self) -> None:
+        self.aborted = True
+        raise RuntimeError("abort failed")
+
+
 @pytest.mark.asyncio
 async def test_abort_active_team_sessions_aborts_registered_session() -> None:
     """Team abort should invoke abort on registered role sessions."""
@@ -69,6 +77,28 @@ async def test_abort_active_team_sessions_aborts_registered_session() -> None:
 async def test_abort_active_team_sessions_returns_false_for_missing_thread() -> None:
     """Team abort should return false when no team sessions are active."""
     assert await abort_active_team_sessions("missing-team-thread") is False
+
+
+@pytest.mark.asyncio
+async def test_abort_active_team_sessions_attempts_all_sessions_on_failure() -> None:
+    """Team abort should try every active session before reporting failure."""
+    failing_session = FailingTeamSession()
+    healthy_session = FakeTeamSession()
+    sessions = [
+        cast(CopilotSession, failing_session),
+        cast(CopilotSession, healthy_session),
+    ]
+    for session in sessions:
+        await orchestrator._register_team_session("team-thread", session)
+
+    try:
+        with pytest.raises(RuntimeError, match="abort failed"):
+            await abort_active_team_sessions("team-thread")
+        assert failing_session.aborted is True
+        assert healthy_session.aborted is True
+    finally:
+        for session in sessions:
+            await orchestrator._unregister_team_session("team-thread", session)
 
 
 # ---------------------------------------------------------------------------
