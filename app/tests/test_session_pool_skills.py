@@ -6,6 +6,7 @@ from collections.abc import Generator
 from typing import Any, cast
 
 import pytest
+from azure.core.credentials import AccessToken
 
 import src.skills as skills_module
 import src.state as state_module
@@ -35,6 +36,7 @@ def isolate_skills_and_client(monkeypatch: pytest.MonkeyPatch) -> Generator[None
     monkeypatch.setattr(skills_module, "_skill_directories", [])
     monkeypatch.setattr(skills_module, "_loaded_skill_names", [])
     monkeypatch.setattr(state_module, "_client", None)
+    monkeypatch.setattr(state_module.settings, "foundry_auth_mode", "auto")
     yield
 
 
@@ -114,6 +116,43 @@ async def test_foundry_session_pool_uses_isolated_byok_provider(
             "api_key": "test-foundry-key",
         }
         assert "github_token" not in client.create_kwargs
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_foundry_session_pool_uses_azure_identity_bearer_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foundry sessions may authenticate with Azure CLI or Managed Identity."""
+    client = _FakeClient()
+    monkeypatch.setattr(
+        state_module.settings,
+        "azure_ai_project_endpoint",
+        "https://example.openai.azure.com",
+    )
+    monkeypatch.setattr(state_module.settings, "azure_ai_model_deployment_name", "gpt-5.2-codex")
+    monkeypatch.setattr(state_module.settings, "foundry_api_key", "")
+    monkeypatch.setattr(state_module.settings, "foundry_auth_mode", "azure_identity")
+    monkeypatch.setattr(state_module.settings, "foundry_wire_api", "responses")
+    monkeypatch.setattr(
+        state_module,
+        "_get_foundry_bearer_token",
+        lambda: AccessToken("test-bearer-token", int(state_module.time.time()) + 3600),
+    )
+    set_client(cast(Any, client))
+
+    pool = FoundrySessionPool()
+    try:
+        await pool.get_or_create("managed-identity-thread")
+
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["provider"] == {
+            "type": "openai",
+            "base_url": "https://example.openai.azure.com/openai/v1/",
+            "wire_api": "responses",
+            "bearer_token": "test-bearer-token",
+        }
     finally:
         await pool.shutdown()
 

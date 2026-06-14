@@ -37,6 +37,10 @@ class Settings(BaseSettings):
             "COPILOT_API_FOUNDRY_API_KEY",
         ),
     )
+    foundry_auth_mode: str = Field(
+        default="auto",
+        validation_alias=AliasChoices("FOUNDRY_AUTH_MODE", "COPILOT_API_FOUNDRY_AUTH_MODE"),
+    )
     foundry_wire_api: str = Field(
         default="responses",
         validation_alias=AliasChoices("FOUNDRY_WIRE_API", "COPILOT_API_FOUNDRY_WIRE_API"),

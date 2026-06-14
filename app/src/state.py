@@ -5,6 +5,9 @@ import os
 import time
 from typing import Any
 
+from azure.core.credentials import AccessToken
+from azure.core.exceptions import ClientAuthenticationError
+from azure.identity import CredentialUnavailableError, DefaultAzureCredential
 from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
 
@@ -12,6 +15,9 @@ from src.config import settings
 from src.skills import get_disabled_skills, get_skill_directories
 
 _client: CopilotClient | None = None
+_foundry_credential: DefaultAzureCredential | None = None
+_FOUNDRY_TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"
+_FOUNDRY_TOKEN_REFRESH_SKEW_SECONDS = 300
 
 
 def _get_allowed_tools() -> list[str] | None:
@@ -134,6 +140,7 @@ class FoundrySessionPool:
     def __init__(self, idle_timeout: float = 120.0) -> None:
         self._sessions: dict[str, CopilotSession] = {}
         self._last_active: dict[str, float] = {}
+        self._token_expires_on: dict[str, int] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._pool_lock = asyncio.Lock()
         self._idle_timeout = idle_timeout
@@ -149,11 +156,17 @@ class FoundrySessionPool:
         async with lock:
             session = self._sessions.get(thread_id)
             if session is not None:
-                self._last_active[thread_id] = time.monotonic()
-                return session
+                if not self._is_token_expiring(thread_id):
+                    self._last_active[thread_id] = time.monotonic()
+                    return session
+                self._sessions.pop(thread_id, None)
+                self._last_active.pop(thread_id, None)
+                self._token_expires_on.pop(thread_id, None)
+                await session.disconnect()
 
             client = get_client()
             allowed_tools = _get_allowed_tools()
+            provider, token_expires_on = _build_foundry_provider()
             session_kwargs: dict[str, Any] = {
                 "session_id": f"foundry-{thread_id}",
                 "on_permission_request": PermissionHandler.approve_all,
@@ -162,7 +175,7 @@ class FoundrySessionPool:
                 "skill_directories": get_skill_directories(),
                 "disabled_skills": get_disabled_skills(),
                 "model": settings.azure_ai_model_deployment_name,
-                "provider": _build_foundry_provider(),
+                "provider": provider,
             }
             if allowed_tools is not None:
                 session_kwargs["available_tools"] = allowed_tools
@@ -170,6 +183,8 @@ class FoundrySessionPool:
 
             self._sessions[thread_id] = session
             self._last_active[thread_id] = time.monotonic()
+            if token_expires_on is not None:
+                self._token_expires_on[thread_id] = token_expires_on
             return session
 
     async def disconnect(self, thread_id: str) -> None:
@@ -181,6 +196,7 @@ class FoundrySessionPool:
         async with lock:
             session = self._sessions.pop(thread_id, None)
             self._last_active.pop(thread_id, None)
+            self._token_expires_on.pop(thread_id, None)
             if session is not None:
                 await session.disconnect()
 
@@ -203,6 +219,13 @@ class FoundrySessionPool:
         for tid in thread_ids:
             await self.disconnect(tid)
 
+    def _is_token_expiring(self, thread_id: str) -> bool:
+        """Return whether an Azure Identity bearer token needs session renewal."""
+        expires_on = self._token_expires_on.get(thread_id)
+        if expires_on is None:
+            return False
+        return expires_on <= int(time.time()) + _FOUNDRY_TOKEN_REFRESH_SKEW_SECONDS
+
 
 def _validate_foundry_settings() -> None:
     """Ensure Foundry BYOK settings are present before opening a BYOK session."""
@@ -211,7 +234,7 @@ def _validate_foundry_settings() -> None:
         missing.append("AZURE_AI_PROJECT_ENDPOINT")
     if not settings.azure_ai_model_deployment_name:
         missing.append("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-    if not settings.foundry_api_key:
+    if _resolve_foundry_auth_mode() == "api_key" and not settings.foundry_api_key:
         missing.append("FOUNDRY_API_KEY or AZURE_OPENAI_API_KEY")
     if missing:
         raise RuntimeError(f"Foundry BYOK is not configured: missing {', '.join(missing)}")
@@ -221,14 +244,44 @@ def _validate_foundry_settings() -> None:
         )
 
 
-def _build_foundry_provider() -> dict[str, Any]:
+def _resolve_foundry_auth_mode() -> str:
+    """Return the concrete Foundry auth mode for the current settings."""
+    auth_mode = settings.foundry_auth_mode.lower()
+    if auth_mode not in {"auto", "api_key", "azure_identity"}:
+        raise RuntimeError(
+            "Foundry BYOK is not configured: FOUNDRY_AUTH_MODE must be auto, api_key, "
+            "or azure_identity"
+        )
+    if auth_mode == "auto":
+        return "api_key" if settings.foundry_api_key else "azure_identity"
+    return auth_mode
+
+
+def _build_foundry_provider() -> tuple[dict[str, Any], int | None]:
     """Build Copilot SDK provider config for Azure AI Foundry BYOK."""
-    return {
+    provider: dict[str, Any] = {
         "type": "openai",
         "base_url": _normalize_foundry_base_url(settings.azure_ai_project_endpoint),
         "wire_api": settings.foundry_wire_api,
-        "api_key": settings.foundry_api_key,
     }
+    if _resolve_foundry_auth_mode() == "api_key":
+        provider["api_key"] = settings.foundry_api_key
+        return provider, None
+
+    token = _get_foundry_bearer_token()
+    provider["bearer_token"] = token.token
+    return provider, token.expires_on
+
+
+def _get_foundry_bearer_token() -> AccessToken:
+    """Get an Azure AI bearer token via Azure CLI locally or Managed Identity in production."""
+    global _foundry_credential
+    if _foundry_credential is None:
+        _foundry_credential = DefaultAzureCredential()
+    try:
+        return _foundry_credential.get_token(_FOUNDRY_TOKEN_SCOPE)
+    except (CredentialUnavailableError, ClientAuthenticationError) as error:
+        raise RuntimeError("Foundry BYOK is not configured: Azure Identity authentication failed") from error
 
 
 def _normalize_foundry_base_url(endpoint: str) -> str:
