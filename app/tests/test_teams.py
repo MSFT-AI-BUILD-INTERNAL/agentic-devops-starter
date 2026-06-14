@@ -1,6 +1,9 @@
 """Tests for agent team platform endpoints (patterns + teams)."""
 
+from typing import cast
+
 import pytest
+from copilot.session import CopilotSession
 from httpx import ASGITransport, AsyncClient
 
 from agui_server import create_app
@@ -51,12 +54,13 @@ class FakeTeamSession:
 @pytest.mark.asyncio
 async def test_abort_active_team_sessions_aborts_registered_session() -> None:
     """Team abort should invoke abort on registered role sessions."""
-    session = FakeTeamSession()
+    fake_session = FakeTeamSession()
+    session = cast(CopilotSession, fake_session)
     await orchestrator._register_team_session("team-thread", session)
 
     try:
         assert await abort_active_team_sessions("team-thread") is True
-        assert session.aborted is True
+        assert fake_session.aborted is True
     finally:
         await orchestrator._unregister_team_session("team-thread", session)
 

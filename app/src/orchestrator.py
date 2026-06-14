@@ -19,7 +19,7 @@ from copilot.generated.session_events import (
     SessionEvent,
     SessionIdleData,
 )
-from copilot.session import PermissionHandler
+from copilot.session import CopilotSession, PermissionHandler
 
 from src.config import settings
 from src.logging_utils import setup_logging
@@ -31,8 +31,8 @@ logger = setup_logging(settings.log_level)
 
 # In-memory store: thread_id -> list of prior run summaries
 _teams_history: dict[str, list[str]] = {}
-_active_team_thread_id: ContextVar[str | None] = ContextVar("active_team_thread_id", default=None)
-_active_team_sessions: dict[str, list[Any]] = {}
+_team_thread_id_var: ContextVar[str | None] = ContextVar("team_thread_id", default=None)
+_active_team_sessions: dict[str, list[CopilotSession]] = {}
 _active_team_sessions_lock = asyncio.Lock()
 
 _MAX_HISTORY_TURNS = 10
@@ -60,12 +60,12 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
         _teams_history[thread_id] = _teams_history[thread_id][-_MAX_HISTORY_TURNS:]
 
 
-async def _register_team_session(thread_id: str, session: Any) -> None:
+async def _register_team_session(thread_id: str, session: CopilotSession) -> None:
     async with _active_team_sessions_lock:
         _active_team_sessions.setdefault(thread_id, []).append(session)
 
 
-async def _unregister_team_session(thread_id: str, session: Any) -> None:
+async def _unregister_team_session(thread_id: str, session: CopilotSession) -> None:
     async with _active_team_sessions_lock:
         sessions = _active_team_sessions.get(thread_id)
         if not sessions:
@@ -107,7 +107,7 @@ async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[st
     idle_event = asyncio.Event()
     parts: list[str] = []
     error_msg: str | None = None
-    thread_id = _active_team_thread_id.get()
+    thread_id = _team_thread_id_var.get()
     if thread_id is not None:
         await _register_team_session(thread_id, session)
 
@@ -155,7 +155,7 @@ async def _stream_agent(
     loop = asyncio.get_running_loop()
     idle_event = asyncio.Event()
     send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
-    thread_id = _active_team_thread_id.get()
+    thread_id = _team_thread_id_var.get()
     if thread_id is not None:
         await _register_team_session(thread_id, session)
 
@@ -505,7 +505,7 @@ async def run_teams(
     prior_context = _get_history_context(thread_id)
     run_outputs: list[str] = []
 
-    token = _active_team_thread_id.set(thread_id)
+    token = _team_thread_id_var.set(thread_id)
     try:
         try:
             async for event in runner(pattern.roles, prompt, max_rounds, prior_context):
@@ -523,7 +523,7 @@ async def run_teams(
             }
             return
     finally:
-        _active_team_thread_id.reset(token)
+        _team_thread_id_var.reset(token)
 
     # Store this run's output for multi-turn context
     if run_outputs:
