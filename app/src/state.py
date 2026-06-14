@@ -4,7 +4,6 @@ import asyncio
 import os
 import time
 from typing import Any
-from typing import Any
 
 from azure.core.credentials import AccessToken
 from azure.core.exceptions import ClientAuthenticationError
@@ -14,7 +13,6 @@ from copilot.session import CopilotSession, PermissionHandler
 
 from src.config import settings
 from src.logging_utils import setup_logging
-from src.config import settings
 from src.skills import get_disabled_skills, get_skill_directories
 
 logger = setup_logging(settings.log_level)
