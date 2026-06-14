@@ -3,10 +3,12 @@
 import asyncio
 import os
 import time
+from typing import Any
 
 from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
 
+from src.config import settings
 from src.skills import get_disabled_skills, get_skill_directories
 
 _client: CopilotClient | None = None
@@ -68,7 +70,7 @@ class SessionPool:
             skill_directories = get_skill_directories()
             disabled_skills = get_disabled_skills()
             allowed_tools = _get_allowed_tools()
-            session_kwargs = {
+            session_kwargs: dict[str, Any] = {
                 "on_permission_request": PermissionHandler.approve_all,
                 "system_message": {"mode": "replace", "content": _SYSTEM_MESSAGE},
                 "streaming": True,
@@ -126,15 +128,131 @@ class SessionPool:
             await self.disconnect(tid)
 
 
+class FoundrySessionPool:
+    """Manages Azure AI Foundry BYOK sessions isolated from Copilot sessions."""
+
+    def __init__(self, idle_timeout: float = 120.0) -> None:
+        self._sessions: dict[str, CopilotSession] = {}
+        self._last_active: dict[str, float] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._pool_lock = asyncio.Lock()
+        self._idle_timeout = idle_timeout
+
+    async def get_or_create(self, thread_id: str) -> CopilotSession:
+        """Return an active Foundry BYOK session for *thread_id*."""
+        _validate_foundry_settings()
+        async with self._pool_lock:
+            if thread_id not in self._locks:
+                self._locks[thread_id] = asyncio.Lock()
+            lock = self._locks[thread_id]
+
+        async with lock:
+            session = self._sessions.get(thread_id)
+            if session is not None:
+                self._last_active[thread_id] = time.monotonic()
+                return session
+
+            client = get_client()
+            allowed_tools = _get_allowed_tools()
+            session_kwargs: dict[str, Any] = {
+                "session_id": f"foundry-{thread_id}",
+                "on_permission_request": PermissionHandler.approve_all,
+                "system_message": {"mode": "replace", "content": _FOUNDRY_SYSTEM_MESSAGE},
+                "streaming": True,
+                "skill_directories": get_skill_directories(),
+                "disabled_skills": get_disabled_skills(),
+                "model": settings.azure_ai_model_deployment_name,
+                "provider": _build_foundry_provider(),
+            }
+            if allowed_tools is not None:
+                session_kwargs["available_tools"] = allowed_tools
+            session = await client.create_session(**session_kwargs)
+
+            self._sessions[thread_id] = session
+            self._last_active[thread_id] = time.monotonic()
+            return session
+
+    async def disconnect(self, thread_id: str) -> None:
+        """Disconnect a Foundry BYOK session."""
+        async with self._pool_lock:
+            lock = self._locks.get(thread_id)
+        if lock is None:
+            return
+        async with lock:
+            session = self._sessions.pop(thread_id, None)
+            self._last_active.pop(thread_id, None)
+            if session is not None:
+                await session.disconnect()
+
+    async def cleanup_idle(self) -> None:
+        """Disconnect sessions that have been idle longer than the timeout."""
+        now = time.monotonic()
+        to_disconnect: list[str] = []
+
+        async with self._pool_lock:
+            for tid, last in list(self._last_active.items()):
+                if now - last > self._idle_timeout:
+                    to_disconnect.append(tid)
+
+        for tid in to_disconnect:
+            await self.disconnect(tid)
+
+    async def shutdown(self) -> None:
+        """Disconnect all Foundry BYOK sessions."""
+        thread_ids = list(self._sessions.keys())
+        for tid in thread_ids:
+            await self.disconnect(tid)
+
+
+def _validate_foundry_settings() -> None:
+    """Ensure Foundry BYOK settings are present before opening a BYOK session."""
+    missing = []
+    if not settings.azure_ai_project_endpoint:
+        missing.append("AZURE_AI_PROJECT_ENDPOINT")
+    if not settings.azure_ai_model_deployment_name:
+        missing.append("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+    if not settings.foundry_api_key:
+        missing.append("FOUNDRY_API_KEY or AZURE_OPENAI_API_KEY")
+    if missing:
+        raise RuntimeError(f"Foundry BYOK is not configured: missing {', '.join(missing)}")
+    if settings.foundry_wire_api not in {"responses", "completions"}:
+        raise RuntimeError(
+            "Foundry BYOK is not configured: FOUNDRY_WIRE_API must be responses or completions"
+        )
+
+
+def _build_foundry_provider() -> dict[str, Any]:
+    """Build Copilot SDK provider config for Azure AI Foundry BYOK."""
+    return {
+        "type": "openai",
+        "base_url": _normalize_foundry_base_url(settings.azure_ai_project_endpoint),
+        "wire_api": settings.foundry_wire_api,
+        "api_key": settings.foundry_api_key,
+    }
+
+
+def _normalize_foundry_base_url(endpoint: str) -> str:
+    """Return the OpenAI-compatible Foundry base URL expected by the SDK."""
+    normalized = endpoint.rstrip("/")
+    if normalized.endswith("/openai/v1"):
+        return f"{normalized}/"
+    return f"{normalized}/openai/v1/"
+
+
 # Shared constants
 _SYSTEM_MESSAGE = (
     "You are a helpful AI assistant powered by GitHub Copilot. "
+    "Provide clear, accurate, and well-structured responses."
+)
+_FOUNDRY_SYSTEM_MESSAGE = (
+    "You are a helpful AI assistant powered by Azure AI Foundry BYOK. "
     "Provide clear, accurate, and well-structured responses."
 )
 
 
 # Module-level singleton — initialized during app lifespan.
 _session_pool: SessionPool | None = None
+_foundry_session_pool: FoundrySessionPool | None = None
 
 
 def set_session_pool(pool: SessionPool) -> None:
@@ -148,3 +266,16 @@ def get_session_pool() -> SessionPool:
     if _session_pool is None:
         raise RuntimeError("SessionPool not initialized")
     return _session_pool
+
+
+def set_foundry_session_pool(pool: FoundrySessionPool) -> None:
+    """Store the shared Foundry BYOK SessionPool instance."""
+    global _foundry_session_pool
+    _foundry_session_pool = pool
+
+
+def get_foundry_session_pool() -> FoundrySessionPool:
+    """Retrieve the shared Foundry BYOK SessionPool instance."""
+    if _foundry_session_pool is None:
+        raise RuntimeError("FoundrySessionPool not initialized")
+    return _foundry_session_pool

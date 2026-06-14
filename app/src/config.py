@@ -1,5 +1,6 @@
 """Application configuration via environment variables."""
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -13,6 +14,33 @@ class Settings(BaseSettings):
 
     azure_storage_blob_endpoint: str = ""
     azure_storage_container_name: str = "uploads"
+
+    azure_ai_project_endpoint: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "AZURE_AI_PROJECT_ENDPOINT",
+            "COPILOT_API_AZURE_AI_PROJECT_ENDPOINT",
+        ),
+    )
+    azure_ai_model_deployment_name: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "AZURE_AI_MODEL_DEPLOYMENT_NAME",
+            "COPILOT_API_AZURE_AI_MODEL_DEPLOYMENT_NAME",
+        ),
+    )
+    foundry_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "FOUNDRY_API_KEY",
+            "AZURE_OPENAI_API_KEY",
+            "COPILOT_API_FOUNDRY_API_KEY",
+        ),
+    )
+    foundry_wire_api: str = Field(
+        default="responses",
+        validation_alias=AliasChoices("FOUNDRY_WIRE_API", "COPILOT_API_FOUNDRY_WIRE_API"),
+    )
 
     # Additional directories (os.pathsep- or comma-separated) the Copilot SDK
     # should scan for Agent Skills (SKILL.md files), in addition to the

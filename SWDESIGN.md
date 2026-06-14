@@ -264,6 +264,18 @@ data: {"type": "RUN_FINISHED", "thread_id": "abc123", "run_id": "def456"}
 
 `SessionPool`은 `thread_id`별 Copilot SDK 세션을 유지한다. 동일 thread에 대한 동시 접근을 막기 위해 thread별 `asyncio.Lock`을 사용하고, pool dictionary 자체는 `_pool_lock`으로 보호한다.
 
+### 6.0 세션 라우팅 패턴
+
+일반 채팅의 세션 라우팅 키는 인증 사용자 ID가 아니라 클라이언트가 전달하는 `thread_id`이다. 프론트엔드는 새 대화를 시작할 때 UUID 기반 thread를 만들고 같은 대화의 후속 요청에 동일 `thread_id`를 보낸다. 백엔드는 이 값을 그대로 Copilot SDK `session_id`로 사용하므로, 서로 다른 브라우저/사용자가 서로 다른 `thread_id`를 사용하면 같은 서버 프로세스 안에서 독립 Copilot 세션으로 동시에 처리된다.
+
+| 항목 | 설계 |
+| --- | --- |
+| 라우팅 키 | `thread_id` |
+| SDK 매핑 | `thread_id` → `CopilotSession`, 신규 생성 시 `session_id=thread_id` |
+| 동시 사용 모델 | 여러 `thread_id`를 `SessionPool`이 병렬 보관하고, thread별 lock은 세션 조회/생성/해제 경합을 보호 |
+| 사용자별 분리 | 별도 `user_id` 네임스페이스는 두지 않음. 정상 UI 흐름에서는 각 브라우저 대화가 고유 `thread_id`를 생성해 분리 |
+| 컨텍스트 유지 | 서버는 최신 user prompt만 전송하고, 이전 대화 맥락은 동일 Copilot SDK 세션이 유지 |
+
 ```
 class SessionPool:
     def __init__(self, idle_timeout: float = 120.0) -> None:

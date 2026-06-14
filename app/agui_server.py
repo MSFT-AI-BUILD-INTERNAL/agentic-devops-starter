@@ -16,7 +16,13 @@ from src.logging_utils import setup_logging
 from src.observability import configure_observability
 from src.routes import router
 from src.skills import load_skills
-from src.state import SessionPool, set_client, set_session_pool
+from src.state import (
+    FoundrySessionPool,
+    SessionPool,
+    set_client,
+    set_foundry_session_pool,
+    set_session_pool,
+)
 
 load_dotenv()
 
@@ -26,7 +32,7 @@ configure_observability()
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
-async def _idle_cleanup_loop(pool: SessionPool) -> None:
+async def _idle_cleanup_loop(pool: SessionPool | FoundrySessionPool) -> None:
     """Periodically disconnect idle sessions to free resources."""
     while True:
         await asyncio.sleep(30)
@@ -55,11 +61,18 @@ def create_app() -> FastAPI:
 
         pool = SessionPool(idle_timeout=settings.session_timeout)
         set_session_pool(pool)
-        cleanup_task = asyncio.create_task(_idle_cleanup_loop(pool))
+        foundry_pool = FoundrySessionPool(idle_timeout=settings.session_timeout)
+        set_foundry_session_pool(foundry_pool)
+        cleanup_tasks = [
+            asyncio.create_task(_idle_cleanup_loop(pool)),
+            asyncio.create_task(_idle_cleanup_loop(foundry_pool)),
+        ]
 
         yield
 
-        cleanup_task.cancel()
+        for cleanup_task in cleanup_tasks:
+            cleanup_task.cancel()
+        await foundry_pool.shutdown()
         await pool.shutdown()
         await client.stop()
         logger.info("CopilotClient stopped")

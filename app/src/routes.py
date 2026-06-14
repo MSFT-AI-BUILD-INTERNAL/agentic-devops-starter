@@ -38,7 +38,7 @@ from src.models import (
 )
 from src.orchestrator import run_teams
 from src.patterns import PATTERNS
-from src.state import get_session_pool
+from src.state import FoundrySessionPool, SessionPool, get_foundry_session_pool, get_session_pool
 
 logger = setup_logging(settings.log_level)
 
@@ -123,13 +123,51 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
 
     prompt = _build_prompt(messages, attachments)
 
-    async def event_generator() -> AsyncGenerator[str, None]:
-        pool = get_session_pool()
+    return _chat_streaming_response(
+        get_session_pool(),
+        thread_id,
+        run_id,
+        prompt,
+        "CopilotClient not initialized",
+    )
 
+
+@router.post("/v1/byok/foundry")
+async def foundry_byok_endpoint(request: Request) -> StreamingResponse:
+    """Handle AG-UI agent requests with an isolated Azure AI Foundry BYOK session."""
+    input_data = await request.json()
+    thread_id: str = input_data.get("thread_id") or uuid.uuid4().hex[:12]
+    run_id: str = input_data.get("run_id") or uuid.uuid4().hex[:12]
+    messages: list[dict[str, str]] = input_data.get("messages", [])
+    attachments: list[dict[str, Any]] | None = input_data.get("attachments")
+
+    prompt = _build_prompt(messages, attachments)
+
+    return _chat_streaming_response(
+        get_foundry_session_pool(),
+        thread_id,
+        run_id,
+        prompt,
+        "Foundry BYOK session pool not initialized",
+    )
+
+
+def _chat_streaming_response(
+    pool: SessionPool | FoundrySessionPool,
+    thread_id: str,
+    run_id: str,
+    prompt: str,
+    initialization_error_message: str,
+) -> StreamingResponse:
+    """Create a streaming AG-UI response for a dedicated session pool."""
+
+    async def event_generator() -> AsyncGenerator[str, None]:
         try:
             session = await pool.get_or_create(thread_id)
-        except RuntimeError:
-            yield _sse({"type": "RUN_ERROR", "message": "CopilotClient not initialized"})
+        except RuntimeError as error:
+            logger.exception("Chat session initialization failed", extra={"thread_id": thread_id})
+            message = str(error) if "Foundry BYOK is not configured" in str(error) else initialization_error_message
+            yield _sse({"type": "RUN_ERROR", "message": message})
             yield _sse({"type": "RUN_FINISHED", "thread_id": thread_id, "run_id": run_id})
             return
 
@@ -302,6 +340,8 @@ async def delete_thread(thread_id: str) -> dict[str, str]:
     """Disconnect and clean up a conversation thread."""
     pool = get_session_pool()
     await pool.disconnect(thread_id)
+    foundry_pool = get_foundry_session_pool()
+    await foundry_pool.disconnect(thread_id)
     return {"status": "deleted", "thread_id": thread_id}
 
 

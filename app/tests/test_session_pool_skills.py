@@ -10,7 +10,7 @@ import pytest
 import src.skills as skills_module
 import src.state as state_module
 from src.skills import load_skills
-from src.state import SessionPool, set_client
+from src.state import FoundrySessionPool, SessionPool, set_client
 
 
 class _FakeSession:
@@ -59,6 +59,61 @@ async def test_session_pool_enables_sdk_skills_when_directories_loaded(
         # An empty available_tools allowlist disables every tool (including the
         # skill-loading tool), which silently neutralizes skills. Guard against it.
         assert allowlist is None or len(allowlist) > 0
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_standard_session_pool_does_not_use_byok_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default GitHub Copilot sessions must not receive BYOK provider config."""
+    client = _FakeClient()
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("standard-thread")
+
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["session_id"] == "standard-thread"
+        assert "provider" not in client.create_kwargs
+        assert "model" not in client.create_kwargs
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_foundry_session_pool_uses_isolated_byok_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foundry sessions must use a prefixed session id and BYOK provider only."""
+    client = _FakeClient()
+    monkeypatch.setattr(
+        state_module.settings,
+        "azure_ai_project_endpoint",
+        "https://example.openai.azure.com",
+    )
+    monkeypatch.setattr(state_module.settings, "azure_ai_model_deployment_name", "gpt-5.2-codex")
+    monkeypatch.setattr(state_module.settings, "foundry_api_key", "test-foundry-key")
+    monkeypatch.setattr(state_module.settings, "foundry_wire_api", "responses")
+    set_client(cast(Any, client))
+
+    pool = FoundrySessionPool()
+    try:
+        await pool.get_or_create("shared-thread")
+
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["session_id"] == "foundry-shared-thread"
+        assert client.create_kwargs["model"] == "gpt-5.2-codex"
+        assert client.create_kwargs["provider"] == {
+            "type": "openai",
+            "base_url": "https://example.openai.azure.com/openai/v1/",
+            "wire_api": "responses",
+            "api_key": "test-foundry-key",
+        }
+        assert "github_token" not in client.create_kwargs
     finally:
         await pool.shutdown()
 
