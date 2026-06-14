@@ -8,7 +8,11 @@ from typing import Any
 from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
 
+from src.config import settings
+from src.logging_utils import setup_logging
 from src.skills import get_disabled_skills, get_skill_directories
+
+logger = setup_logging(settings.log_level)
 
 _client: CopilotClient | None = None
 
@@ -104,7 +108,9 @@ class SessionPool:
             lock = self._locks[thread_id]
 
         async with lock:
-            self._active_sessions.setdefault(thread_id, []).append(session)
+            active_sessions = self._active_sessions.setdefault(thread_id, [])
+            if all(active_session is not session for active_session in active_sessions):
+                active_sessions.append(session)
 
     async def unregister_active_session(self, thread_id: str, session: CopilotSession) -> None:
         """Stop tracking a transient session for *thread_id*."""
@@ -142,19 +148,11 @@ class SessionPool:
         async with lock:
             persistent_session = self._sessions.get(thread_id)
             active_sessions = self._active_sessions.get(thread_id, [])
-            sessions = [
-                session
-                for session in (persistent_session, *active_sessions)
-                if session is not None
-            ]
-            sessions_to_abort: list[CopilotSession] = []
-            seen_session_ids: set[int] = set()
-            for session in sessions:
-                session_id = id(session)
-                if session_id in seen_session_ids:
-                    continue
-                seen_session_ids.add(session_id)
-                sessions_to_abort.append(session)
+            sessions_to_abort = list(active_sessions)
+            if persistent_session is not None and all(
+                session is not persistent_session for session in sessions_to_abort
+            ):
+                sessions_to_abort.insert(0, persistent_session)
 
         if not sessions_to_abort:
             return False
@@ -163,6 +161,12 @@ class SessionPool:
         )
         for result in results:
             if isinstance(result, Exception):
+                logger.error(
+                    "Failed to abort session for thread %s (%d session(s) requested): %r",
+                    thread_id,
+                    len(sessions_to_abort),
+                    result,
+                )
                 raise result
         return True
 
