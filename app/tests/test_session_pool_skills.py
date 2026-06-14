@@ -175,3 +175,21 @@ async def test_session_pool_abort_attempts_all_sessions_on_failure() -> None:
     finally:
         await pool.unregister_active_session("team-thread", cast(Any, failing_session))
         await pool.unregister_active_session("team-thread", cast(Any, healthy_session))
+
+
+@pytest.mark.asyncio
+async def test_session_pool_abort_reports_multiple_failures() -> None:
+    """Abort should report every failure when multiple sessions fail."""
+    pool = SessionPool()
+    sessions = [_FailingAbortSession(), _FailingAbortSession()]
+
+    for session in sessions:
+        await pool.register_active_session("team-thread", cast(Any, session))
+
+    try:
+        with pytest.raises(ExceptionGroup, match="Failed to abort 2 sessions"):
+            await pool.abort("team-thread")
+        assert [session.abort_count for session in sessions] == [1, 1]
+    finally:
+        for session in sessions:
+            await pool.unregister_active_session("team-thread", cast(Any, session))

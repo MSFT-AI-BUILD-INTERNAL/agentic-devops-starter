@@ -159,15 +159,20 @@ class SessionPool:
         results = await asyncio.gather(
             *(session.abort() for session in sessions_to_abort), return_exceptions=True
         )
-        for result in results:
-            if isinstance(result, Exception):
-                logger.error(
-                    "Failed to abort session for thread %s (%d session(s) requested): %r",
-                    thread_id,
-                    len(sessions_to_abort),
-                    result,
-                )
-                raise result
+        errors = [result for result in results if isinstance(result, Exception)]
+        for error in errors:
+            logger.error(
+                "Failed to abort session for thread %s (%d session(s) requested): %r",
+                thread_id,
+                len(sessions_to_abort),
+                error,
+            )
+        if errors:
+            if len(errors) == 1:
+                raise errors[0]
+            raise ExceptionGroup(
+                f"Failed to abort {len(errors)} sessions for thread {thread_id}", errors
+            )
         return True
 
     async def cleanup_idle(self) -> None:
