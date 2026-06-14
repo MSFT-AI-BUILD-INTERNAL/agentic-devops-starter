@@ -14,8 +14,20 @@ from src.state import SessionPool, set_client
 
 
 class _FakeSession:
+    def __init__(self) -> None:
+        self.abort_count = 0
+
+    async def abort(self) -> None:
+        self.abort_count += 1
+
     async def disconnect(self) -> None:
         pass
+
+
+class _FailingAbortSession(_FakeSession):
+    async def abort(self) -> None:
+        self.abort_count += 1
+        raise RuntimeError("abort failed")
 
 
 class _FakeClient:
@@ -99,3 +111,85 @@ async def test_session_pool_omits_empty_tool_allowlist(
         assert "available_tools" not in client.create_kwargs
     finally:
         await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_abort_invokes_session_abort(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Abort should stop the active request without disconnecting the session."""
+    client = _FakeClient()
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        session = cast(_FakeSession, await pool.get_or_create("thread-to-abort"))
+
+        aborted = await pool.abort("thread-to-abort")
+
+        assert aborted is True
+        assert session.abort_count == 1
+        assert await pool.get_or_create("thread-to-abort") is session
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_abort_missing_thread_returns_false() -> None:
+    """Abort should be a no-op when the thread has no active session."""
+    pool = SessionPool()
+
+    assert await pool.abort("missing-thread") is False
+
+
+@pytest.mark.asyncio
+async def test_session_pool_abort_invokes_registered_active_sessions() -> None:
+    """Abort should stop transient sessions registered for a thread."""
+    pool = SessionPool()
+    sessions = [_FakeSession(), _FakeSession()]
+
+    for session in sessions:
+        await pool.register_active_session("team-thread", cast(Any, session))
+
+    try:
+        assert await pool.abort("team-thread") is True
+        assert [session.abort_count for session in sessions] == [1, 1]
+    finally:
+        for session in sessions:
+            await pool.unregister_active_session("team-thread", cast(Any, session))
+
+
+@pytest.mark.asyncio
+async def test_session_pool_abort_attempts_all_sessions_on_failure() -> None:
+    """Abort should try every active session before reporting failure."""
+    pool = SessionPool()
+    failing_session = _FailingAbortSession()
+    healthy_session = _FakeSession()
+
+    await pool.register_active_session("team-thread", cast(Any, failing_session))
+    await pool.register_active_session("team-thread", cast(Any, healthy_session))
+
+    try:
+        with pytest.raises(RuntimeError, match="abort failed"):
+            await pool.abort("team-thread")
+        assert failing_session.abort_count == 1
+        assert healthy_session.abort_count == 1
+    finally:
+        await pool.unregister_active_session("team-thread", cast(Any, failing_session))
+        await pool.unregister_active_session("team-thread", cast(Any, healthy_session))
+
+
+@pytest.mark.asyncio
+async def test_session_pool_abort_reports_multiple_failures() -> None:
+    """Abort should report every failure when multiple sessions fail."""
+    pool = SessionPool()
+    sessions = [_FailingAbortSession(), _FailingAbortSession()]
+
+    for session in sessions:
+        await pool.register_active_session("team-thread", cast(Any, session))
+
+    try:
+        with pytest.raises(ExceptionGroup, match="Failed to abort 2 sessions"):
+            await pool.abort("team-thread")
+        assert [session.abort_count for session in sessions] == [1, 1]
+    finally:
+        for session in sessions:
+            await pool.unregister_active_session("team-thread", cast(Any, session))

@@ -75,3 +75,31 @@ def test_security_headers(client: TestClient) -> None:
     assert response.headers.get("X-Frame-Options") == "DENY"
     assert response.headers.get("X-XSS-Protection") == "1; mode=block"
     assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+
+
+def test_abort_thread_endpoint(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The abort endpoint should call the session pool with the thread ID."""
+    pool = MagicMock()
+    pool.abort = AsyncMock(return_value=True)
+    monkeypatch.setattr("src.routes.get_session_pool", lambda: pool)
+
+    response = client.post("/v1/threads/thread-123/abort")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "aborted", "thread_id": "thread-123"}
+    pool.abort.assert_awaited_once_with("thread-123")
+
+
+def test_abort_thread_endpoint_reports_missing_thread(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The abort endpoint should report when no session is abortable."""
+    pool = MagicMock()
+    pool.abort = AsyncMock(return_value=False)
+    monkeypatch.setattr("src.routes.get_session_pool", lambda: pool)
+
+    response = client.post("/v1/threads/missing-thread/abort")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "not_found", "thread_id": "missing-thread"}
+    pool.abort.assert_awaited_once_with("missing-thread")

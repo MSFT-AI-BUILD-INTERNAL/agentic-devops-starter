@@ -305,6 +305,18 @@ async def delete_thread(thread_id: str) -> dict[str, str]:
     return {"status": "deleted", "thread_id": thread_id}
 
 
+@router.post("/v1/threads/{thread_id}/abort")
+async def abort_thread(thread_id: str) -> dict[str, str]:
+    """Abort the active request for a conversation thread.
+
+    Returns status "aborted" for an active session and "not_found" when the
+    thread has no active in-memory session to abort.
+    """
+    pool = get_session_pool()
+    aborted = await pool.abort(thread_id)
+    return {"status": "aborted" if aborted else "not_found", "thread_id": thread_id}
+
+
 @router.post("/v1/fleet", status_code=202)
 async def fleet_endpoint(request: FleetRequest) -> dict[str, str]:
     job_id = create_job()

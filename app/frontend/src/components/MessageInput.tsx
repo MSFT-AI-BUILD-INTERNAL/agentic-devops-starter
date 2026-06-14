@@ -9,17 +9,22 @@ const ACCEPTED_FILE_TYPES = '.pdf,.png,.jpg,.jpeg,.gif,.txt,.csv,.json,.md';
 
 interface MessageInputProps {
   onSendMessage: (message: string, attachments?: FileAttachment[]) => void;
+  onStopGenerating?: () => void | Promise<void>;
   disabled?: boolean;
+  isGenerating?: boolean;
   placeholder?: string;
 }
 
 export function MessageInput({
   onSendMessage,
+  onStopGenerating,
   disabled = false,
+  isGenerating = false,
   placeholder = 'Type your message...',
 }: MessageInputProps) {
   const [inputValue, setInputValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -88,6 +93,21 @@ export function MessageInput({
     },
     [inputValue, pendingFiles, disabled, isSubmitting, isUploading, onSendMessage, uploadAll, clearFiles]
   );
+
+  const handleStopGenerating = useCallback(async () => {
+    if (!onStopGenerating || isStopping) {
+      return;
+    }
+
+    setIsStopping(true);
+    try {
+      await onStopGenerating();
+    } catch (error) {
+      logger.error('Failed to stop generation', error);
+    } finally {
+      setIsStopping(false);
+    }
+  }, [onStopGenerating, isStopping]);
 
   /**
    * Handle keyboard shortcuts
@@ -218,52 +238,65 @@ export function MessageInput({
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={isSendDisabled}
-          className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-border-focus focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-          style={{ minHeight: '44px' }}
-          aria-label="Send message"
-        >
-          {isSubmitting || isUploading ? (
-            <>
-              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
+        {isGenerating && onStopGenerating ? (
+          <button
+            type="button"
+            onClick={handleStopGenerating}
+            disabled={isStopping}
+            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-border-focus focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+            style={{ minHeight: '44px' }}
+            aria-label="Stop generating"
+          >
+            <span>{isStopping ? 'Stopping...' : 'Stop Generating'}</span>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={isSendDisabled}
+            className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-border-focus focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+            style={{ minHeight: '44px' }}
+            aria-label="Send message"
+          >
+            {isSubmitting || isUploading ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                <span>{isUploading ? 'Uploading...' : 'Sending...'}</span>
+              </>
+            ) : (
+              <>
+                <svg
+                  className="w-5 h-5"
                   fill="none"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              <span>{isUploading ? 'Uploading...' : 'Sending...'}</span>
-            </>
-          ) : (
-            <>
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                />
-              </svg>
-              <span>Send</span>
-            </>
-          )}
-        </button>
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                  />
+                </svg>
+                <span>Send</span>
+              </>
+            )}
+          </button>
+        )}
       </div>
     </form>
   );
