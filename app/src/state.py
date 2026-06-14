@@ -148,19 +148,19 @@ class SessionPool:
                 )
                 if session is not None
             ]
-            abort_sessions: list[CopilotSession] = []
+            sessions_to_abort: list[CopilotSession] = []
             seen_session_ids: set[int] = set()
             for session in sessions:
                 session_id = id(session)
                 if session_id in seen_session_ids:
                     continue
                 seen_session_ids.add(session_id)
-                abort_sessions.append(session)
+                sessions_to_abort.append(session)
 
-        if not abort_sessions:
+        if not sessions_to_abort:
             return False
         results = await asyncio.gather(
-            *(session.abort() for session in abort_sessions), return_exceptions=True
+            *(session.abort() for session in sessions_to_abort), return_exceptions=True
         )
         for result in results:
             if isinstance(result, Exception):
