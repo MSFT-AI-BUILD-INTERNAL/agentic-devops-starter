@@ -11,8 +11,13 @@ import { logger } from '../utils/logger';
 import type { FileAttachment } from '../types/file';
 
 export function ChatInterface() {
-  const { messages, sendMessage, newConversation, isInputDisabled, currentThreadId, isStreaming, streamingText } = useChat();
-  const { selectedPattern, sendTeamsMessage, isRunning: isTeamsRunning } = useTeams();
+  const { messages, sendMessage, stopGenerating, newConversation, isInputDisabled, currentThreadId, isStreaming, streamingText } = useChat();
+  const {
+    selectedPattern,
+    sendTeamsMessage,
+    stopTeamsGeneration,
+    isRunning: isTeamsRunning,
+  } = useTeams();
 
   const isTeamsMode = selectedPattern !== null;
 
@@ -115,7 +120,9 @@ export function ChatInterface() {
       {/* Input */}
       <MessageInput
         onSendMessage={handleSendMessage}
+        onStopGenerating={isTeamsMode ? stopTeamsGeneration : stopGenerating}
         disabled={isTeamsMode ? isTeamsRunning : isInputDisabled}
+        isGenerating={isTeamsMode ? isTeamsRunning : isStreaming}
         placeholder={placeholder}
       />
     </div>

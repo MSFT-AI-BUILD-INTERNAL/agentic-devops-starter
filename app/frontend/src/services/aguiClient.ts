@@ -154,7 +154,22 @@ class AGUIClient {
     }
   }
 
+  async abortThread(threadId: string): Promise<void> {
+    logger.info('Aborting chat generation', { threadId });
 
+    const response = await fetch(`${this.baseUrl}/v1/threads/${encodeURIComponent(threadId)}/abort`, {
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('Abort request failed', new Error(errorText), {
+        status: response.status,
+        threadId,
+      });
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+  }
 }
 
 // Export singleton instance

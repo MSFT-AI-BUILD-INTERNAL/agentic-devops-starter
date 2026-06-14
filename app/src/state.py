@@ -4,6 +4,7 @@ import asyncio
 import os
 import time
 from typing import Any
+from typing import Any
 
 from azure.core.credentials import AccessToken
 from azure.core.exceptions import ClientAuthenticationError
@@ -12,7 +13,11 @@ from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
 
 from src.config import settings
+from src.logging_utils import setup_logging
+from src.config import settings
 from src.skills import get_disabled_skills, get_skill_directories
+
+logger = setup_logging(settings.log_level)
 
 _client: CopilotClient | None = None
 _foundry_credential: DefaultAzureCredential | None = None
@@ -53,6 +58,7 @@ class SessionPool:
 
     def __init__(self, idle_timeout: float = 120.0) -> None:
         self._sessions: dict[str, CopilotSession] = {}
+        self._active_sessions: dict[str, list[CopilotSession]] = {}
         self._last_active: dict[str, float] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._pool_lock = asyncio.Lock()
@@ -102,6 +108,33 @@ class SessionPool:
             self._last_active[thread_id] = time.monotonic()
             return session
 
+    async def register_active_session(self, thread_id: str, session: CopilotSession) -> None:
+        """Track a transient session as abortable for *thread_id*."""
+        async with self._pool_lock:
+            if thread_id not in self._locks:
+                self._locks[thread_id] = asyncio.Lock()
+            lock = self._locks[thread_id]
+
+        async with lock:
+            active_sessions = self._active_sessions.setdefault(thread_id, [])
+            if not any(active_session is session for active_session in active_sessions):
+                active_sessions.append(session)
+
+    async def unregister_active_session(self, thread_id: str, session: CopilotSession) -> None:
+        """Stop tracking a transient session for *thread_id*."""
+        async with self._pool_lock:
+            lock = self._locks.get(thread_id)
+        if lock is None:
+            return
+        async with lock:
+            sessions = self._active_sessions.get(thread_id)
+            if not sessions:
+                return
+            if session in sessions:
+                sessions.remove(session)
+            if not sessions:
+                self._active_sessions.pop(thread_id, None)
+
     async def disconnect(self, thread_id: str) -> None:
         """Disconnect a session (preserves state on disk for later resume)."""
         async with self._pool_lock:
@@ -113,6 +146,42 @@ class SessionPool:
             self._last_active.pop(thread_id, None)
             if session is not None:
                 await session.disconnect()
+
+    async def abort(self, thread_id: str) -> bool:
+        """Abort active requests for a thread."""
+        async with self._pool_lock:
+            lock = self._locks.get(thread_id)
+        if lock is None:
+            return False
+        async with lock:
+            persistent_session = self._sessions.get(thread_id)
+            active_sessions = self._active_sessions.get(thread_id, [])
+            sessions_to_abort = list(active_sessions)
+            if persistent_session is not None and not any(
+                session is persistent_session for session in sessions_to_abort
+            ):
+                sessions_to_abort.insert(0, persistent_session)
+
+        if not sessions_to_abort:
+            return False
+        results = await asyncio.gather(
+            *(session.abort() for session in sessions_to_abort), return_exceptions=True
+        )
+        errors = [result for result in results if isinstance(result, Exception)]
+        for error in errors:
+            logger.error(
+                "Failed to abort session for thread %s (%d session(s) requested): %r",
+                thread_id,
+                len(sessions_to_abort),
+                error,
+            )
+        if errors:
+            if len(errors) == 1:
+                raise errors[0]
+            raise ExceptionGroup(
+                f"Failed to abort {len(errors)} sessions for thread {thread_id}", errors
+            )
+        return True
 
     async def cleanup_idle(self) -> None:
         """Disconnect sessions that have been idle longer than the timeout."""
