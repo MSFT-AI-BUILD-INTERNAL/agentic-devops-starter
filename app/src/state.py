@@ -140,12 +140,11 @@ class SessionPool:
         if lock is None:
             return False
         async with lock:
+            persistent_session = self._sessions.get(thread_id)
+            active_sessions = self._active_sessions.get(thread_id, [])
             sessions = [
                 session
-                for session in (
-                    self._sessions.get(thread_id),
-                    *self._active_sessions.get(thread_id, []),
-                )
+                for session in (persistent_session, *active_sessions)
                 if session is not None
             ]
             sessions_to_abort: list[CopilotSession] = []
