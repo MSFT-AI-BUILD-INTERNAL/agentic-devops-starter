@@ -24,6 +24,12 @@ class _FakeSession:
         pass
 
 
+class _FailingAbortSession(_FakeSession):
+    async def abort(self) -> None:
+        self.abort_count += 1
+        raise RuntimeError("abort failed")
+
+
 class _FakeClient:
     def __init__(self) -> None:
         self.create_kwargs: dict[str, Any] | None = None
@@ -115,7 +121,7 @@ async def test_session_pool_abort_invokes_session_abort(monkeypatch: pytest.Monk
 
     pool = SessionPool()
     try:
-        session = await pool.get_or_create("thread-to-abort")
+        session = cast(_FakeSession, await pool.get_or_create("thread-to-abort"))
 
         aborted = await pool.abort("thread-to-abort")
 
@@ -132,3 +138,40 @@ async def test_session_pool_abort_missing_thread_returns_false() -> None:
     pool = SessionPool()
 
     assert await pool.abort("missing-thread") is False
+
+
+@pytest.mark.asyncio
+async def test_session_pool_abort_invokes_registered_active_sessions() -> None:
+    """Abort should stop transient sessions registered for a thread."""
+    pool = SessionPool()
+    sessions = [_FakeSession(), _FakeSession()]
+
+    for session in sessions:
+        await pool.register_active_session("team-thread", cast(Any, session))
+
+    try:
+        assert await pool.abort("team-thread") is True
+        assert [session.abort_count for session in sessions] == [1, 1]
+    finally:
+        for session in sessions:
+            await pool.unregister_active_session("team-thread", cast(Any, session))
+
+
+@pytest.mark.asyncio
+async def test_session_pool_abort_attempts_all_sessions_on_failure() -> None:
+    """Abort should try every active session before reporting failure."""
+    pool = SessionPool()
+    failing_session = _FailingAbortSession()
+    healthy_session = _FakeSession()
+
+    await pool.register_active_session("team-thread", cast(Any, failing_session))
+    await pool.register_active_session("team-thread", cast(Any, healthy_session))
+
+    try:
+        with pytest.raises(RuntimeError, match="abort failed"):
+            await pool.abort("team-thread")
+        assert failing_session.abort_count == 1
+        assert healthy_session.abort_count == 1
+    finally:
+        await pool.unregister_active_session("team-thread", cast(Any, failing_session))
+        await pool.unregister_active_session("team-thread", cast(Any, healthy_session))

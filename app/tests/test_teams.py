@@ -4,12 +4,13 @@ from typing import cast
 
 import pytest
 from copilot.session import CopilotSession
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from agui_server import create_app
 from src import orchestrator
-from src.orchestrator import abort_active_team_sessions
 from src.patterns import PATTERNS, get_pattern
+from src.state import SessionPool, set_session_pool
 
 # ---------------------------------------------------------------------------
 # Pattern definitions
@@ -51,54 +52,35 @@ class FakeTeamSession:
         self.aborted = True
 
 
-class FailingTeamSession(FakeTeamSession):
-    """Fake Copilot session that fails after recording abort."""
-
-    async def abort(self) -> None:
-        self.aborted = True
-        raise RuntimeError("abort failed")
-
-
 @pytest.mark.asyncio
-async def test_abort_active_team_sessions_aborts_registered_session() -> None:
-    """Team abort should invoke abort on registered role sessions."""
+async def test_team_session_registration_uses_session_pool_abort() -> None:
+    """Team sessions should be abortable through the shared session pool."""
+    pool = SessionPool()
+    set_session_pool(pool)
     fake_session = FakeTeamSession()
     session = cast(CopilotSession, fake_session)
     await orchestrator._register_team_session("team-thread", session)
 
     try:
-        assert await abort_active_team_sessions("team-thread") is True
+        assert await pool.abort("team-thread") is True
         assert fake_session.aborted is True
     finally:
         await orchestrator._unregister_team_session("team-thread", session)
 
 
 @pytest.mark.asyncio
-async def test_abort_active_team_sessions_returns_false_for_missing_thread() -> None:
-    """Team abort should return false when no team sessions are active."""
-    assert await abort_active_team_sessions("missing-team-thread") is False
+async def test_team_session_unregistration_removes_session_from_abort_pool() -> None:
+    """Finished team sessions should no longer be abortable."""
+    pool = SessionPool()
+    set_session_pool(pool)
+    fake_session = FakeTeamSession()
+    session = cast(CopilotSession, fake_session)
 
+    await orchestrator._register_team_session("team-thread", session)
+    await orchestrator._unregister_team_session("team-thread", session)
 
-@pytest.mark.asyncio
-async def test_abort_active_team_sessions_attempts_all_sessions_on_failure() -> None:
-    """Team abort should try every active session before reporting failure."""
-    failing_session = FailingTeamSession()
-    healthy_session = FakeTeamSession()
-    sessions = [
-        cast(CopilotSession, failing_session),
-        cast(CopilotSession, healthy_session),
-    ]
-    for session in sessions:
-        await orchestrator._register_team_session("team-thread", session)
-
-    try:
-        with pytest.raises(RuntimeError, match="abort failed"):
-            await abort_active_team_sessions("team-thread")
-        assert failing_session.aborted is True
-        assert healthy_session.aborted is True
-    finally:
-        for session in sessions:
-            await orchestrator._unregister_team_session("team-thread", session)
+    assert await pool.abort("team-thread") is False
+    assert fake_session.aborted is False
 
 
 # ---------------------------------------------------------------------------
@@ -107,12 +89,12 @@ async def test_abort_active_team_sessions_attempts_all_sessions_on_failure() -> 
 
 
 @pytest.fixture
-def app():
+def app() -> FastAPI:
     return create_app()
 
 
 @pytest.mark.asyncio
-async def test_list_patterns_endpoint(app, monkeypatch) -> None:
+async def test_list_patterns_endpoint(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> None:
     """GET /v1/patterns returns all 5 patterns."""
     monkeypatch.setattr("agui_server.CopilotClient", lambda: type("M", (), {
         "start": pytest.importorskip("unittest.mock").AsyncMock(),
@@ -139,7 +121,9 @@ async def test_list_patterns_endpoint(app, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_teams_stream_unknown_pattern(app, monkeypatch) -> None:
+async def test_teams_stream_unknown_pattern(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """POST /v1/teams/stream with unknown pattern returns 404."""
     monkeypatch.setattr("agui_server.CopilotClient", lambda: type("M", (), {
         "start": pytest.importorskip("unittest.mock").AsyncMock(),
@@ -158,7 +142,9 @@ async def test_teams_stream_unknown_pattern(app, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_teams_stream_validation_max_rounds(app, monkeypatch) -> None:
+async def test_teams_stream_validation_max_rounds(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """POST /v1/teams/stream rejects max_rounds > 10."""
     monkeypatch.setattr("agui_server.CopilotClient", lambda: type("M", (), {
         "start": pytest.importorskip("unittest.mock").AsyncMock(),

@@ -25,15 +25,13 @@ from src.config import settings
 from src.logging_utils import setup_logging
 from src.patterns import AgentRole, get_pattern
 from src.skills import get_disabled_skills, get_skill_directories
-from src.state import get_client
+from src.state import get_client, get_session_pool
 
 logger = setup_logging(settings.log_level)
 
 # In-memory store: thread_id -> list of prior run summaries
 _teams_history: dict[str, list[str]] = {}
 _team_thread_id_var: ContextVar[str | None] = ContextVar("team_thread_id", default=None)
-_active_team_sessions: dict[str, list[CopilotSession]] = {}
-_active_team_sessions_lock = asyncio.Lock()
 
 _MAX_HISTORY_TURNS = 10
 
@@ -61,38 +59,11 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
 
 
 async def _register_team_session(thread_id: str, session: CopilotSession) -> None:
-    async with _active_team_sessions_lock:
-        _active_team_sessions.setdefault(thread_id, []).append(session)
+    await get_session_pool().register_active_session(thread_id, session)
 
 
 async def _unregister_team_session(thread_id: str, session: CopilotSession) -> None:
-    async with _active_team_sessions_lock:
-        sessions = _active_team_sessions.get(thread_id)
-        if not sessions:
-            return
-        if session in sessions:
-            sessions.remove(session)
-        if not sessions:
-            _active_team_sessions.pop(thread_id, None)
-
-
-async def abort_active_team_sessions(thread_id: str) -> bool:
-    """Abort active team agent sessions for a thread."""
-    async with _active_team_sessions_lock:
-        sessions = list(_active_team_sessions.get(thread_id, []))
-
-    if not sessions:
-        return False
-
-    results = await asyncio.gather(
-        *(session.abort() for session in sessions), return_exceptions=True
-    )
-    errors = [result for result in results if isinstance(result, Exception)]
-    if errors:
-        for error in errors:
-            logger.error("Failed to abort team session for thread %s: %r", thread_id, error)
-        raise errors[0]
-    return True
+    await get_session_pool().unregister_active_session(thread_id, session)
 
 
 async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[str, str]:
@@ -235,7 +206,8 @@ def _get_agent_content(events_so_far: list[dict[str, Any]]) -> str:
     """Extract the content from the last AGENT_MESSAGE_END event."""
     for event in reversed(events_so_far):
         if event.get("type") == "AGENT_MESSAGE_END":
-            return event.get("content", "")
+            content = event.get("content", "")
+            return content if isinstance(content, str) else ""
     return ""
 
 

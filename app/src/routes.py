@@ -36,7 +36,7 @@ from src.models import (
     TeamsRequest,
     UploadResult,
 )
-from src.orchestrator import abort_active_team_sessions, run_teams
+from src.orchestrator import run_teams
 from src.patterns import PATTERNS
 from src.state import get_session_pool
 
@@ -314,8 +314,6 @@ async def abort_thread(thread_id: str) -> dict[str, str]:
     """
     pool = get_session_pool()
     aborted = await pool.abort(thread_id)
-    teams_aborted = await abort_active_team_sessions(thread_id)
-    aborted = aborted or teams_aborted
     return {"status": "aborted" if aborted else "not_found", "thread_id": thread_id}
 
 

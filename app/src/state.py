@@ -3,6 +3,7 @@
 import asyncio
 import os
 import time
+from typing import Any
 
 from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
@@ -45,6 +46,7 @@ class SessionPool:
 
     def __init__(self, idle_timeout: float = 120.0) -> None:
         self._sessions: dict[str, CopilotSession] = {}
+        self._active_sessions: dict[str, list[CopilotSession]] = {}
         self._last_active: dict[str, float] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._pool_lock = asyncio.Lock()
@@ -68,7 +70,7 @@ class SessionPool:
             skill_directories = get_skill_directories()
             disabled_skills = get_disabled_skills()
             allowed_tools = _get_allowed_tools()
-            session_kwargs = {
+            session_kwargs: dict[str, Any] = {
                 "on_permission_request": PermissionHandler.approve_all,
                 "system_message": {"mode": "replace", "content": _SYSTEM_MESSAGE},
                 "streaming": True,
@@ -94,6 +96,31 @@ class SessionPool:
             self._last_active[thread_id] = time.monotonic()
             return session
 
+    async def register_active_session(self, thread_id: str, session: CopilotSession) -> None:
+        """Track a transient session as abortable for *thread_id*."""
+        async with self._pool_lock:
+            if thread_id not in self._locks:
+                self._locks[thread_id] = asyncio.Lock()
+            lock = self._locks[thread_id]
+
+        async with lock:
+            self._active_sessions.setdefault(thread_id, []).append(session)
+
+    async def unregister_active_session(self, thread_id: str, session: CopilotSession) -> None:
+        """Stop tracking a transient session for *thread_id*."""
+        async with self._pool_lock:
+            lock = self._locks.get(thread_id)
+        if lock is None:
+            return
+        async with lock:
+            sessions = self._active_sessions.get(thread_id)
+            if not sessions:
+                return
+            if session in sessions:
+                sessions.remove(session)
+            if not sessions:
+                self._active_sessions.pop(thread_id, None)
+
     async def disconnect(self, thread_id: str) -> None:
         """Disconnect a session (preserves state on disk for later resume)."""
         async with self._pool_lock:
@@ -107,17 +134,38 @@ class SessionPool:
                 await session.disconnect()
 
     async def abort(self, thread_id: str) -> bool:
-        """Abort the active request for a session."""
+        """Abort active requests for a thread."""
         async with self._pool_lock:
             lock = self._locks.get(thread_id)
         if lock is None:
             return False
         async with lock:
-            session = self._sessions.get(thread_id)
-            if session is None:
-                return False
-            await session.abort()
-            return True
+            sessions = [
+                session
+                for session in (
+                    self._sessions.get(thread_id),
+                    *self._active_sessions.get(thread_id, []),
+                )
+                if session is not None
+            ]
+            abort_sessions: list[CopilotSession] = []
+            seen_session_ids: set[int] = set()
+            for session in sessions:
+                session_id = id(session)
+                if session_id in seen_session_ids:
+                    continue
+                seen_session_ids.add(session_id)
+                abort_sessions.append(session)
+
+        if not abort_sessions:
+            return False
+        results = await asyncio.gather(
+            *(session.abort() for session in abort_sessions), return_exceptions=True
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                raise result
+        return True
 
     async def cleanup_idle(self) -> None:
         """Disconnect sessions that have been idle longer than the timeout."""
