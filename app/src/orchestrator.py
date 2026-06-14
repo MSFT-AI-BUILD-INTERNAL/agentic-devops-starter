@@ -10,6 +10,7 @@ allows follow-up prompts to build on previous team outputs.
 import asyncio
 import uuid
 from collections.abc import AsyncGenerator
+from contextvars import ContextVar
 from typing import Any
 
 from copilot.generated.session_events import (
@@ -30,6 +31,9 @@ logger = setup_logging(settings.log_level)
 
 # In-memory store: thread_id -> list of prior run summaries
 _teams_history: dict[str, list[str]] = {}
+_active_team_thread_id: ContextVar[str | None] = ContextVar("active_team_thread_id", default=None)
+_active_team_sessions: dict[str, list[Any]] = {}
+_active_team_sessions_lock = asyncio.Lock()
 
 _MAX_HISTORY_TURNS = 10
 
@@ -56,6 +60,34 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
         _teams_history[thread_id] = _teams_history[thread_id][-_MAX_HISTORY_TURNS:]
 
 
+async def _register_team_session(thread_id: str, session: Any) -> None:
+    async with _active_team_sessions_lock:
+        _active_team_sessions.setdefault(thread_id, []).append(session)
+
+
+async def _unregister_team_session(thread_id: str, session: Any) -> None:
+    async with _active_team_sessions_lock:
+        sessions = _active_team_sessions.get(thread_id)
+        if not sessions:
+            return
+        if session in sessions:
+            sessions.remove(session)
+        if not sessions:
+            _active_team_sessions.pop(thread_id, None)
+
+
+async def abort_active_team_sessions(thread_id: str) -> bool:
+    """Abort active team agent sessions for a thread."""
+    async with _active_team_sessions_lock:
+        sessions = list(_active_team_sessions.get(thread_id, []))
+
+    if not sessions:
+        return False
+
+    await asyncio.gather(*(session.abort() for session in sessions))
+    return True
+
+
 async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[str, str]:
     """Run one agent session and return (role_name, full_response).
 
@@ -75,6 +107,9 @@ async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[st
     idle_event = asyncio.Event()
     parts: list[str] = []
     error_msg: str | None = None
+    thread_id = _active_team_thread_id.get()
+    if thread_id is not None:
+        await _register_team_session(thread_id, session)
 
     def on_event(event: SessionEvent) -> None:
         nonlocal error_msg
@@ -88,9 +123,13 @@ async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[st
                 loop.call_soon_threadsafe(idle_event.set)
 
     session.on(on_event)
-    await session.send(prompt)
-    await asyncio.wait_for(idle_event.wait(), timeout=settings.session_timeout)
-    await session.disconnect()
+    try:
+        await session.send(prompt)
+        await asyncio.wait_for(idle_event.wait(), timeout=settings.session_timeout)
+    finally:
+        if thread_id is not None:
+            await _unregister_team_session(thread_id, session)
+        await session.disconnect()
 
     if error_msg:
         raise RuntimeError(f"Agent {role.name} error: {error_msg}")
@@ -116,6 +155,9 @@ async def _stream_agent(
     loop = asyncio.get_running_loop()
     idle_event = asyncio.Event()
     send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
+    thread_id = _active_team_thread_id.get()
+    if thread_id is not None:
+        await _register_team_session(thread_id, session)
 
     def on_event(event: SessionEvent) -> None:
         match event.data:
@@ -170,6 +212,8 @@ async def _stream_agent(
                     "delta": msg["content"],
                 }
     finally:
+        if thread_id is not None:
+            await _unregister_team_session(thread_id, session)
         await session.disconnect()
 
     yield {
@@ -461,21 +505,25 @@ async def run_teams(
     prior_context = _get_history_context(thread_id)
     run_outputs: list[str] = []
 
+    token = _active_team_thread_id.set(thread_id)
     try:
-        async for event in runner(pattern.roles, prompt, max_rounds, prior_context):
-            yield event
-            # Collect final agent outputs for history
-            if event.get("type") == "AGENT_MESSAGE_END":
-                role = event.get("agent_role", "Agent")
-                content = event.get("content", "")
-                run_outputs.append(f"[{role}] {content}")
-    except Exception:
-        logger.exception("Teams execution error for pattern %s", pattern_id)
-        yield {
-            "type": "TEAMS_ERROR",
-            "message": "An internal error occurred while executing the team workflow.",
-        }
-        return
+        try:
+            async for event in runner(pattern.roles, prompt, max_rounds, prior_context):
+                yield event
+                # Collect final agent outputs for history
+                if event.get("type") == "AGENT_MESSAGE_END":
+                    role = event.get("agent_role", "Agent")
+                    content = event.get("content", "")
+                    run_outputs.append(f"[{role}] {content}")
+        except Exception:
+            logger.exception("Teams execution error for pattern %s", pattern_id)
+            yield {
+                "type": "TEAMS_ERROR",
+                "message": "An internal error occurred while executing the team workflow.",
+            }
+            return
+    finally:
+        _active_team_thread_id.reset(token)
 
     # Store this run's output for multi-turn context
     if run_outputs:

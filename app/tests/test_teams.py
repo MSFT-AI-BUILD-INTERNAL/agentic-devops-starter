@@ -4,6 +4,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from agui_server import create_app
+from src import orchestrator
+from src.orchestrator import abort_active_team_sessions
 from src.patterns import PATTERNS, get_pattern
 
 # ---------------------------------------------------------------------------
@@ -34,6 +36,35 @@ def test_pattern_has_roles(pattern_id: str) -> None:
 
 def test_get_pattern_unknown_returns_none() -> None:
     assert get_pattern("nonexistent") is None
+
+
+class FakeTeamSession:
+    """Fake Copilot session for team abort tracking tests."""
+
+    def __init__(self) -> None:
+        self.aborted = False
+
+    async def abort(self) -> None:
+        self.aborted = True
+
+
+@pytest.mark.asyncio
+async def test_abort_active_team_sessions_aborts_registered_session() -> None:
+    """Team abort should invoke abort on registered role sessions."""
+    session = FakeTeamSession()
+    await orchestrator._register_team_session("team-thread", session)
+
+    try:
+        assert await abort_active_team_sessions("team-thread") is True
+        assert session.aborted is True
+    finally:
+        await orchestrator._unregister_team_session("team-thread", session)
+
+
+@pytest.mark.asyncio
+async def test_abort_active_team_sessions_returns_false_for_missing_thread() -> None:
+    """Team abort should return false when no team sessions are active."""
+    assert await abort_active_team_sessions("missing-team-thread") is False
 
 
 # ---------------------------------------------------------------------------

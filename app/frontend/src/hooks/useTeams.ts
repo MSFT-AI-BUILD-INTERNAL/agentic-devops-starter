@@ -1,6 +1,7 @@
 // useTeams hook for agent team collaboration
 import { useEffect, useCallback } from 'react';
 import { useTeamsStore } from '../stores/teamsStore';
+import { aguiClient } from '../services/aguiClient';
 import { getApiBaseUrl } from '../config/api';
 import { logger } from '../utils/logger';
 import { generateUUID } from '../utils/uuid';
@@ -213,6 +214,19 @@ export function useTeams() {
     [selectedPattern, handleTeamsEvent, addAgentMessage, setRunning, setError, setSummary]
   );
 
+  const stopTeamsGeneration = useCallback(async () => {
+    const { threadId, isRunning: activeRun } = useTeamsStore.getState();
+    if (!threadId || !activeRun) {
+      return;
+    }
+
+    try {
+      await aguiClient.abortThread(threadId);
+    } catch (err) {
+      logger.error('Failed to abort teams generation', err, { threadId });
+    }
+  }, []);
+
   const newThread = useTeamsStore((s) => s.newThread);
 
   return {
@@ -221,6 +235,7 @@ export function useTeams() {
     selectPattern,
     teamsMessages,
     sendTeamsMessage,
+    stopTeamsGeneration,
     isRunning,
     currentRound,
     error,
