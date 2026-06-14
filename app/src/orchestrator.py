@@ -206,7 +206,8 @@ def _get_agent_content(events_so_far: list[dict[str, Any]]) -> str:
     """Extract the content from the last AGENT_MESSAGE_END event."""
     for event in reversed(events_so_far):
         if event.get("type") == "AGENT_MESSAGE_END":
-            return cast(str, event.get("content", ""))
+            content = cast(str, event.get("content"))
+            return content if isinstance(content, str) else ""
     return ""
 
 

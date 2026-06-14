@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { getApiBaseUrl } from '../config/api';
 import { processSSEStream } from '../utils/sseProcessor';
 import { generateUUID } from '../utils/uuid';
+import type { ModelProvider } from '../types/modelProvider';
 
 // Simple event interface for streaming events
 export interface StreamEvent {
@@ -38,6 +39,14 @@ class AGUIClient {
     logger.info('AGUIClient initialized', { baseUrl: this.baseUrl });
   }
 
+  private buildUrl(path: string): string {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    if (this.baseUrl.startsWith('http://') || this.baseUrl.startsWith('https://')) {
+      return new URL(cleanPath, this.baseUrl).toString();
+    }
+    return `${this.baseUrl.replace(/\/$/, '')}${cleanPath}`;
+  }
+
   /**
    * Send a chat message to the backend.
    *
@@ -55,7 +64,8 @@ class AGUIClient {
       originalFilename: string;
       contentType: string;
       sizeBytes: number;
-    }>
+    }>,
+    modelProvider: ModelProvider = 'github-copilot'
   ): Promise<ChatResponse> {
     const correlationId = logger.generateCorrelationId();
     logger.setCorrelationId(correlationId);
@@ -63,6 +73,7 @@ class AGUIClient {
     logger.info('Sending chat message', {
       messageCount: messages.length,
       threadId: threadId || 'new',
+      modelProvider,
     });
 
     const request: ChatRequest & { attachments?: Array<Record<string, unknown>> } = {
@@ -81,7 +92,8 @@ class AGUIClient {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/`, {
+      const endpoint = modelProvider === 'foundry' ? '/v1/byok/foundry' : '/';
+      const response = await fetch(this.buildUrl(endpoint), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

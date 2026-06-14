@@ -692,6 +692,46 @@ data: {"type": "RUN_FINISHED", "thread_id": "abc123", "run_id": "def456"}</code>
         <code>_pool_lock</code>으로 보호한다.
       </p>
 
+      <h3>6.0 세션 라우팅 패턴</h3>
+      <p>
+        일반 채팅의 세션 라우팅 키는 인증 사용자 ID가 아니라 클라이언트가 전달하는 <code>thread_id</code>이다.
+        프론트엔드는 새 대화를 시작할 때 UUID 기반 thread를 만들고 같은 대화의 후속 요청에 동일
+        <code>thread_id</code>를 보낸다. 백엔드는 이 값을 그대로 Copilot SDK <code>session_id</code>로
+        사용하므로, 서로 다른 브라우저/사용자가 서로 다른 <code>thread_id</code>를 사용하면 같은 서버
+        프로세스 안에서 독립 Copilot 세션으로 동시에 처리된다.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>항목</th>
+            <th>설계</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>라우팅 키</td>
+            <td><code>thread_id</code></td>
+          </tr>
+          <tr>
+            <td>SDK 매핑</td>
+            <td><code>thread_id</code> → <code>CopilotSession</code>, 신규 생성 시 <code>session_id=thread_id</code></td>
+          </tr>
+          <tr>
+            <td>동시 사용 모델</td>
+            <td>여러 <code>thread_id</code>를 <code>SessionPool</code>이 병렬 보관하고, thread별 lock은 세션 조회/생성/해제 경합을 보호</td>
+          </tr>
+          <tr>
+            <td>사용자별 분리</td>
+            <td>별도 <code>user_id</code> 네임스페이스는 두지 않음. 정상 UI 흐름에서는 각 브라우저 대화가 고유 <code>thread_id</code>를 생성해 분리</td>
+          </tr>
+          <tr>
+            <td>컨텍스트 유지</td>
+            <td>서버는 최신 user prompt만 전송하고, 이전 대화 맥락은 동일 Copilot SDK 세션이 유지</td>
+          </tr>
+        </tbody>
+      </table>
+
       <pre><code>class SessionPool:
     def __init__(self, idle_timeout: float = 120.0) -> None:
         self._sessions: dict[str, CopilotSession] = {}

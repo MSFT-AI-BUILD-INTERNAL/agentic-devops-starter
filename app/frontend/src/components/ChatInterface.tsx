@@ -2,6 +2,7 @@
 import { useCallback } from 'react';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
+import { ModelSelector } from './ModelSelector';
 import { ThemeSelector } from './ThemeSelector';
 import { TeamsMessageList } from './TeamsMessageList';
 import { useChat } from '../hooks/useChat';
@@ -101,8 +102,9 @@ export function ChatInterface() {
             </button>
           )}
 
-          {/* Theme Selector */}
-          <div className="ml-2">
+          {/* Model and Theme Selectors */}
+          <div className="ml-2 flex items-center space-x-2">
+            <ModelSelector />
             <ThemeSelector />
           </div>
         </div>
