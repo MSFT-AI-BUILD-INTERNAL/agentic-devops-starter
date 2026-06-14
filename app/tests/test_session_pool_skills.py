@@ -33,8 +33,7 @@ class _FakeClient:
 
     async def create_session(self, **kwargs: Any) -> _FakeSession:
         self.create_kwargs = kwargs
-        session = _FakeSession()
-        return session
+        return _FakeSession()
 
 
 @pytest.fixture(autouse=True)
