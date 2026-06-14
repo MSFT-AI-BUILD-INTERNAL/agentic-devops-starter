@@ -109,7 +109,7 @@ class SessionPool:
 
         async with lock:
             active_sessions = self._active_sessions.setdefault(thread_id, [])
-            if all(active_session is not session for active_session in active_sessions):
+            if not any(active_session is session for active_session in active_sessions):
                 active_sessions.append(session)
 
     async def unregister_active_session(self, thread_id: str, session: CopilotSession) -> None:
@@ -149,8 +149,8 @@ class SessionPool:
             persistent_session = self._sessions.get(thread_id)
             active_sessions = self._active_sessions.get(thread_id, [])
             sessions_to_abort = list(active_sessions)
-            if persistent_session is not None and all(
-                session is not persistent_session for session in sessions_to_abort
+            if persistent_session is not None and not any(
+                session is persistent_session for session in sessions_to_abort
             ):
                 sessions_to_abort.insert(0, persistent_session)
 
