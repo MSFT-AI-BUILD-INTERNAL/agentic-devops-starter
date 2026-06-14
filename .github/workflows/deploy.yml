@@ -75,7 +75,12 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.APP_SERVICE_NAME }} \
             --settings \
-              GITHUB_TOKEN="${{ secrets.COPILOT_GITHUB_TOKEN }}"
+              GITHUB_TOKEN="${{ secrets.COPILOT_GITHUB_TOKEN }}" \
+              AZURE_AI_PROJECT_ENDPOINT="${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" \
+              AZURE_AI_MODEL_DEPLOYMENT_NAME="${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" \
+              FOUNDRY_AUTH_MODE="${{ secrets.FOUNDRY_AUTH_MODE }}" \
+              FOUNDRY_API_KEY="${{ secrets.FOUNDRY_API_KEY }}" \
+              FOUNDRY_WIRE_API="${{ secrets.FOUNDRY_WIRE_API }}"
 
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v2

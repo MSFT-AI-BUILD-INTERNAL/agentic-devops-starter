@@ -248,6 +248,11 @@ Required GitHub Actions secrets:
 | `APP_SERVICE_NAME` | App Service name |
 | `RESOURCE_GROUP` | Resource group name |
 | `COPILOT_GITHUB_TOKEN` | GitHub PAT with `copilot` scope |
+| `AZURE_AI_PROJECT_ENDPOINT` | Azure AI Foundry endpoint for BYOK routing |
+| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Azure AI Foundry model deployment name |
+| `FOUNDRY_AUTH_MODE` | Foundry auth mode: `auto`, `api_key`, or `azure_identity` |
+| `FOUNDRY_API_KEY` | Foundry API key, required only for `api_key` mode |
+| `FOUNDRY_WIRE_API` | Foundry wire API: `responses` or `completions` |
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) and [.github/AZURE_SETUP.md](./.github/AZURE_SETUP.md).
 
