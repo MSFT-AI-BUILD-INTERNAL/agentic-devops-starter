@@ -148,6 +148,7 @@ by frontend/proxy layers.
 | `GET` | `/health` | Health check |
 | `POST` | `/v1/files/upload` | Upload a validated file to Azure Blob Storage |
 | `DELETE` | `/v1/threads/{thread_id}` | Disconnect and clean up a chat thread |
+| `POST` | `/v1/threads/{thread_id}/abort` | Abort the active chat generation |
 | `POST` | `/v1/fleet` | Start a parallel prompt batch job |
 | `POST` | `/v1/infinite-session` | Start chained reasoning iterations |
 | `GET` | `/v1/patterns` | List available multi-agent team patterns |

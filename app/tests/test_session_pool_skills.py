@@ -14,6 +14,12 @@ from src.state import SessionPool, set_client
 
 
 class _FakeSession:
+    def __init__(self) -> None:
+        self.abort_count = 0
+
+    async def abort(self) -> None:
+        self.abort_count += 1
+
     async def disconnect(self) -> None:
         pass
 
@@ -27,7 +33,8 @@ class _FakeClient:
 
     async def create_session(self, **kwargs: Any) -> _FakeSession:
         self.create_kwargs = kwargs
-        return _FakeSession()
+        session = _FakeSession()
+        return session
 
 
 @pytest.fixture(autouse=True)
@@ -99,3 +106,30 @@ async def test_session_pool_omits_empty_tool_allowlist(
         assert "available_tools" not in client.create_kwargs
     finally:
         await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_abort_invokes_session_abort(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Abort should stop the active request without disconnecting the session."""
+    client = _FakeClient()
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        session = await pool.get_or_create("thread-to-abort")
+
+        aborted = await pool.abort("thread-to-abort")
+
+        assert aborted is True
+        assert session.abort_count == 1
+        assert await pool.get_or_create("thread-to-abort") is session
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_abort_missing_thread_returns_false() -> None:
+    """Abort should be a no-op when the thread has no active session."""
+    pool = SessionPool()
+
+    assert await pool.abort("missing-thread") is False

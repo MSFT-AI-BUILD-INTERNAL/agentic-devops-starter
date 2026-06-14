@@ -106,6 +106,20 @@ class SessionPool:
             if session is not None:
                 await session.disconnect()
 
+    async def abort(self, thread_id: str) -> bool:
+        """Abort the active request for a session."""
+        async with self._pool_lock:
+            lock = self._locks.get(thread_id)
+        if lock is None:
+            return False
+        async with lock:
+            session = self._sessions.get(thread_id)
+            if session is None:
+                return False
+            await session.abort()
+            self._last_active[thread_id] = time.monotonic()
+            return True
+
     async def cleanup_idle(self) -> None:
         """Disconnect sessions that have been idle longer than the timeout."""
         now = time.monotonic()

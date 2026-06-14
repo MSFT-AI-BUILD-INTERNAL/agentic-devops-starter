@@ -174,10 +174,20 @@ export function useChat() {
     retryLastMessage();
   }, [retryLastMessage]);
 
+  const stopGenerating = useCallback(async () => {
+    const { currentThread: activeThread, streamingState: activeStreamingState } = useChatStore.getState();
+    if (!activeThread?.id || !activeStreamingState.isStreaming) {
+      return;
+    }
+
+    await aguiClient.abortThread(activeThread.id);
+  }, []);
+
   return {
     messages,
     currentThreadId: currentThread?.id || null,
     sendMessage,
+    stopGenerating,
     newConversation,
     retry,
     isInputDisabled,
