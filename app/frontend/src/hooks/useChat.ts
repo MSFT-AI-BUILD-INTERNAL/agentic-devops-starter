@@ -180,7 +180,11 @@ export function useChat() {
       return;
     }
 
-    await aguiClient.abortThread(activeThread.id);
+    try {
+      await aguiClient.abortThread(activeThread.id);
+    } catch (error) {
+      logger.error('Failed to abort chat generation', error, { threadId: activeThread.id });
+    }
   }, []);
 
   return {
