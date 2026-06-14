@@ -220,7 +220,8 @@
     <h1>Agentic DevOps Starter 소프트웨어 설계 문서</h1>
     <p>
       현재 코드베이스 기준의 상세 설계 문서이다. FastAPI 백엔드, GitHub Copilot SDK 세션,
-      AG-UI 스타일 SSE 스트리밍, React/Vite 프론트엔드, Azure App Service 배포 인프라를
+      Azure AI Foundry BYOK 라우팅, AG-UI 스타일 SSE 스트리밍, React/Vite 프론트엔드,
+      Azure App Service 배포 인프라를
       코드 레벨 구성요소와 런타임 흐름 중심으로 설명한다.
     </p>
     <div class="meta">
@@ -260,7 +261,8 @@
       <p>
         Agentic DevOps Starter는 브라우저 기반 채팅 UI에서 입력한 메시지를 FastAPI 백엔드로
         전달하고, 백엔드가 GitHub Copilot SDK 세션을 통해 응답을 생성한 뒤 SSE로 프론트엔드에
-        스트리밍하는 풀스택 애플리케이션이다. 단일 채팅뿐 아니라 파일 첨부, 병렬 프롬프트 실행,
+        스트리밍하는 풀스택 애플리케이션이다. 채팅 UI의 모델 선택에 따라 기본 GitHub Copilot 세션
+        또는 Azure AI Foundry BYOK 세션으로 라우팅할 수 있으며, 단일 채팅뿐 아니라 파일 첨부, 병렬 프롬프트 실행,
         반복 추론, 역할 기반 다중 에이전트 팀 실행을 지원한다.
       </p>
 
@@ -275,12 +277,12 @@
         <tbody>
           <tr>
             <td>AI 런타임</td>
-            <td>GitHub Copilot SDK의 <code>CopilotClient</code>, <code>CopilotSession</code> 사용</td>
+            <td>GitHub Copilot SDK의 <code>CopilotClient</code>, <code>CopilotSession</code> 사용. 일반 Copilot 세션과 Azure AI Foundry BYOK 세션을 분리 관리</td>
             <td><code>app/agui_server.py</code>, <code>app/src/state.py</code></td>
           </tr>
           <tr>
             <td>API</td>
-            <td>FastAPI + StreamingResponse 기반 SSE</td>
+            <td>FastAPI + StreamingResponse 기반 SSE. <code>/</code>는 기본 Copilot, <code>/v1/byok/foundry</code>는 Foundry BYOK</td>
             <td><code>app/src/routes.py</code></td>
           </tr>
           <tr>
@@ -325,23 +327,25 @@
 | FastAPI Backend :5100       |
 | - routes.py                 |
 | - SessionPool               |
+| - FoundrySessionPool        |
 | - Job Manager               |
 | - Team Orchestrator         |
 | - BlobStorageService        |
 +------+----------+----------+
-       |          |
-       |          +--------------------+
-       v                               v
-+----------------------+       +----------------------+
-| GitHub Copilot SDK   |       | Azure Blob Storage   |
-| CopilotClient        |       | uploads container    |
-| CopilotSession       |       | private endpoint     |
-+----------------------+       +----------------------+</pre>
+       |          |                      |
+       |          |                      +--------------------+
+       v          v                                           v
++----------------------+  +----------------------+       +----------------------+
+| GitHub Copilot SDK   |  | Azure AI Foundry     |       | Azure Blob Storage   |
+| CopilotClient        |  | BYOK provider        |       | uploads container    |
+| CopilotSession       |  | OpenAI-compatible    |       | private endpoint     |
++----------------------+  +----------------------+       +----------------------+</pre>
 
       <h3>2.1 핵심 설계 원칙</h3>
       <ul>
         <li><strong>프록시 경계 명확화:</strong> 백엔드에는 <code>/api</code> prefix를 두지 않고, Vite/nginx 계층에서만 사용한다.</li>
         <li><strong>세션 단위 대화 유지:</strong> <code>thread_id</code>별 Copilot SDK 세션을 유지해 멀티턴 대화 맥락을 보존한다.</li>
+        <li><strong>Provider 분리:</strong> 기본 GitHub Copilot과 Foundry BYOK는 별도 세션 풀과 endpoint를 사용해 인증·모델·세션 상태를 분리한다.</li>
         <li><strong>SSE 우선:</strong> 채팅과 Agent Teams 모두 fetch 기반 HTTP streaming으로 구현한다.</li>
         <li><strong>역할 분리:</strong> API 라우팅, 세션 관리, 작업 관리, 팀 오케스트레이션, Blob 접근을 별도 모듈로 분리한다.</li>
         <li><strong>운영 단순성:</strong> App Service 단일 컨테이너 안에서 nginx와 FastAPI를 supervisor로 함께 실행한다.</li>
@@ -360,19 +364,26 @@
       <pre><code>def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        github_token = os.environ.get("GITHUB_TOKEN")
-        config = SubprocessConfig(github_token=github_token) if github_token else None
-        client = CopilotClient(config)
+        load_skills()
+
+        client = CopilotClient()
         await client.start()
         set_client(client)
 
         pool = SessionPool(idle_timeout=settings.session_timeout)
         set_session_pool(pool)
-        cleanup_task = asyncio.create_task(_idle_cleanup_loop(pool))
+        foundry_pool = FoundrySessionPool(idle_timeout=settings.session_timeout)
+        set_foundry_session_pool(foundry_pool)
+        cleanup_tasks = [
+            asyncio.create_task(_idle_cleanup_loop(pool)),
+            asyncio.create_task(_idle_cleanup_loop(foundry_pool)),
+        ]
 
         yield
 
-        cleanup_task.cancel()
+        for cleanup_task in cleanup_tasks:
+            cleanup_task.cancel()
+        await foundry_pool.shutdown()
         await pool.shutdown()
         await client.stop()</code></pre>
 
@@ -392,7 +403,7 @@
           </tr>
           <tr>
             <td>Copilot client 시작</td>
-            <td><code>CopilotClient(config)</code>, <code>await client.start()</code></td>
+            <td><code>CopilotClient()</code>, <code>await client.start()</code></td>
             <td>요청마다 client를 만들지 않고 앱 단위 singleton으로 재사용</td>
           </tr>
           <tr>
@@ -401,13 +412,18 @@
             <td>라우트에서 전역 accessor로 thread별 세션 접근</td>
           </tr>
           <tr>
+            <td>FoundrySessionPool 설정</td>
+            <td><code>set_foundry_session_pool(foundry_pool)</code></td>
+            <td><code>/v1/byok/foundry</code> 라우트에서 Foundry BYOK 세션에 접근</td>
+          </tr>
+          <tr>
             <td>idle cleanup</td>
-            <td>30초마다 <code>pool.cleanup_idle()</code></td>
-            <td>장시간 미사용 Copilot 세션 정리</td>
+            <td>30초마다 일반/Foundry pool 각각 <code>cleanup_idle()</code></td>
+            <td>장시간 미사용 Copilot 및 BYOK 세션 정리</td>
           </tr>
           <tr>
             <td>종료 처리</td>
-            <td><code>pool.shutdown()</code>, <code>client.stop()</code></td>
+            <td><code>foundry_pool.shutdown()</code>, <code>pool.shutdown()</code>, <code>client.stop()</code></td>
             <td>프로세스 종료 시 SDK subprocess와 세션 연결 정리</td>
           </tr>
         </tbody>
@@ -456,12 +472,12 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
           </tr>
           <tr>
             <td><code>app/src/routes.py</code></td>
-            <td><code>agent_endpoint()</code>, <code>upload_file()</code>, <code>teams_stream()</code></td>
+            <td><code>agent_endpoint()</code>, <code>foundry_byok_endpoint()</code>, <code>upload_file()</code>, <code>teams_stream()</code></td>
             <td>HTTP 라우트와 SSE 응답 구성</td>
           </tr>
           <tr>
             <td><code>app/src/state.py</code></td>
-            <td><code>SessionPool</code>, <code>get_client()</code>, <code>get_session_pool()</code></td>
+            <td><code>SessionPool</code>, <code>FoundrySessionPool</code>, <code>get_client()</code>, <code>get_session_pool()</code>, <code>get_foundry_session_pool()</code></td>
             <td>CopilotClient singleton 및 thread별 CopilotSession 관리</td>
           </tr>
           <tr>
@@ -525,6 +541,13 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
           </tr>
           <tr>
             <td>POST</td>
+            <td><code>/v1/byok/foundry</code></td>
+            <td><code>foundry_byok_endpoint()</code></td>
+            <td><code>StreamingResponse(text/event-stream)</code></td>
+            <td><code>FoundrySessionPool</code>, Foundry provider config, <code>_resolve_attachments()</code></td>
+          </tr>
+          <tr>
+            <td>POST</td>
             <td><code>/v1/files/upload</code></td>
             <td><code>upload_file()</code></td>
             <td><code>UploadResult</code> 또는 error JSON</td>
@@ -535,7 +558,7 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
             <td><code>/v1/threads/{thread_id}</code></td>
             <td><code>delete_thread()</code></td>
             <td><code>{"status": "deleted"}</code></td>
-            <td><code>SessionPool.disconnect()</code></td>
+            <td><code>SessionPool.disconnect()</code>, <code>FoundrySessionPool.disconnect()</code></td>
           </tr>
           <tr>
             <td>POST</td>
@@ -581,9 +604,33 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
 
       <h3>5.1 서버 내부 알고리즘</h3>
       <p>
-        <code>agent_endpoint()</code>는 요청 body에서 thread/run/message/attachment 정보를 추출한 뒤,
-        내부 async generator를 만들어 <code>StreamingResponse</code>로 반환한다.
+        <code>agent_endpoint()</code>와 <code>foundry_byok_endpoint()</code>는 요청 body에서
+        thread/run/message/attachment 정보를 추출한 뒤, 공통 <code>_chat_streaming_response()</code>
+        helper로 <code>StreamingResponse</code>를 반환한다. 두 endpoint의 SSE wire format은 동일하며,
+        차이는 사용할 session pool이다.
       </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th>Pool</th>
+            <th>Provider</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/</code></td>
+            <td><code>SessionPool</code></td>
+            <td>기본 GitHub Copilot</td>
+          </tr>
+          <tr>
+            <td><code>/v1/byok/foundry</code></td>
+            <td><code>FoundrySessionPool</code></td>
+            <td>Azure AI Foundry BYOK provider</td>
+          </tr>
+        </tbody>
+      </table>
 
       <pre><code>input_data = await request.json()
 thread_id = input_data.get("thread_id") or uuid.uuid4().hex[:12]
@@ -650,8 +697,11 @@ prompt = _build_prompt(messages, attachments)</code></pre>
       </table>
 
       <pre class="diagram">Frontend                  FastAPI                         CopilotSession
-   | POST /api/              |                                  |
+   | POST /api/ or           |                                  |
+   | /api/v1/byok/foundry    |                                  |
    |------------------------>|                                  |
+   |                         | select SessionPool or            |
+   |                         | FoundrySessionPool               |
    |                         | get_or_create(thread_id)         |
    |                         |--------------------------------->|
    |                         | session.send(prompt)             |
@@ -783,6 +833,44 @@ data: {"type": "RUN_FINISHED", "thread_id": "abc123", "run_id": "def456"}</code>
         여러 개가 되면 thread별 세션이 인스턴스 간 공유되지 않는다. Sticky session 또는 외부 session
         coordination이 필요한 요구사항이 생길 수 있다.
       </div>
+
+      <h3>6.2 Foundry BYOK 세션 풀</h3>
+      <p>
+        <code>FoundrySessionPool</code>은 기본 <code>SessionPool</code>과 별도 dictionary/lock을 사용해
+        Azure AI Foundry BYOK 세션을 분리한다. 신규 세션 생성 시 SDK <code>session_id</code>에는
+        <code>foundry-{thread_id}</code> prefix를 붙여 일반 Copilot 세션과 충돌하지 않게 한다.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>항목</th>
+            <th>설계</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>라우트</td><td><code>/v1/byok/foundry</code></td></tr>
+          <tr><td>세션 ID</td><td><code>foundry-{thread_id}</code></td></tr>
+          <tr><td>모델</td><td><code>AZURE_AI_MODEL_DEPLOYMENT_NAME</code></td></tr>
+          <tr><td>provider type</td><td><code>openai</code></td></tr>
+          <tr><td>base URL</td><td><code>AZURE_AI_PROJECT_ENDPOINT</code>를 <code>/openai/v1/</code> 형식으로 정규화</td></tr>
+          <tr><td>wire API</td><td><code>FOUNDRY_WIRE_API</code>, 허용값은 <code>responses</code> 또는 <code>completions</code></td></tr>
+          <tr><td>인증</td><td><code>FOUNDRY_AUTH_MODE=auto|api_key|azure_identity</code></td></tr>
+        </tbody>
+      </table>
+
+      <p>
+        Foundry provider는 <code>app/src/state.py</code>의 <code>_build_foundry_provider()</code>에서 구성한다.
+        <code>api_key</code> 모드에서는 <code>FOUNDRY_API_KEY</code> 또는 <code>AZURE_OPENAI_API_KEY</code>를
+        사용하고, <code>azure_identity</code> 모드에서는 <code>DefaultAzureCredential</code>로
+        <code>https://cognitiveservices.azure.com/.default</code> scope의 bearer token을 가져온다.
+        <code>auto</code> 모드는 API key가 있으면 <code>api_key</code>, 없으면 <code>azure_identity</code>로 해석한다.
+      </p>
+      <p>
+        Azure Identity 토큰은 만료 5분 전부터 세션을 재생성하도록 <code>_token_expires_on</code>에 만료 시각을
+        보관한다. 필수 설정이 누락되거나 <code>FOUNDRY_WIRE_API</code>/<code>FOUNDRY_AUTH_MODE</code> 값이
+        허용 범위를 벗어나면 라우트는 SSE <code>RUN_ERROR</code>로 구성 오류를 전달한다.
+      </p>
     </section>
 
     <section id="upload">
@@ -1188,6 +1276,25 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
         직접 알 필요가 없다. 개발에서는 Vite proxy, 운영에서는 nginx proxy가 실제 백엔드로 전달한다.
       </p>
 
+      <p>
+        채팅 전송 endpoint는 모델 provider 선택에 따라 <code>AGUIClient</code>에서 한 번 더 분기한다.
+        <code>github-copilot</code>은 <code>/api/</code>로, <code>foundry</code>는
+        <code>/api/v1/byok/foundry</code>로 전송된다.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>ModelProvider</th>
+            <th>UI label</th>
+            <th>Backend endpoint</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>github-copilot</code></td><td>GitHub Copilot</td><td><code>/</code></td></tr>
+          <tr><td><code>foundry</code></td><td>Microsoft Foundry</td><td><code>/v1/byok/foundry</code></td></tr>
+        </tbody>
+      </table>
+
       <h3>11.3 상태 저장소 분리</h3>
       <table>
         <thead>
@@ -1287,10 +1394,12 @@ const aguiMessages = [...priorMessages, userMessage]
       <h3>12.2 AGUIClient</h3>
       <p>
         <code>AGUIClient.sendMessage()</code>는 fetch 요청과 SSE stream 처리를 담당한다.
-        요청마다 correlation id를 생성하고 <code>X-Correlation-ID</code> header로 전달한다.
+        요청마다 correlation id를 생성하고 <code>X-Correlation-ID</code> header로 전달하며,
+        <code>modelProvider</code> 값에 따라 기본 Copilot endpoint 또는 Foundry BYOK endpoint를 선택한다.
       </p>
 
-      <pre><code>const response = await fetch(`${this.baseUrl}/`, {
+      <pre><code>const endpoint = modelProvider === 'foundry' ? '/v1/byok/foundry' : '/';
+const response = await fetch(this.buildUrl(endpoint), {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -1596,6 +1705,16 @@ Final:
             <td><code>deploy.yml</code>에서 <code>COPILOT_GITHUB_TOKEN</code> 주입</td>
           </tr>
           <tr>
+            <td>Azure AI Foundry BYOK API key</td>
+            <td><code>FOUNDRY_AUTH_MODE=api_key</code></td>
+            <td><code>FOUNDRY_API_KEY</code> 또는 <code>AZURE_OPENAI_API_KEY</code></td>
+          </tr>
+          <tr>
+            <td>Azure AI Foundry BYOK Entra ID</td>
+            <td><code>FOUNDRY_AUTH_MODE=azure_identity</code> 또는 <code>auto</code> + API key 없음</td>
+            <td><code>DefaultAzureCredential</code>, scope <code>https://cognitiveservices.azure.com/.default</code></td>
+          </tr>
+          <tr>
             <td>Azure 배포 인증</td>
             <td>GitHub Actions OIDC</td>
             <td><code>azure/login@v2</code></td>
@@ -1612,6 +1731,13 @@ Final:
           </tr>
         </tbody>
       </table>
+
+      <p>
+        Foundry BYOK 설정은 <code>AZURE_AI_PROJECT_ENDPOINT</code>, <code>AZURE_AI_MODEL_DEPLOYMENT_NAME</code>,
+        <code>FOUNDRY_AUTH_MODE</code>, <code>FOUNDRY_API_KEY</code>, <code>FOUNDRY_WIRE_API</code>로 제어한다.
+        <code>FOUNDRY_WIRE_API</code>는 SDK provider의 OpenAI-compatible wire protocol을 지정하며 현재
+        <code>responses</code>와 <code>completions</code>만 허용한다.
+      </p>
 
       <h3>15.2 권한 승인 정책</h3>
       <div class="warning">
