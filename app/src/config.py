@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     cli_otel_exporter_type: Literal["otlp-http", "file"] = "otlp-http"
     cli_otel_file_path: str = ""
     cli_otel_source_name: str = "agentic-devops-starter"
-    cli_otel_capture_content: bool = False
+    cli_otel_capture_content: bool = True
 
     model_config = {
         "env_prefix": "COPILOT_API_",
