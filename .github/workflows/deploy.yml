@@ -82,6 +82,14 @@ jobs:
               FOUNDRY_API_KEY="${{ secrets.FOUNDRY_API_KEY }}" \
               FOUNDRY_WIRE_API="${{ secrets.FOUNDRY_WIRE_API }}"
 
+          if [ -n "${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" ]; then
+            az webapp config appsettings set \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name ${{ env.APP_SERVICE_NAME }} \
+              --settings \
+                APPLICATIONINSIGHTS_CONNECTION_STRING="${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}"
+          fi
+
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v2
         with:

@@ -102,6 +102,34 @@ uv run agui_client.py
 | `CORS_ORIGINS` | No | `localhost:5173` | Comma-separated CORS origins |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | No | — | Enables Azure Monitor tracing |
 | `OTEL_SERVICE_NAME` | No | `agentic-devops-starter` | OpenTelemetry service name |
+| `COPILOT_API_CLI_OTEL_ENDPOINT` | No | — | Enables OTLP export from the GitHub Copilot CLI subprocess, for example `http://localhost:4318` |
+| `COPILOT_API_CLI_OTEL_EXPORTER_TYPE` | No | `otlp-http` | Copilot CLI telemetry exporter: `otlp-http` or `file` |
+| `COPILOT_API_CLI_OTEL_FILE_PATH` | No | — | JSON-lines telemetry file path when using the `file` exporter |
+| `COPILOT_API_CLI_OTEL_SOURCE_NAME` | No | `agentic-devops-starter` | Instrumentation source name reported by the Copilot CLI |
+| `COPILOT_API_CLI_OTEL_CAPTURE_CONTENT` | No | `false` | Whether Copilot CLI telemetry captures prompt/response content |
+
+### GitHub Copilot CLI telemetry
+
+The backend uses `github-copilot-sdk`, which spawns the bundled GitHub Copilot CLI. To feed the Azure Application Insights GitHub Copilot Grafana dashboard, point that CLI subprocess at an OpenTelemetry Collector:
+
+```text
+FastAPI app → github-copilot-sdk → GitHub Copilot CLI subprocess
+  → OTLP endpoint → OpenTelemetry Collector → Application Insights → Grafana
+```
+
+Set `COPILOT_API_CLI_OTEL_ENDPOINT` to the collector's OTLP/HTTP endpoint. Content capture is disabled by default; enable `COPILOT_API_CLI_OTEL_CAPTURE_CONTENT=true` only after reviewing prompt and response retention policies.
+
+In the App Service container, supervisor also starts `otelcol-contrib` with `otel-collector-config.yaml`. When `APPLICATIONINSIGHTS_CONNECTION_STRING` is set and `COPILOT_API_CLI_OTEL_ENDPOINT` is not explicitly set, `start-backend.sh` defaults the Copilot CLI endpoint to `http://127.0.0.1:4318`.
+
+For local testing, run the OpenTelemetry Collector with the included config:
+
+```bash
+cd app
+docker run --rm -p 4318:4318 \
+  -e APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=...;IngestionEndpoint=..." \
+  -v "$PWD/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml" \
+  otel/opentelemetry-collector-contrib:latest
+```
 
 ## Development Commands
 

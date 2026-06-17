@@ -50,14 +50,18 @@ Multi-stage build creating a combined container:
 Stage 1: Frontend build (Node.js 20)
   → npm ci → npm run build → /dist
 
-Stage 2: Backend setup (Python 3.12)
+Stage 2: OpenTelemetry Collector
+  → Copy otelcol-contrib binary for Copilot CLI telemetry
+
+Stage 3: Backend setup (Python 3.12)
   → uv sync → application code
   → Install nginx + supervisor
 
-Stage 3: Final combined image
+Stage 4: Final combined image
   → nginx (:8080) serves frontend + proxies /api/ to backend
   → uvicorn (:5100) runs FastAPI backend
-  → supervisor manages both processes
+  → otelcol-contrib (:4318) forwards Copilot CLI OTLP telemetry
+  → supervisor manages all processes
 ```
 
 ## Required GitHub Secrets
@@ -87,6 +91,7 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 | `FOUNDRY_AUTH_MODE` | Foundry auth mode: `auto`, `api_key`, or `azure_identity` |
 | `FOUNDRY_API_KEY` | Foundry API key, required only when `FOUNDRY_AUTH_MODE=api_key` |
 | `FOUNDRY_WIRE_API` | Foundry wire API: `responses` or `completions` |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables backend Azure Monitor telemetry and starts the local OpenTelemetry Collector for GitHub Copilot CLI telemetry |
 
 ## Workflow Triggers
 
@@ -178,6 +183,7 @@ Before running the workflow:
 The deployed application:
 - **External Port**: 8080 (nginx, set via `WEBSITES_PORT`)
 - **Internal Port**: 5100 (FastAPI backend, proxied by nginx)
+- **Telemetry Port**: 4318 (OpenTelemetry Collector, local-only companion process)
 - **URL**: `https://<app-service-name>.azurewebsites.net`
 - **Health Endpoint**: `GET /health` → `{"status": "healthy"}`
 - **Framework**: FastAPI + AG-UI protocol for conversational AI
@@ -197,6 +203,7 @@ Static infrastructure settings (e.g., `WEBSITES_PORT`, `CORS`) are managed by **
 | `FOUNDRY_AUTH_MODE` | deploy.yml | Foundry BYOK auth mode from GitHub secret |
 | `FOUNDRY_API_KEY` | deploy.yml | Optional Foundry BYOK API key from GitHub secret |
 | `FOUNDRY_WIRE_API` | deploy.yml | Foundry BYOK wire protocol from GitHub secret |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | deploy.yml | Azure Monitor/App Insights exporter secret for backend and Collector telemetry |
 
 ## Troubleshooting
 

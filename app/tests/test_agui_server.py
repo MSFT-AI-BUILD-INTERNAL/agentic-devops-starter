@@ -7,6 +7,7 @@ Follows all constitution requirements including type safety and test coverage.
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from copilot import SubprocessConfig
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -51,19 +52,52 @@ def test_health_check_endpoint(client: TestClient) -> None:
 
 def test_lifespan_starts_client_with_github_token(monkeypatch: pytest.MonkeyPatch) -> None:
     """Startup must not pass GITHUB_TOKEN to the CopilotClient constructor."""
+    import agui_server
+
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(agui_server.settings, "cli_otel_endpoint", "")
+    monkeypatch.setattr(agui_server.settings, "cli_otel_file_path", "")
     mock_client = MagicMock()
     mock_client.start = AsyncMock()
     mock_client.stop = AsyncMock()
     copilot_client = MagicMock(return_value=mock_client)
-    monkeypatch.setattr("agui_server.CopilotClient", copilot_client)
-    from agui_server import create_app
+    monkeypatch.setattr(agui_server, "CopilotClient", copilot_client)
 
-    with TestClient(create_app()) as client:
+    with TestClient(agui_server.create_app()) as client:
         response = client.get("/health")
 
     assert response.status_code == 200
     copilot_client.assert_called_once_with()
+
+
+def test_lifespan_configures_copilot_cli_otel(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Startup should pass CLI telemetry config when OTLP export is configured."""
+    import agui_server
+
+    monkeypatch.setattr(agui_server.settings, "cli_otel_endpoint", "http://otel:4318")
+    monkeypatch.setattr(agui_server.settings, "cli_otel_exporter_type", "otlp-http")
+    monkeypatch.setattr(agui_server.settings, "cli_otel_file_path", "")
+    monkeypatch.setattr(agui_server.settings, "cli_otel_source_name", "test-service")
+    monkeypatch.setattr(agui_server.settings, "cli_otel_capture_content", True)
+    mock_client = MagicMock()
+    mock_client.start = AsyncMock()
+    mock_client.stop = AsyncMock()
+    copilot_client = MagicMock(return_value=mock_client)
+    monkeypatch.setattr(agui_server, "CopilotClient", copilot_client)
+
+    with TestClient(agui_server.create_app()) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    copilot_client.assert_called_once()
+    config = copilot_client.call_args.args[0]
+    assert isinstance(config, SubprocessConfig)
+    assert config.telemetry == {
+        "exporter_type": "otlp-http",
+        "source_name": "test-service",
+        "capture_content": True,
+        "otlp_endpoint": "http://otel:4318",
+    }
 
 
 def test_security_headers(client: TestClient) -> None:

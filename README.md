@@ -171,6 +171,8 @@ by frontend/proxy layers.
 | `COPILOT_API_DISABLED_SKILLS` | No | unset | Comma-separated skill names to disable |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | No | unset | Enables Azure Monitor OpenTelemetry export |
 | `OTEL_SERVICE_NAME` | No | `agentic-devops-starter` | OpenTelemetry service name |
+| `COPILOT_API_CLI_OTEL_ENDPOINT` | No | auto in App Service when App Insights is configured | GitHub Copilot CLI OTLP endpoint, typically `http://127.0.0.1:4318` for the local Collector companion process |
+| `COPILOT_API_CLI_OTEL_CAPTURE_CONTENT` | No | `false` | Whether Copilot CLI telemetry captures prompt/response content |
 | `VITE_AGUI_ENDPOINT` | No | `/api` | Frontend API base URL |
 
 ## Development Commands
