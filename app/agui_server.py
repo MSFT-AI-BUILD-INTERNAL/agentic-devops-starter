@@ -34,8 +34,15 @@ DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 def _build_copilot_subprocess_config() -> SubprocessConfig | None:
-    """Return CLI subprocess config when GitHub Copilot CLI OTEL export is configured."""
-    if not settings.cli_otel_endpoint and not settings.cli_otel_file_path:
+    """Return CLI subprocess config when GitHub Copilot CLI OTEL export is configured.
+
+    Falls back to environment variables for settings that may be injected at runtime
+    by start-backend.sh (after pydantic-settings has already loaded config).
+    """
+    endpoint = settings.cli_otel_endpoint or os.environ.get("COPILOT_API_CLI_OTEL_ENDPOINT", "")
+    file_path = settings.cli_otel_file_path or os.environ.get("COPILOT_API_CLI_OTEL_FILE_PATH", "")
+
+    if not endpoint and not file_path:
         return None
 
     telemetry: TelemetryConfig = {
@@ -43,10 +50,10 @@ def _build_copilot_subprocess_config() -> SubprocessConfig | None:
         "source_name": settings.cli_otel_source_name,
         "capture_content": settings.cli_otel_capture_content,
     }
-    if settings.cli_otel_endpoint:
-        telemetry["otlp_endpoint"] = settings.cli_otel_endpoint
-    if settings.cli_otel_file_path:
-        telemetry["file_path"] = settings.cli_otel_file_path
+    if endpoint:
+        telemetry["otlp_endpoint"] = endpoint
+    if file_path:
+        telemetry["file_path"] = file_path
 
     return SubprocessConfig(telemetry=telemetry)
 
