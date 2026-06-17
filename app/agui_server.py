@@ -6,7 +6,8 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from copilot import CopilotClient
+from copilot import CopilotClient, SubprocessConfig
+from copilot.client import TelemetryConfig
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +33,24 @@ configure_observability()
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
+def _build_copilot_subprocess_config() -> SubprocessConfig | None:
+    """Return CLI subprocess config when GitHub Copilot CLI OTEL export is configured."""
+    if not settings.cli_otel_endpoint and not settings.cli_otel_file_path:
+        return None
+
+    telemetry: TelemetryConfig = {
+        "exporter_type": settings.cli_otel_exporter_type,
+        "source_name": settings.cli_otel_source_name,
+        "capture_content": settings.cli_otel_capture_content,
+    }
+    if settings.cli_otel_endpoint:
+        telemetry["otlp_endpoint"] = settings.cli_otel_endpoint
+    if settings.cli_otel_file_path:
+        telemetry["file_path"] = settings.cli_otel_file_path
+
+    return SubprocessConfig(telemetry=telemetry)
+
+
 async def _idle_cleanup_loop(pool: SessionPool | FoundrySessionPool) -> None:
     """Periodically disconnect idle sessions to free resources."""
     while True:
@@ -54,7 +73,8 @@ def create_app() -> FastAPI:
         # Copilot SDK can load and apply them across all sessions.
         load_skills()
 
-        client = CopilotClient()
+        subprocess_config = _build_copilot_subprocess_config()
+        client = CopilotClient(subprocess_config) if subprocess_config is not None else CopilotClient()
         await client.start()
         set_client(client)
         logger.info("CopilotClient started (GitHub Copilot SDK)")

@@ -1,0 +1,21 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  azuremonitor:
+    connection_string: ${env:APPLICATIONINSIGHTS_CONNECTION_STRING}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [azuremonitor]
+    metrics:
+      receivers: [otlp]
+      exporters: [azuremonitor]
+    logs:
+      receivers: [otlp]
+      exporters: [azuremonitor]

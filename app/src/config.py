@@ -1,5 +1,7 @@
 """Application configuration via environment variables."""
 
+from typing import Literal
+
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
@@ -52,6 +54,15 @@ class Settings(BaseSettings):
     skill_directories: str = ""
     # Comma-separated skill names to disable (passed to the SDK as-is).
     disabled_skills: str = ""
+
+    # OpenTelemetry export from the GitHub Copilot CLI subprocess spawned by
+    # the SDK. This is separate from the FastAPI/Azure Monitor instrumentation
+    # configured in observability.py.
+    cli_otel_endpoint: str = ""
+    cli_otel_exporter_type: Literal["otlp-http", "file"] = "otlp-http"
+    cli_otel_file_path: str = ""
+    cli_otel_source_name: str = "agentic-devops-starter"
+    cli_otel_capture_content: bool = False
 
     model_config = {
         "env_prefix": "COPILOT_API_",

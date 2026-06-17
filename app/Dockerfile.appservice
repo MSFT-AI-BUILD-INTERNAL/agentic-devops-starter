@@ -21,7 +21,10 @@ ARG VITE_AGUI_ENDPOINT=/api
 # Build the frontend application
 RUN VITE_AGUI_ENDPOINT=$VITE_AGUI_ENDPOINT npm run build
 
-# Stage 2: Build Python Backend with uv
+# Stage 2: OpenTelemetry Collector binary for Copilot CLI telemetry sidecar
+FROM otel/opentelemetry-collector-contrib:latest AS otel-collector
+
+# Stage 3: Build Python Backend with uv
 FROM python:3.12-slim AS backend-base
 
 WORKDIR /app
@@ -48,9 +51,13 @@ RUN uv sync --frozen --no-dev
 
 # Copy backend application code
 COPY app/ .
+RUN chmod +x /app/start-backend.sh /app/start-otel-collector.sh
 
-# Stage 3: Final combined image
+# Stage 4: Final combined image
 FROM backend-base AS final
+
+# Copy OpenTelemetry Collector binary from the official contrib image.
+COPY --from=otel-collector /otelcol-contrib /usr/local/bin/otelcol-contrib
 
 # Copy built frontend from frontend-build stage
 COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
@@ -105,7 +112,7 @@ RUN echo 'server { \
 RUN mkdir -p /etc/nginx/sites-enabled && \
     ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
-# Configure supervisor to run both nginx and backend
+# Configure supervisor to run nginx, backend, and the optional Collector sidecar
 RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
     echo 'nodaemon=true' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'user=root' >> /etc/supervisor/conf.d/supervisord.conf && \
@@ -119,8 +126,18 @@ RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
     echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo '[program:otel-collector]' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'command=/app/start-otel-collector.sh' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'directory=/app' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'environment=APPLICATIONINSIGHTS_CONNECTION_STRING="%(ENV_APPLICATIONINSIGHTS_CONNECTION_STRING)s"' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stdout_logfile=/dev/stdout' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stderr_logfile=/dev/stderr' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo '[program:backend]' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'command=/app/.venv/bin/python agui_server.py' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'command=/app/start-backend.sh' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'directory=/app' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'stdout_logfile=/dev/stdout' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
