@@ -81,7 +81,18 @@ def create_app() -> FastAPI:
         load_skills()
 
         subprocess_config = _build_copilot_subprocess_config()
-        client = CopilotClient(subprocess_config) if subprocess_config is not None else CopilotClient()
+        if subprocess_config is not None:
+            logger.info(
+                "Copilot CLI OTEL telemetry enabled",
+                extra={
+                    "otlp_endpoint": subprocess_config.telemetry.get("otlp_endpoint") if subprocess_config.telemetry else None,
+                    "capture_content": subprocess_config.telemetry.get("capture_content") if subprocess_config.telemetry else None,
+                },
+            )
+            client = CopilotClient(subprocess_config)
+        else:
+            logger.info("Copilot CLI OTEL telemetry disabled (no endpoint configured)")
+            client = CopilotClient()
         await client.start()
         set_client(client)
         logger.info("CopilotClient started (GitHub Copilot SDK)")
