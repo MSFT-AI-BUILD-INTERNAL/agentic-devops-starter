@@ -59,7 +59,9 @@ class Settings(BaseSettings):
     # When enabled, context strings passed to each agent are truncated to
     # `token_optimization_max_context_chars` characters (most-recent content
     # is kept) before being sent to the Copilot SDK.
+    # Env: COPILOT_API_TOKEN_OPTIMIZATION_ENABLED
     token_optimization_enabled: bool = False
+    # Env: COPILOT_API_TOKEN_OPTIMIZATION_MAX_CONTEXT_CHARS
     token_optimization_max_context_chars: int = 8000
 
     # OpenTelemetry export from the GitHub Copilot CLI subprocess spawned by

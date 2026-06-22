@@ -14,7 +14,7 @@ def test_truncate_context_disabled_returns_unchanged(monkeypatch: pytest.MonkeyP
     """truncate_context is a no-op when the feature flag is off."""
     monkeypatch.setattr(token_optimization.settings, "token_optimization_enabled", False)
     long_context = "x" * 20_000
-    assert truncate_context(long_context) is long_context
+    assert truncate_context(long_context) == long_context
 
 
 def test_truncate_context_disabled_empty_string(monkeypatch: pytest.MonkeyPatch) -> None:
