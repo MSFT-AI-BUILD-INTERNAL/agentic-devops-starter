@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     # Comma-separated skill names to disable (passed to the SDK as-is).
     disabled_skills: str = ""
 
+    # Token usage optimisation (Feature Flag).
+    # When enabled, context strings passed to each agent are truncated to
+    # `token_optimization_max_context_chars` characters (most-recent content
+    # is kept) before being sent to the Copilot SDK.
+    token_optimization_enabled: bool = False
+    token_optimization_max_context_chars: int = 8000
+
     # OpenTelemetry export from the GitHub Copilot CLI subprocess spawned by
     # the SDK. This is separate from the FastAPI/Azure Monitor instrumentation
     # configured in observability.py.
