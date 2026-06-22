@@ -74,7 +74,8 @@ async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[st
     all results before proceeding.
     """
     client = get_client()
-    sys_content = role.system_prompt + "\n\nContext:\n" + truncate_context(context)
+    context_body = truncate_context(context)
+    sys_content = role.system_prompt + "\n\nContext:\n" + context_body
     session = await client.create_session(
         on_permission_request=PermissionHandler.approve_all,
         system_message={"mode": "replace", "content": sys_content},
@@ -123,7 +124,8 @@ async def _stream_agent(
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Run one agent session and yield AGENT_STARTED/DELTA/END events."""
     client = get_client()
-    sys_content = role.system_prompt + "\n\nContext:\n" + truncate_context(context)
+    context_body = truncate_context(context)
+    sys_content = role.system_prompt + "\n\nContext:\n" + context_body
     session = await client.create_session(
         on_permission_request=PermissionHandler.approve_all,
         system_message={"mode": "replace", "content": sys_content},
