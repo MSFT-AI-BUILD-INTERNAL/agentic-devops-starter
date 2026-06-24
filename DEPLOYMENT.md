@@ -25,7 +25,6 @@ A three-job workflow:
 - Builds combined container image from `app/Dockerfile.appservice`
 - Pushes image with multiple tags (git SHA + latest)
 - Uses GitHub Actions cache (`type=gha`) for faster builds
-- Does not reference the `production` environment, so approval is not required just to build and publish a candidate image
 
 **Job 2: manual-approval**
 - Depends on `build-and-push` job
@@ -74,9 +73,7 @@ Stage 4: Final combined image
 
 ## Required GitHub Secrets
 
-Configure these secrets in your GitHub repository settings (Settings → Secrets and variables → Actions):
-
-The workflow reads these secrets outside the `production` environment gate, so configure them as repository-level Actions secrets unless you also update the jobs that consume them.
+Configure these secrets in your GitHub repository settings (Settings → Secrets and variables → Actions). Jobs that read these secrets declare the `production` environment, so these values can be stored as `production` environment secrets.
 
 ### Azure Authentication (OIDC)
 | Secret | Description |
@@ -149,6 +146,7 @@ Before running the workflow:
 
 3. **Configure GitHub Secrets**:
    - Add all required secrets listed above
+   - If you store them as environment secrets, use the `production` environment
 
 4. **Configure Production Approval**:
    - Create or update the `production` environment in GitHub repository settings
