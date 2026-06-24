@@ -7,14 +7,15 @@ This document describes the GitHub Actions workflow that deploys the application
 The workflow automates the following process:
 1. Builds a combined frontend + backend Docker image
 2. Pushes the image to Azure Container Registry (ACR)
-3. Deploys the container to Azure App Service
-4. Verifies the deployment health
+3. Waits for manual approval through the `production` environment
+4. Deploys the container to Azure App Service
+5. Verifies the deployment health
 
 ## Workflow Files
 
 ### `.github/workflows/deploy.yml`
 
-A two-job workflow:
+A three-job workflow:
 
 **Job 1: build-and-push**
 - Checks out code
@@ -25,8 +26,12 @@ A two-job workflow:
 - Pushes image with multiple tags (git SHA + latest)
 - Uses GitHub Actions cache (`type=gha`) for faster builds
 
-**Job 2: deploy**
+**Job 2: manual-approval**
 - Depends on `build-and-push` job
+- Uses the `production` environment so configured environment reviewers approve before deployment
+
+**Job 3: deploy**
+- Depends on `manual-approval` job
 - Authenticates to Azure via OIDC
 - Injects secrets-based app settings (AI endpoints, tenant ID)
 - Deploys the container image to App Service using `azure/webapps-deploy@v2`
@@ -140,6 +145,10 @@ Before running the workflow:
 3. **Configure GitHub Secrets**:
    - Add all required secrets listed above
 
+4. **Configure Production Approval**:
+   - Create or update the `production` environment in GitHub repository settings
+   - Configure required reviewers so the `manual-approval` job pauses before deployment
+
 ## Deployment Flow
 
 ```
@@ -161,6 +170,13 @@ Before running the workflow:
 │ - Tag with SHA      │
 │ - Tag with 'latest' │
 └────────┬────────────┘
+         │
+         v
+┌─────────────────────────┐
+│ Manual Approval         │
+│ - production env        │
+│ - Required reviewers    │
+└────────┬────────────────┘
          │
          v
 ┌─────────────────────────┐
