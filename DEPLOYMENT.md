@@ -25,10 +25,13 @@ A three-job workflow:
 - Builds combined container image from `app/Dockerfile.appservice`
 - Pushes image with multiple tags (git SHA + latest)
 - Uses GitHub Actions cache (`type=gha`) for faster builds
+- Does not reference the `production` environment, so approval is not required just to build and publish a candidate image
 
 **Job 2: manual-approval**
 - Depends on `build-and-push` job
 - Uses the `production` environment so configured environment reviewers approve before deployment
+- GitHub pauses this job before its steps run when the `production` environment has required reviewers
+- The `deploy` job cannot start until this job completes because it declares `needs: manual-approval`
 
 **Job 3: deploy**
 - Depends on `manual-approval` job
@@ -72,6 +75,8 @@ Stage 4: Final combined image
 ## Required GitHub Secrets
 
 Configure these secrets in your GitHub repository settings (Settings → Secrets and variables → Actions):
+
+The workflow reads these secrets outside the `production` environment gate, so configure them as repository-level Actions secrets unless you also update the jobs that consume them.
 
 ### Azure Authentication (OIDC)
 | Secret | Description |
