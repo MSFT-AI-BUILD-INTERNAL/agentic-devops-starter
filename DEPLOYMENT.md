@@ -7,15 +7,14 @@ This document describes the GitHub Actions workflow that deploys the application
 The workflow automates the following process:
 1. Builds a combined frontend + backend Docker image
 2. Pushes the image to Azure Container Registry (ACR)
-3. Waits for manual approval through the `production` environment
-4. Deploys the container to Azure App Service
-5. Verifies the deployment health
+3. Deploys the container to Azure App Service
+4. Verifies the deployment health
 
 ## Workflow Files
 
 ### `.github/workflows/deploy.yml`
 
-A three-job workflow:
+A two-job workflow:
 
 **Job 1: build-and-push**
 - Checks out code
@@ -25,16 +24,9 @@ A three-job workflow:
 - Builds combined container image from `app/Dockerfile.appservice`
 - Pushes image with multiple tags (git SHA + latest)
 - Uses GitHub Actions cache (`type=gha`) for faster builds
-- Does not reference the `production` environment, so approval is not required just to build and publish a candidate image
 
-**Job 2: manual-approval**
+**Job 2: deploy**
 - Depends on `build-and-push` job
-- Uses the `production` environment so configured environment reviewers approve before deployment
-- GitHub pauses this job before its steps run when the `production` environment has required reviewers
-- The `deploy` job cannot start until this job completes because it declares `needs: manual-approval`
-
-**Job 3: deploy**
-- Depends on `manual-approval` job
 - Authenticates to Azure via OIDC
 - Injects secrets-based app settings (AI endpoints, tenant ID)
 - Deploys the container image to App Service using `azure/webapps-deploy@v2`
@@ -74,9 +66,7 @@ Stage 4: Final combined image
 
 ## Required GitHub Secrets
 
-Configure these secrets in your GitHub repository settings (Settings → Secrets and variables → Actions):
-
-The workflow reads these secrets outside the `production` environment gate, so configure them as repository-level Actions secrets unless you also update the jobs that consume them.
+Configure these secrets in your GitHub repository settings (Settings → Secrets and variables → Actions). The deploy jobs declare the `production` environment, so these values can be stored as `production` environment secrets.
 
 ### Azure Authentication (OIDC)
 | Secret | Description |
@@ -149,10 +139,7 @@ Before running the workflow:
 
 3. **Configure GitHub Secrets**:
    - Add all required secrets listed above
-
-4. **Configure Production Approval**:
-   - Create or update the `production` environment in GitHub repository settings
-   - Configure required reviewers so the `manual-approval` job pauses before deployment
+   - If you store them as environment secrets, use the `production` environment
 
 ## Deployment Flow
 
@@ -177,14 +164,6 @@ Before running the workflow:
 └────────┬────────────┘
          │
          v
-┌─────────────────────────┐
-│ Manual Approval         │
-│ - production env        │
-│ - Required reviewers    │
-└────────┬────────────────┘
-         │
-         v
-┌─────────────────────────┐
 │ Deploy to App Service   │
 │ - Update app settings   │
 │ - Deploy container      │

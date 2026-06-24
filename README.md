@@ -235,10 +235,9 @@ Deployment uses `.github/workflows/deploy.yml`:
 
 1. Build the combined frontend/backend image from `app/Dockerfile.appservice`.
 2. Push both `${{ github.sha }}` and `latest` tags to ACR.
-3. Wait for manual approval through the `production` environment.
-4. Set secret-based App Service settings.
-5. Deploy the image to Azure App Service.
-6. Verify `GET /health`.
+3. Set secret-based App Service settings.
+4. Deploy the image to Azure App Service.
+5. Verify `GET /health`.
 
 Required GitHub Actions secrets:
 
