@@ -66,21 +66,32 @@ async def _unregister_team_session(thread_id: str, session: CopilotSession) -> N
     await get_session_pool().unregister_active_session(thread_id, session)
 
 
+def _agent_role_label(role: AgentRole) -> str:
+    return f"{role.emoji} {role.name}"
+
+
+def _agent_system_context(role: AgentRole, context: str) -> str:
+    return role.system_prompt + "\n\nContext:\n" + context
+
+
+async def _create_agent_session(role: AgentRole, context: str) -> CopilotSession:
+    client = get_client()
+    return await client.create_session(
+        on_permission_request=PermissionHandler.approve_all,
+        system_message={"mode": "replace", "content": _agent_system_context(role, context)},
+        streaming=True,
+        skill_directories=get_skill_directories(),
+        disabled_skills=get_disabled_skills(),
+    )
+
+
 async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[str, str]:
     """Run one agent session and return (role_name, full_response).
 
     Used for parallel execution (e.g. leadership briefings) where we need
     all results before proceeding.
     """
-    client = get_client()
-    sys_content = role.system_prompt + "\n\nContext:\n" + context
-    session = await client.create_session(
-        on_permission_request=PermissionHandler.approve_all,
-        system_message={"mode": "replace", "content": sys_content},
-        streaming=True,
-        skill_directories=get_skill_directories(),
-        disabled_skills=get_disabled_skills(),
-    )
+    session = await _create_agent_session(role, context)
     loop = asyncio.get_running_loop()
     idle_event = asyncio.Event()
     parts: list[str] = []
@@ -121,15 +132,7 @@ async def _stream_agent(
     round_num: int | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Run one agent session and yield AGENT_STARTED/DELTA/END events."""
-    client = get_client()
-    sys_content = role.system_prompt + "\n\nContext:\n" + context
-    session = await client.create_session(
-        on_permission_request=PermissionHandler.approve_all,
-        system_message={"mode": "replace", "content": sys_content},
-        streaming=True,
-        skill_directories=get_skill_directories(),
-        disabled_skills=get_disabled_skills(),
-    )
+    session = await _create_agent_session(role, context)
     loop = asyncio.get_running_loop()
     idle_event = asyncio.Event()
     send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
@@ -158,7 +161,7 @@ async def _stream_agent(
 
     yield {
         "type": "AGENT_STARTED",
-        "agent_role": f"{role.emoji} {role.name}",
+        "agent_role": _agent_role_label(role),
         "round": round_num,
     }
 
@@ -175,7 +178,7 @@ async def _stream_agent(
             full_content.append(msg["content"])
             yield {
                 "type": "AGENT_MESSAGE_DELTA",
-                "agent_role": f"{role.emoji} {role.name}",
+                "agent_role": _agent_role_label(role),
                 "delta": msg["content"],
             }
 
@@ -186,7 +189,7 @@ async def _stream_agent(
                 full_content.append(msg["content"])
                 yield {
                     "type": "AGENT_MESSAGE_DELTA",
-                    "agent_role": f"{role.emoji} {role.name}",
+                    "agent_role": _agent_role_label(role),
                     "delta": msg["content"],
                 }
     finally:
@@ -196,7 +199,7 @@ async def _stream_agent(
 
     yield {
         "type": "AGENT_MESSAGE_END",
-        "agent_role": f"{role.emoji} {role.name}",
+        "agent_role": _agent_role_label(role),
         "content": "".join(full_content),
         "round": round_num,
     }
@@ -332,12 +335,12 @@ async def _run_fan_out_sequential(
         role = next(r for r in briefing_roles if r.name == role_name)
         yield {
             "type": "AGENT_STARTED",
-            "agent_role": f"{role.emoji} {role.name}",
+            "agent_role": _agent_role_label(role),
             "round": 2,
         }
         yield {
             "type": "AGENT_MESSAGE_END",
-            "agent_role": f"{role.emoji} {role.name}",
+            "agent_role": _agent_role_label(role),
             "content": content,
             "round": 2,
         }
