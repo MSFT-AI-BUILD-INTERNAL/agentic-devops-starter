@@ -21,6 +21,7 @@ from pathlib import Path
 
 from src.config import settings
 from src.logging_utils import setup_logging
+from src.parsing import split_comma_separated
 
 logger = setup_logging(settings.log_level)
 
@@ -43,23 +44,24 @@ def _extra_directories_from_env() -> list[Path]:
 
 def _has_any_skill(directory: Path) -> bool:
     """Return True if *directory* contains at least one ``<name>/SKILL.md``."""
+    return any(_iter_skill_folders(directory))
+
+
+def _iter_skill_folders(directory: Path) -> Iterable[Path]:
+    """Yield ``<name>/SKILL.md`` folders under *directory*."""
     if not directory.is_dir():
-        return False
+        return
     for entry in directory.iterdir():
         if entry.is_dir() and (entry / "SKILL.md").is_file():
-            return True
-    return False
+            yield entry
 
 
 def _enumerate_skill_names(directories: Iterable[Path]) -> list[str]:
     """Return sorted unique skill folder names found under *directories*."""
     names: set[str] = set()
     for d in directories:
-        if not d.is_dir():
-            continue
-        for entry in d.iterdir():
-            if entry.is_dir() and (entry / "SKILL.md").is_file():
-                names.add(entry.name)
+        for entry in _iter_skill_folders(d):
+            names.add(entry.name)
     return sorted(names)
 
 
@@ -111,10 +113,7 @@ def get_skill_directories() -> list[str]:
 
 def get_disabled_skills() -> list[str]:
     """Return skill names the operator has opted to disable."""
-    raw = settings.disabled_skills
-    if not raw:
-        return []
-    return [s.strip() for s in raw.split(",") if s.strip()]
+    return split_comma_separated(settings.disabled_skills)
 
 
 def get_loaded_skill_names() -> list[str]:

@@ -13,6 +13,7 @@ from copilot.session import CopilotSession, PermissionHandler
 
 from src.config import settings
 from src.logging_utils import setup_logging
+from src.parsing import split_comma_separated
 from src.skills import get_disabled_skills, get_skill_directories
 
 logger = setup_logging(settings.log_level)
@@ -29,7 +30,7 @@ def _get_allowed_tools() -> list[str] | None:
     if value is None:
         return None
 
-    non_empty_tools = [tool.strip() for tool in value.split(",") if tool.strip()]
+    non_empty_tools = split_comma_separated(value)
     return non_empty_tools or None
 
 
