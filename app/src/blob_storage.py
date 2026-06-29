@@ -20,7 +20,6 @@ class BlobStorageService:
     """Handles upload and download operations to Azure Blob Storage."""
 
     def __init__(self, endpoint: str, container_name: str) -> None:
-        self._container_name = container_name
         credential = DefaultAzureCredential()
         self._client = BlobServiceClient(account_url=endpoint, credential=credential)
         self._container_client = self._client.get_container_client(container_name)
