@@ -237,7 +237,7 @@ async def upload_file(file: UploadFile) -> JSONResponse:
     try:
         blob_service = get_blob_service()
         blob_service.upload(content, blob_name, content_type)
-    except BlobStorageConfigurationError:
+    except BlobStorageConfigurationError as exc:
         return log_and_respond(
             logger,
             503,
@@ -247,7 +247,7 @@ async def upload_file(file: UploadFile) -> JSONResponse:
             "https://<account>.blob.core.windows.net URL.",
             "Blob upload failed: storage is not configured",
             extra={"upload_filename": filename},
-            exception=Exception(),
+            exception=exc,
         )
     except Exception:
         return log_and_respond(
