@@ -35,6 +35,8 @@ def build_prompt(
         try:
             file_context = resolve_attachments(attachments)
         except Exception:
+            if logger:
+                logger.exception("Failed to resolve attachments for prompt")
             file_context = ""
         if file_context:
             content = file_context + "\n\n" + content
