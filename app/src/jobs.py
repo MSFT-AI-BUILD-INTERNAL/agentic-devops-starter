@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from copilot.generated.session_events import (
     AssistantMessageData,
@@ -76,12 +78,24 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
     return "".join(result_parts)
 
 
-async def run_fleet(job_id: str, items: list[tuple[str, str | None]]) -> None:
-    """Run multiple session calls in parallel (max 20) and collect results."""
+async def _run_job_task(
+    job_id: str, task: Callable[[], Any]
+) -> None:
+    """Execute a job task with unified error handling."""
     job = _jobs[job_id]
     job.status = "running"
 
     try:
+        await task()
+        job.status = "completed"
+    except Exception as exc:
+        job.status = "failed"
+        job.error = str(exc)
+
+
+async def run_fleet(job_id: str, items: list[tuple[str, str | None]]) -> None:
+    """Run multiple session calls in parallel (max 20) and collect results."""
+    async def fleet_task() -> None:
         semaphore = asyncio.Semaphore(20)
 
         async def _process(prompt: str, system_message: str | None) -> str:
@@ -91,6 +105,7 @@ async def run_fleet(job_id: str, items: list[tuple[str, str | None]]) -> None:
         tasks = [_process(prompt, sys_msg) for prompt, sys_msg in items]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
+        job = _jobs[job_id]
         job.results = []
         for r in results:
             if isinstance(r, BaseException):
@@ -98,10 +113,7 @@ async def run_fleet(job_id: str, items: list[tuple[str, str | None]]) -> None:
             else:
                 job.results.append(r)
 
-        job.status = "completed"
-    except Exception as exc:
-        job.status = "failed"
-        job.error = str(exc)
+    await _run_job_task(job_id, fleet_task)
 
 
 async def run_infinite_session(
@@ -111,16 +123,12 @@ async def run_infinite_session(
     system_message: str | None,
 ) -> None:
     """Run chained session calls where output N becomes prompt N+1."""
-    job = _jobs[job_id]
-    job.status = "running"
-
-    try:
+    async def infinite_task() -> None:
         current_prompt = prompt
         for _ in range(iterations):
             current_prompt = await _call_session(current_prompt, system_message)
 
+        job = _jobs[job_id]
         job.result = current_prompt
-        job.status = "completed"
-    except Exception as exc:
-        job.status = "failed"
-        job.error = str(exc)
+
+    await _run_job_task(job_id, infinite_task)

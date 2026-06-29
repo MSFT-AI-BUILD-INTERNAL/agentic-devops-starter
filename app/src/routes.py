@@ -1,8 +1,6 @@
 """API route handlers for the AG-UI server."""
 
 import asyncio
-import base64
-import json
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -16,8 +14,10 @@ from copilot.generated.session_events import (
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
+import src.sse_utils as sse_utils
 from src.blob_storage import BlobStorageConfigurationError, get_blob_service
 from src.config import settings
+from src.error_handler import log_and_respond
 from src.file_validation import (
     ALLOWED_CONTENT_TYPES,
     MAX_FILE_SIZE_BYTES,
@@ -38,68 +38,13 @@ from src.models import (
 )
 from src.orchestrator import run_teams
 from src.patterns import PATTERNS
+from src.sse_utils import build_prompt, sse_format
 from src.state import FoundrySessionPool, SessionPool, get_foundry_session_pool, get_session_pool
 
 logger = setup_logging(settings.log_level)
+sse_utils.set_logger(logger)
 
 router = APIRouter()
-
-
-def _build_prompt(
-    messages: list[dict[str, str]], attachments: list[dict[str, Any]] | None = None
-) -> str:
-    """Extract the last user message content as the prompt, prepending file context if present."""
-    user_messages = [m for m in messages if m.get("role") == "user"]
-    if user_messages:
-        content = user_messages[-1].get("content", "")
-    elif messages:
-        content = messages[-1].get("content", "")
-    else:
-        content = ""
-
-    if attachments:
-        try:
-            file_context = _resolve_attachments(attachments)
-        except Exception:
-            file_context = ""
-        if file_context:
-            content = file_context + "\n\n" + content
-
-    return content
-
-
-def _resolve_attachments(attachments: list[dict[str, Any]]) -> str:
-    """Download attached blobs and format as context for the AI prompt."""
-    parts: list[str] = []
-    blob_service = get_blob_service()
-
-    for att in attachments:
-        blob_name = att.get("blob_name", "")
-        original_filename = att.get("original_filename", "file")
-        content_type = att.get("content_type", "")
-
-        try:
-            content = blob_service.download(blob_name)
-
-            if content_type.startswith("text/") or content_type == "application/json":
-                text = content.decode("utf-8", errors="replace")
-                parts.append(f"[File: {original_filename}]\n{text}")
-            else:
-                encoded = base64.b64encode(content).decode("ascii")
-                parts.append(
-                    f"[File: {original_filename} ({content_type}, {len(content)} bytes, "
-                    f"base64-encoded)]\n{encoded}"
-                )
-        except Exception:
-            logger.exception("Failed to download attachment", extra={"blob_name": blob_name})
-            parts.append(f"[File: {original_filename} — failed to load]")
-
-    return "\n\n".join(parts)
-
-
-def _sse(event: dict[str, Any]) -> str:
-    """Format a dict as an SSE data line."""
-    return f"data: {json.dumps(event)}\n\n"
 
 
 @router.get("/health")
@@ -121,7 +66,7 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
     messages: list[dict[str, str]] = input_data.get("messages", [])
     attachments: list[dict[str, Any]] | None = input_data.get("attachments")
 
-    prompt = _build_prompt(messages, attachments)
+    prompt = build_prompt(messages, attachments)
 
     return _chat_streaming_response(
         get_session_pool(),
@@ -141,7 +86,7 @@ async def foundry_byok_endpoint(request: Request) -> StreamingResponse:
     messages: list[dict[str, str]] = input_data.get("messages", [])
     attachments: list[dict[str, Any]] | None = input_data.get("attachments")
 
-    prompt = _build_prompt(messages, attachments)
+    prompt = build_prompt(messages, attachments)
 
     return _chat_streaming_response(
         get_foundry_session_pool(),
@@ -167,12 +112,12 @@ def _chat_streaming_response(
         except RuntimeError as error:
             logger.exception("Chat session initialization failed", extra={"thread_id": thread_id})
             message = str(error) if "Foundry BYOK is not configured" in str(error) else initialization_error_message
-            yield _sse({"type": "RUN_ERROR", "message": message})
-            yield _sse({"type": "RUN_FINISHED", "thread_id": thread_id, "run_id": run_id})
+            yield sse_format({"type": "RUN_ERROR", "message": message})
+            yield sse_format({"type": "RUN_FINISHED", "thread_id": thread_id, "run_id": run_id})
             return
 
         # RUN_STARTED
-        yield _sse({"type": "RUN_STARTED", "thread_id": thread_id, "run_id": run_id})
+        yield sse_format({"type": "RUN_STARTED", "thread_id": thread_id, "run_id": run_id})
 
         message_id = uuid.uuid4().hex[:12]
         message_started = False
@@ -208,28 +153,28 @@ def _chat_streaming_response(
                     continue
 
                 if msg["type"] == "error":
-                    yield _sse({"type": "RUN_ERROR", "message": msg["content"]})
+                    yield sse_format({"type": "RUN_ERROR", "message": msg["content"]})
                 elif msg["type"] == "delta":
                     if not message_started:
-                        yield _sse({"type": "TEXT_MESSAGE_START", "message_id": message_id})
+                        yield sse_format({"type": "TEXT_MESSAGE_START", "message_id": message_id})
                         message_started = True
-                    yield _sse({"type": "TEXT_MESSAGE_CONTENT", "delta": msg["content"]})
+                    yield sse_format({"type": "TEXT_MESSAGE_CONTENT", "delta": msg["content"]})
 
             # Drain remaining queued events
             while not send_queue.empty():
                 msg = send_queue.get_nowait()
                 if msg["type"] == "delta":
                     if not message_started:
-                        yield _sse({"type": "TEXT_MESSAGE_START", "message_id": message_id})
+                        yield sse_format({"type": "TEXT_MESSAGE_START", "message_id": message_id})
                         message_started = True
-                    yield _sse({"type": "TEXT_MESSAGE_CONTENT", "delta": msg["content"]})
+                    yield sse_format({"type": "TEXT_MESSAGE_CONTENT", "delta": msg["content"]})
 
             if message_started:
-                yield _sse({"type": "TEXT_MESSAGE_END", "message_id": message_id})
+                yield sse_format({"type": "TEXT_MESSAGE_END", "message_id": message_id})
 
         except Exception:
             logger.exception("Copilot session error; terminating stream")
-            yield _sse({"type": "RUN_ERROR", "message": "An internal error occurred"})
+            yield sse_format({"type": "RUN_ERROR", "message": "An internal error occurred"})
             # On error, disconnect so next request gets a fresh session
             await pool.disconnect(thread_id)
         finally:
@@ -237,7 +182,7 @@ def _chat_streaming_response(
                 unsubscribe()
 
         # Always emit RUN_FINISHED
-        yield _sse({"type": "RUN_FINISHED", "thread_id": thread_id, "run_id": run_id})
+        yield sse_format({"type": "RUN_FINISHED", "thread_id": thread_id, "run_id": run_id})
 
     return StreamingResponse(
         event_generator(),
@@ -254,76 +199,65 @@ def _chat_streaming_response(
 async def upload_file(file: UploadFile) -> JSONResponse:
     """Upload a file to Azure Blob Storage."""
     filename = file.filename or "unnamed"
-
-    # Validate content type
     content_type = file.content_type or "application/octet-stream"
+
     try:
         validate_file_type(content_type, filename)
     except ValueError:
-        logger.warning(
+        return log_and_respond(
+            logger,
+            415,
+            "INVALID_TYPE",
+            "File type is not allowed.",
             "Rejected file upload due to invalid content type",
             extra={"upload_filename": filename, "content_type": content_type},
-        )
-        return JSONResponse(
-            status_code=415,
-            content={
-                "error": "INVALID_TYPE",
-                "detail": "File type is not allowed.",
-                "allowed_types": sorted(ALLOWED_CONTENT_TYPES),
-            },
+            extra_fields={"allowed_types": sorted(ALLOWED_CONTENT_TYPES)},
         )
 
-    # Some clients/OS send generic types (e.g. application/octet-stream) for
-    # known extensions like .md — normalize so blob metadata is accurate.
     content_type = resolve_content_type(content_type, filename)
-
-    # Read file content
     content = await file.read()
 
-    # Validate size
     try:
         validate_file_size(len(content))
     except ValueError:
         status = 422 if len(content) == 0 else 413
-        logger.warning(
+        error_code = "EMPTY_FILE" if len(content) == 0 else "FILE_TOO_LARGE"
+        detail = "File is empty." if len(content) == 0 else "File exceeds the maximum allowed size."
+        return log_and_respond(
+            logger,
+            status,
+            error_code,
+            detail,
             "Rejected file upload due to invalid file size",
-            extra={"upload_filename": filename, "size_bytes": len(content), "status": status},
-        )
-        return JSONResponse(
-            status_code=status,
-            content={
-                "error": "EMPTY_FILE" if len(content) == 0 else "FILE_TOO_LARGE",
-                "detail": "File is empty." if len(content) == 0 else "File exceeds the maximum allowed size.",
-                "max_size_bytes": MAX_FILE_SIZE_BYTES,
-            },
+            extra={"upload_filename": filename, "size_bytes": len(content)},
+            extra_fields={"max_size_bytes": MAX_FILE_SIZE_BYTES},
         )
 
-    # Generate blob name and upload
     blob_name = generate_blob_name(filename)
     try:
         blob_service = get_blob_service()
         blob_service.upload(content, blob_name, content_type)
-    except BlobStorageConfigurationError:
-        logger.exception(
+    except BlobStorageConfigurationError as exc:
+        return log_and_respond(
+            logger,
+            503,
+            "STORAGE_NOT_CONFIGURED",
+            "Blob storage is not configured on this server. "
+            "Set COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT to a valid "
+            "https://<account>.blob.core.windows.net URL.",
             "Blob upload failed: storage is not configured",
             extra={"upload_filename": filename},
+            exception=exc,
         )
-        return JSONResponse(
-            status_code=503,
-            content={
-                "error": "STORAGE_NOT_CONFIGURED",
-                "detail": (
-                    "Blob storage is not configured on this server. "
-                    "Set COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT to a valid "
-                    "https://<account>.blob.core.windows.net URL."
-                ),
-            },
-        )
-    except Exception:
-        logger.exception("Blob upload failed", extra={"upload_filename": filename})
-        return JSONResponse(
-            status_code=502,
-            content={"error": "UPLOAD_FAILED", "detail": "Failed to upload file to storage"},
+    except Exception as exc:
+        return log_and_respond(
+            logger,
+            502,
+            "UPLOAD_FAILED",
+            "Failed to upload file to storage",
+            "Blob upload failed",
+            extra={"upload_filename": filename},
+            exception=exc,
         )
 
     result = UploadResult(
@@ -396,7 +330,7 @@ async def teams_stream(request: TeamsRequest) -> StreamingResponse:
 
     prompt = request.prompt
     if request.attachments:
-        file_context = _resolve_attachments(
+        file_context = sse_utils.resolve_attachments(
             [att.model_dump() for att in request.attachments]
         )
         if file_context:
@@ -406,7 +340,7 @@ async def teams_stream(request: TeamsRequest) -> StreamingResponse:
         async for event in run_teams(
             request.pattern_id, prompt, request.max_rounds, request.thread_id
         ):
-            yield _sse(event)
+            yield sse_format(event)
 
     return StreamingResponse(
         event_generator(),
