@@ -249,7 +249,7 @@ async def upload_file(file: UploadFile) -> JSONResponse:
             extra={"upload_filename": filename},
             exception=exc,
         )
-    except Exception:
+    except Exception as exc:
         return log_and_respond(
             logger,
             502,
@@ -257,7 +257,7 @@ async def upload_file(file: UploadFile) -> JSONResponse:
             "Failed to upload file to storage",
             "Blob upload failed",
             extra={"upload_filename": filename},
-            exception=Exception(),
+            exception=exc,
         )
 
     result = UploadResult(
