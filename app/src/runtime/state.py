@@ -14,6 +14,7 @@ from copilot.session import CopilotSession, PermissionHandler
 from src.core.config import settings
 from src.core.logging_utils import setup_logging
 from src.runtime.skills import get_disabled_skills, get_skill_directories
+from src.runtime.tools import get_registered_tools
 
 logger = setup_logging(settings.log_level)
 
@@ -90,6 +91,7 @@ class SessionPool:
                 "streaming": True,
                 "skill_directories": skill_directories,
                 "disabled_skills": disabled_skills,
+                "tools": get_registered_tools(),
                 "github_token": github_token,
             }
             if allowed_tools is not None:
@@ -245,6 +247,7 @@ class FoundrySessionPool:
                 "streaming": True,
                 "skill_directories": get_skill_directories(),
                 "disabled_skills": get_disabled_skills(),
+                "tools": get_registered_tools(),
                 "model": settings.azure_ai_model_deployment_name,
                 "provider": provider,
             }

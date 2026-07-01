@@ -189,6 +189,27 @@ async def test_session_pool_passes_tool_allowlist(
 
 
 @pytest.mark.asyncio
+async def test_session_pool_registers_code_based_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Session creation should include registered code-based tool handlers."""
+    client = _FakeClient()
+    monkeypatch.delenv("COPILOT_API_ALLOWED_TOOLS", raising=False)
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-with-runtime-tools")
+
+        assert client.create_kwargs is not None
+        tool_names = [tool.name for tool in client.create_kwargs["tools"]]
+        assert "transform_text" in tool_names
+        assert "fetch_github_zen" in tool_names
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_session_pool_omits_empty_tool_allowlist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

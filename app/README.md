@@ -97,6 +97,8 @@ uv run agui_client.py
 | `COPILOT_API_PORT` | No | `5100` | Server port |
 | `COPILOT_API_LOG_LEVEL` | No | `INFO` | Log level |
 | `COPILOT_API_SESSION_TIMEOUT` | No | `120.0` | Copilot session timeout (seconds) |
+| `COPILOT_API_TOOL_TIMEOUT` | No | `10.0` | Default timeout (seconds) for each code-based custom tool invocation |
+| `COPILOT_API_TOOL_EXTERNAL_API_URL` | No | `https://api.github.com/zen` | External API URL used by the example integration tool |
 | `CORS_ORIGINS` | No | `localhost:5173` | Comma-separated CORS origins |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | No | — | Enables Azure Monitor tracing |
 | `OTEL_SERVICE_NAME` | No | `agentic-devops-starter` | OpenTelemetry service name |

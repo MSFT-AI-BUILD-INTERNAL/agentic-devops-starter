@@ -25,6 +25,7 @@ from src.core.config import settings
 from src.core.logging_utils import setup_logging
 from src.runtime.skills import get_disabled_skills, get_skill_directories
 from src.runtime.state import get_client, get_session_pool
+from src.runtime.tools import get_registered_tools
 from src.teams.patterns import AgentRole, get_pattern
 
 logger = setup_logging(settings.log_level)
@@ -82,6 +83,7 @@ async def _create_agent_session(role: AgentRole, context: str) -> CopilotSession
         streaming=True,
         skill_directories=get_skill_directories(),
         disabled_skills=get_disabled_skills(),
+        tools=get_registered_tools(),
     )
 
 

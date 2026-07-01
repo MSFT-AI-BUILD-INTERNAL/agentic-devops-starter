@@ -21,6 +21,7 @@ from src.api.models import JobStatusResponse
 from src.core.config import settings
 from src.runtime.skills import get_disabled_skills, get_skill_directories
 from src.runtime.state import get_client
+from src.runtime.tools import get_registered_tools
 
 _jobs: dict[str, JobStatusResponse] = {}
 
@@ -49,6 +50,7 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
         streaming=True,
         skill_directories=get_skill_directories(),
         disabled_skills=get_disabled_skills(),
+        tools=get_registered_tools(),
     )
     loop = asyncio.get_running_loop()
     idle_event = asyncio.Event()
