@@ -1,6 +1,7 @@
 """Tests for use-case-oriented backend source modules."""
 
 from src.api.models import FleetItem, FleetRequest
+from src.api.routes import _initialization_error_message
 from src.core.config import Settings
 from src.runtime.jobs import create_job
 from src.storage.file_validation import validate_file_size
@@ -25,3 +26,14 @@ def test_legacy_module_imports_remain_available() -> None:
     assert settings.port == 5100
     assert LegacyFleetRequest is FleetRequest
     assert LEGACY_PATTERNS is PATTERNS
+
+
+def test_foundry_initialization_errors_are_client_safe() -> None:
+    """Known Foundry setup errors should not echo raw exception text to clients."""
+    message = _initialization_error_message(
+        RuntimeError("Foundry BYOK is not configured: missing FOUNDRY_API_KEY"),
+        "default",
+    )
+
+    assert message == "Foundry BYOK is not configured. Check the server's Azure AI Foundry settings."
+    assert "FOUNDRY_API_KEY" not in message
