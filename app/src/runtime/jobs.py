@@ -17,10 +17,10 @@ from copilot.generated.session_events import (
 )
 from copilot.session import PermissionHandler
 
-from src.config import settings
-from src.models import JobStatusResponse
-from src.skills import get_disabled_skills, get_skill_directories
-from src.state import get_client
+from src.api.models import JobStatusResponse
+from src.core.config import settings
+from src.runtime.skills import get_disabled_skills, get_skill_directories
+from src.runtime.state import get_client
 
 _jobs: dict[str, JobStatusResponse] = {}
 

@@ -14,21 +14,9 @@ from copilot.generated.session_events import (
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
-import src.sse_utils as sse_utils
-from src.blob_storage import BlobStorageConfigurationError, get_blob_service
-from src.config import settings
-from src.error_handler import log_and_respond
-from src.file_validation import (
-    ALLOWED_CONTENT_TYPES,
-    MAX_FILE_SIZE_BYTES,
-    generate_blob_name,
-    resolve_content_type,
-    validate_file_size,
-    validate_file_type,
-)
-from src.jobs import create_job, get_job, run_fleet, run_infinite_session
-from src.logging_utils import setup_logging
-from src.models import (
+import src.api.sse_utils as sse_utils
+from src.api.error_handler import log_and_respond
+from src.api.models import (
     FleetRequest,
     InfiniteSessionRequest,
     JobStatusResponse,
@@ -36,10 +24,28 @@ from src.models import (
     TeamsRequest,
     UploadResult,
 )
-from src.orchestrator import run_teams
-from src.patterns import PATTERNS
-from src.sse_utils import build_prompt, sse_format
-from src.state import FoundrySessionPool, SessionPool, get_foundry_session_pool, get_session_pool
+from src.api.sse_utils import build_prompt, sse_format
+from src.core.config import settings
+from src.core.logging_utils import setup_logging
+from src.runtime.jobs import create_job, get_job, run_fleet, run_infinite_session
+from src.runtime.state import (
+    FoundryConfigurationError,
+    FoundrySessionPool,
+    SessionPool,
+    get_foundry_session_pool,
+    get_session_pool,
+)
+from src.storage.blob_storage import BlobStorageConfigurationError, get_blob_service
+from src.storage.file_validation import (
+    ALLOWED_CONTENT_TYPES,
+    MAX_FILE_SIZE_BYTES,
+    generate_blob_name,
+    resolve_content_type,
+    validate_file_size,
+    validate_file_type,
+)
+from src.teams.orchestrator import run_teams
+from src.teams.patterns import PATTERNS
 
 logger = setup_logging(settings.log_level)
 sse_utils.set_logger(logger)
@@ -102,7 +108,7 @@ def _chat_streaming_response(
     thread_id: str,
     run_id: str,
     prompt: str,
-    initialization_error_message: str,
+    fallback_error_message: str,
 ) -> StreamingResponse:
     """Create a streaming AG-UI response for a dedicated session pool."""
 
@@ -111,7 +117,7 @@ def _chat_streaming_response(
             session = await pool.get_or_create(thread_id)
         except RuntimeError as error:
             logger.exception("Chat session initialization failed", extra={"thread_id": thread_id})
-            message = str(error) if "Foundry BYOK is not configured" in str(error) else initialization_error_message
+            message = initialization_error_message(error, fallback_error_message)
             yield sse_format({"type": "RUN_ERROR", "message": message})
             yield sse_format({"type": "RUN_FINISHED", "thread_id": thread_id, "run_id": run_id})
             return
@@ -193,6 +199,13 @@ def _chat_streaming_response(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def initialization_error_message(error: RuntimeError, default_message: str) -> str:
+    """Return a client-safe initialization error message."""
+    if isinstance(error, FoundryConfigurationError):
+        return "Foundry BYOK is not configured. Check the server's Azure AI Foundry settings."
+    return default_message
 
 
 @router.post("/v1/files/upload")

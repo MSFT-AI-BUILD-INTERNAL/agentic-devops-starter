@@ -278,12 +278,12 @@
           <tr>
             <td>AI 런타임</td>
             <td>GitHub Copilot SDK의 <code>CopilotClient</code>, <code>CopilotSession</code> 사용. 일반 Copilot 세션과 Azure AI Foundry BYOK 세션을 분리 관리</td>
-            <td><code>app/agui_server.py</code>, <code>app/src/state.py</code></td>
+            <td><code>app/agui_server.py</code>, <code>app/src/runtime/state.py</code></td>
           </tr>
           <tr>
             <td>API</td>
             <td>FastAPI + StreamingResponse 기반 SSE. <code>/</code>는 기본 Copilot, <code>/v1/byok/foundry</code>는 Foundry BYOK</td>
-            <td><code>app/src/routes.py</code></td>
+            <td><code>app/src/api/routes.py</code></td>
           </tr>
           <tr>
             <td>프론트엔드</td>
@@ -325,7 +325,7 @@
           v
 +-----------------------------+
 | FastAPI Backend :5100       |
-| - routes.py                 |
+| - api/routes.py                 |
 | - SessionPool               |
 | - FoundrySessionPool        |
 | - Job Manager               |
@@ -471,42 +471,42 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
             <td>FastAPI 앱 생성, CopilotClient lifecycle, 미들웨어, CORS, router 등록</td>
           </tr>
           <tr>
-            <td><code>app/src/routes.py</code></td>
+            <td><code>app/src/api/routes.py</code></td>
             <td><code>agent_endpoint()</code>, <code>foundry_byok_endpoint()</code>, <code>upload_file()</code>, <code>teams_stream()</code></td>
             <td>HTTP 라우트와 SSE 응답 구성</td>
           </tr>
           <tr>
-            <td><code>app/src/state.py</code></td>
+            <td><code>app/src/runtime/state.py</code></td>
             <td><code>SessionPool</code>, <code>FoundrySessionPool</code>, <code>get_client()</code>, <code>get_session_pool()</code>, <code>get_foundry_session_pool()</code></td>
             <td>CopilotClient singleton 및 thread별 CopilotSession 관리</td>
           </tr>
           <tr>
-            <td><code>app/src/jobs.py</code></td>
+            <td><code>app/src/runtime/jobs.py</code></td>
             <td><code>create_job()</code>, <code>run_fleet()</code>, <code>run_infinite_session()</code></td>
             <td>메모리 기반 비동기 작업 관리</td>
           </tr>
           <tr>
-            <td><code>app/src/orchestrator.py</code></td>
+            <td><code>app/src/teams/orchestrator.py</code></td>
             <td><code>run_teams()</code>, <code>_stream_agent()</code>, flow runner들</td>
             <td>다중 역할 Copilot session 오케스트레이션</td>
           </tr>
           <tr>
-            <td><code>app/src/patterns.py</code></td>
+            <td><code>app/src/teams/patterns.py</code></td>
             <td><code>Pattern</code>, <code>AgentRole</code>, <code>PATTERNS</code></td>
             <td>Agent Team 패턴과 역할별 system prompt 정의</td>
           </tr>
           <tr>
-            <td><code>app/src/skills.py</code></td>
+            <td><code>app/src/runtime/skills.py</code></td>
             <td><code>load_skills()</code>, <code>get_skill_directories()</code>, <code>get_disabled_skills()</code></td>
             <td>SKILL.md 디렉터리 디스커버리 및 SDK 전달용 경로 해석</td>
           </tr>
           <tr>
-            <td><code>app/src/blob_storage.py</code></td>
+            <td><code>app/src/storage/blob_storage.py</code></td>
             <td><code>BlobStorageService</code>, <code>get_blob_service()</code></td>
             <td>Azure Blob upload/download</td>
           </tr>
           <tr>
-            <td><code>app/src/file_validation.py</code></td>
+            <td><code>app/src/storage/file_validation.py</code></td>
             <td><code>validate_file_type()</code>, <code>validate_file_size()</code>, <code>generate_blob_name()</code></td>
             <td>파일 확장자/MIME/크기/파일명 sanitization</td>
           </tr>
@@ -860,7 +860,7 @@ data: {"type": "RUN_FINISHED", "thread_id": "abc123", "run_id": "def456"}</code>
       </table>
 
       <p>
-        Foundry provider는 <code>app/src/state.py</code>의 <code>_build_foundry_provider()</code>에서 구성한다.
+        Foundry provider는 <code>app/src/runtime/state.py</code>의 <code>_build_foundry_provider()</code>에서 구성한다.
         <code>api_key</code> 모드에서는 <code>FOUNDRY_API_KEY</code> 또는 <code>AZURE_OPENAI_API_KEY</code>를
         사용하고, <code>azure_identity</code> 모드에서는 <code>DefaultAzureCredential</code>로
         <code>https://cognitiveservices.azure.com/.default</code> scope의 bearer token을 가져온다.
@@ -1174,7 +1174,7 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
 
       <h3>10.2 스킬 디스커버리</h3>
       <p>
-        <code>src.skills.load_skills()</code>는 앱 시작 시 한 번 실행되어 스킬 디렉터리를 탐색·캐싱한다.
+        <code>src.runtime.skills.load_skills()</code>는 앱 시작 시 한 번 실행되어 스킬 디렉터리를 탐색·캐싱한다.
         애플리케이션은 <strong>스킬 레지스트리가 아니다</strong> — 스킬을 API로 나열하거나 서빙하지 않으며,
         SDK가 스캔할 파일시스템 경로만 결정한다.
       </p>

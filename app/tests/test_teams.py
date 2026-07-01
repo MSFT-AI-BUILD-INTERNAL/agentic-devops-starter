@@ -8,9 +8,9 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from agui_server import create_app
-from src import orchestrator
-from src.patterns import PATTERNS, get_pattern
-from src.state import SessionPool, set_session_pool
+from src.runtime.state import SessionPool, set_session_pool
+from src.teams import orchestrator
+from src.teams.patterns import PATTERNS, get_pattern
 
 # ---------------------------------------------------------------------------
 # Pattern definitions

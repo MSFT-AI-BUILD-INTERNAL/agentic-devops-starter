@@ -11,9 +11,9 @@ from azure.identity import CredentialUnavailableError, DefaultAzureCredential
 from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
 
-from src.config import settings
-from src.logging_utils import setup_logging
-from src.skills import get_disabled_skills, get_skill_directories
+from src.core.config import settings
+from src.core.logging_utils import setup_logging
+from src.runtime.skills import get_disabled_skills, get_skill_directories
 
 logger = setup_logging(settings.log_level)
 
@@ -21,6 +21,10 @@ _client: CopilotClient | None = None
 _foundry_credential: DefaultAzureCredential | None = None
 _FOUNDRY_TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"
 _FOUNDRY_TOKEN_REFRESH_SKEW_SECONDS = 300
+
+
+class FoundryConfigurationError(RuntimeError):
+    """Raised when Azure AI Foundry BYOK settings are missing or invalid."""
 
 
 def _get_allowed_tools() -> list[str] | None:
@@ -304,9 +308,11 @@ def _validate_foundry_settings() -> None:
     if _resolve_foundry_auth_mode() == "api_key" and not settings.foundry_api_key:
         missing.append("FOUNDRY_API_KEY or AZURE_OPENAI_API_KEY")
     if missing:
-        raise RuntimeError(f"Foundry BYOK is not configured: missing {', '.join(missing)}")
+        raise FoundryConfigurationError(
+            f"Foundry BYOK is not configured: missing {', '.join(missing)}"
+        )
     if settings.foundry_wire_api not in {"responses", "completions"}:
-        raise RuntimeError(
+        raise FoundryConfigurationError(
             "Foundry BYOK is not configured: FOUNDRY_WIRE_API must be responses or completions"
         )
 
@@ -315,7 +321,7 @@ def _resolve_foundry_auth_mode() -> str:
     """Return the concrete Foundry auth mode for the current settings."""
     auth_mode = settings.foundry_auth_mode.lower()
     if auth_mode not in {"auto", "api_key", "azure_identity"}:
-        raise RuntimeError(
+        raise FoundryConfigurationError(
             "Foundry BYOK is not configured: FOUNDRY_AUTH_MODE must be auto, api_key, "
             "or azure_identity"
         )
@@ -348,7 +354,9 @@ def _get_foundry_bearer_token() -> AccessToken:
     try:
         return _foundry_credential.get_token(_FOUNDRY_TOKEN_SCOPE)
     except (CredentialUnavailableError, ClientAuthenticationError) as error:
-        raise RuntimeError("Foundry BYOK is not configured: Azure Identity authentication failed") from error
+        raise FoundryConfigurationError(
+            "Foundry BYOK is not configured: Azure Identity authentication failed"
+        ) from error
 
 
 def _normalize_foundry_base_url(endpoint: str) -> str:

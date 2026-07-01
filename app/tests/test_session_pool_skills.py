@@ -8,10 +8,10 @@ from typing import Any, cast
 import pytest
 from azure.core.credentials import AccessToken
 
-import src.skills as skills_module
-import src.state as state_module
-from src.skills import load_skills
-from src.state import FoundrySessionPool, SessionPool, set_client
+import src.runtime.skills as skills_module
+import src.runtime.state as state_module
+from src.runtime.skills import load_skills
+from src.runtime.state import FoundrySessionPool, SessionPool, set_client
 
 
 class _FakeSession:

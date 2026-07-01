@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.patterns import PATTERNS, _load_pattern_registry
+from src.teams.patterns import PATTERNS, _load_pattern_registry
 
 EXPECTED_PATTERN_IDS = (
     "debate-critic",

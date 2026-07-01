@@ -2,8 +2,8 @@
 
 import pytest
 
-from src import blob_storage
-from src.blob_storage import BlobStorageConfigurationError, get_blob_service
+from src.storage import blob_storage
+from src.storage.blob_storage import BlobStorageConfigurationError, get_blob_service
 
 
 @pytest.mark.parametrize("bad_endpoint", ["", "   ", "not-a-url", "ftp://example.com"])

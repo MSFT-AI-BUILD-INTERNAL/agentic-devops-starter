@@ -46,7 +46,7 @@ def build_prompt(
 
 def resolve_attachments(attachments: list[dict[str, Any]]) -> str:
     """Download attached blobs and format as context for the AI prompt."""
-    from src.blob_storage import get_blob_service
+    from src.storage.blob_storage import get_blob_service
 
     parts: list[str] = []
     blob_service = get_blob_service()

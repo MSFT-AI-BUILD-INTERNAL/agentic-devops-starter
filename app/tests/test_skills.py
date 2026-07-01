@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-import src.skills as skills_module
-from src.skills import (
+import src.runtime.skills as skills_module
+from src.runtime.skills import (
     get_disabled_skills,
     get_loaded_skill_names,
     get_skill_directories,

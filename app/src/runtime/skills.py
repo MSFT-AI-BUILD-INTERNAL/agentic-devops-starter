@@ -19,13 +19,28 @@ import os
 from collections.abc import Iterable
 from pathlib import Path
 
-from src.config import settings
-from src.logging_utils import setup_logging
+from src.core.config import settings
+from src.core.logging_utils import setup_logging
 
 logger = setup_logging(settings.log_level)
 
+
+def _find_app_dir(start: Path) -> Path:
+    """Find the application directory that owns the built-in skills folder."""
+    for parent in start.parents:
+        # The app root is the uv project directory and owns the built-in Agent
+        # Skills directory used by the Copilot SDK.
+        if (parent / "pyproject.toml").is_file() and (parent / "skills").is_dir():
+            return parent
+    raise RuntimeError(
+        "Unable to locate application directory for Agent Skills: searched upward from "
+        f"{start} for a directory containing both pyproject.toml and skills/."
+    )
+
+
 # Built-in skills directory shipped with the application.
-_REPO_SKILLS_DIR = (Path(__file__).resolve().parent.parent / "skills").resolve()
+_APP_DIR = _find_app_dir(Path(__file__).resolve())
+_REPO_SKILLS_DIR = (_APP_DIR / "skills").resolve()
 
 # Skill discovery is performed once at startup and cached.
 _skill_directories: list[str] = []

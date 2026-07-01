@@ -6,8 +6,8 @@ from urllib.parse import urlparse
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
-from src.config import settings
-from src.logging_utils import setup_logging
+from src.core.config import settings
+from src.core.logging_utils import setup_logging
 
 logger: logging.Logger = setup_logging(settings.log_level)
 

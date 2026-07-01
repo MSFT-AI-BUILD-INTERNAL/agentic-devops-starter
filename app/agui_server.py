@@ -12,12 +12,12 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.config import settings
-from src.logging_utils import setup_logging
-from src.observability import configure_observability
-from src.routes import router
-from src.skills import load_skills
-from src.state import (
+from src.api.routes import router
+from src.core.config import settings
+from src.core.logging_utils import setup_logging
+from src.core.observability import configure_observability
+from src.runtime.skills import load_skills
+from src.runtime.state import (
     FoundrySessionPool,
     SessionPool,
     set_client,
