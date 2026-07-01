@@ -9,13 +9,12 @@ app/
 ├── agui_server.py           # FastAPI app factory (entry point)
 ├── agui_client.py           # CLI chat client (smoke-test tool)
 ├── src/
-│   ├── config.py            # Pydantic settings (COPILOT_API_* env)
-│   ├── routes.py            # All API routes (AG-UI, Fleet, Infinite Session)
-│   ├── jobs.py              # Background job manager (Fleet / Infinite Session)
-│   ├── models.py            # Pydantic request/response models
-│   ├── state.py             # CopilotClient singleton
-│   ├── logging_utils.py     # Structured logging + correlation IDs
-│   └── observability.py     # Azure Monitor OpenTelemetry (optional)
+│   ├── api/                 # FastAPI routes, API models, SSE helpers
+│   ├── core/                # Settings, logging, observability
+│   ├── runtime/             # Copilot client/session state, jobs, skills
+│   ├── storage/             # Blob storage and upload validation
+│   ├── teams/               # Multi-agent orchestration and pattern data
+│   └── *.py                 # Compatibility imports for legacy module paths
 ├── frontend/                # React + TypeScript + Vite
 ├── tests/                   # pytest test suite
 ├── pyproject.toml           # Python deps (uv-managed)

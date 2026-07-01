@@ -46,15 +46,12 @@ agentic-devops-starter/
 │   ├── agui_server.py              # FastAPI app factory and server entry point
 │   ├── agui_client.py              # CLI smoke-test client
 │   ├── src/
-│   │   ├── routes.py               # AG-UI, upload, job, and team routes
-│   │   ├── state.py                # Copilot SDK client/session pool
-│   │   ├── jobs.py                 # Fleet and Infinite Session background jobs
-│   │   ├── orchestrator.py         # Multi-agent team execution
-│   │   ├── patterns.py             # Team pattern definitions
-│   │   ├── blob_storage.py         # Azure Blob Storage integration
-│   │   ├── file_validation.py      # Upload validation helpers
-│   │   ├── config.py               # Pydantic settings
-│   │   └── observability.py        # Optional Azure Monitor OpenTelemetry
+│   │   ├── api/                    # AG-UI routes, request/response models, SSE helpers
+│   │   ├── core/                   # Pydantic settings, logging, observability
+│   │   ├── runtime/                # Copilot client/session pool, jobs, skills
+│   │   ├── storage/                # Azure Blob Storage and upload validation
+│   │   ├── teams/                  # Multi-agent team execution and pattern definitions
+│   │   └── *.py                    # Compatibility imports for legacy module paths
 │   ├── frontend/                   # React + TypeScript + Vite frontend
 │   ├── tests/                      # pytest test suite
 │   ├── pyproject.toml              # uv-managed Python project
