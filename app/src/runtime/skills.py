@@ -28,6 +28,8 @@ logger = setup_logging(settings.log_level)
 def _find_app_dir(start: Path) -> Path:
     """Find the application directory that owns the built-in skills folder."""
     for parent in start.parents:
+        # The app root is the uv project directory and owns the built-in Agent
+        # Skills directory used by the Copilot SDK.
         if (parent / "pyproject.toml").is_file() and (parent / "skills").is_dir():
             return parent
     raise RuntimeError(

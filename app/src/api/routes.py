@@ -29,6 +29,7 @@ from src.core.config import settings
 from src.core.logging_utils import setup_logging
 from src.runtime.jobs import create_job, get_job, run_fleet, run_infinite_session
 from src.runtime.state import (
+    FoundryConfigurationError,
     FoundrySessionPool,
     SessionPool,
     get_foundry_session_pool,
@@ -202,8 +203,7 @@ def _chat_streaming_response(
 
 def initialization_error_message(error: RuntimeError, default_message: str) -> str:
     """Return a client-safe initialization error message."""
-    error_message = str(error)
-    if "Foundry BYOK is not configured" in error_message:
+    if isinstance(error, FoundryConfigurationError):
         return "Foundry BYOK is not configured. Check the server's Azure AI Foundry settings."
     return default_message
 

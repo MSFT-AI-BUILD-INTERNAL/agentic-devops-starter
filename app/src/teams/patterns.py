@@ -1,6 +1,7 @@
 """Agent team pattern definitions."""
 
-from pathlib import Path
+from importlib.resources import files
+from importlib.resources.abc import Traversable
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
@@ -26,7 +27,7 @@ class Pattern(BaseModel):
     max_rounds: int = 3
 
 
-PATTERN_DATA_PATH = Path(__file__).with_name("data") / "patterns.yaml"
+PATTERN_DATA_PATH = files("src.teams.data").joinpath("patterns.yaml")
 EXPECTED_PATTERN_IDS = (
     "debate-critic",
     "generator-evaluator",
@@ -39,7 +40,7 @@ _REQUIRED_PATTERN_FIELDS = frozenset(
 )
 
 
-def _read_pattern_registry(path: Path) -> Any:
+def _read_pattern_registry(path: Traversable) -> Any:
     try:
         content = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -63,7 +64,7 @@ def _pattern_data(raw_pattern: Any, index: int) -> dict[str, Any]:
     return raw_pattern
 
 
-def _load_pattern_registry(path: Path = PATTERN_DATA_PATH) -> dict[str, Pattern]:
+def _load_pattern_registry(path: Traversable = PATTERN_DATA_PATH) -> dict[str, Pattern]:
     """Load and validate predefined patterns from YAML."""
     raw_registry = _read_pattern_registry(path)
     if not isinstance(raw_registry, dict):
