@@ -30,7 +30,10 @@ def _find_app_dir(start: Path) -> Path:
     for parent in start.parents:
         if (parent / "pyproject.toml").is_file() and (parent / "skills").is_dir():
             return parent
-    raise RuntimeError("Unable to locate application directory for Agent Skills")
+    raise RuntimeError(
+        "Unable to locate application directory for Agent Skills: searched upward from "
+        f"{start} for a directory containing both pyproject.toml and skills/."
+    )
 
 
 # Built-in skills directory shipped with the application.

@@ -15,7 +15,10 @@ def test_use_case_packages_expose_backend_modules() -> None:
     assert Settings().port == 5100
     assert FleetRequest(items=[FleetItem(prompt="hello")]).items[0].prompt == "hello"
     assert callable(create_job)
-    validate_file_size(1)
+    try:
+        validate_file_size(1)
+    except ValueError as exc:
+        pytest.fail(f"Expected one-byte files to be valid: {exc}")
     assert "debate-critic" in PATTERNS
 
 

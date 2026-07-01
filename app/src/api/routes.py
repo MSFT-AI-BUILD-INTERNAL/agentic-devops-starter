@@ -107,7 +107,7 @@ def _chat_streaming_response(
     thread_id: str,
     run_id: str,
     prompt: str,
-    default_error_message: str,
+    fallback_error_message: str,
 ) -> StreamingResponse:
     """Create a streaming AG-UI response for a dedicated session pool."""
 
@@ -116,7 +116,7 @@ def _chat_streaming_response(
             session = await pool.get_or_create(thread_id)
         except RuntimeError as error:
             logger.exception("Chat session initialization failed", extra={"thread_id": thread_id})
-            message = initialization_error_message(error, default_error_message)
+            message = initialization_error_message(error, fallback_error_message)
             yield sse_format({"type": "RUN_ERROR", "message": message})
             yield sse_format({"type": "RUN_FINISHED", "thread_id": thread_id, "run_id": run_id})
             return
