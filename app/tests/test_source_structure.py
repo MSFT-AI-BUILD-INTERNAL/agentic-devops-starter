@@ -37,3 +37,8 @@ def test_foundry_initialization_errors_are_client_safe() -> None:
 
     assert message == "Foundry BYOK is not configured. Check the server's Azure AI Foundry settings."
     assert "FOUNDRY_API_KEY" not in message
+
+
+def test_non_foundry_initialization_errors_use_default_message() -> None:
+    """Unexpected initialization errors should use the provided safe default."""
+    assert _initialization_error_message(RuntimeError("database password failed"), "default") == "default"

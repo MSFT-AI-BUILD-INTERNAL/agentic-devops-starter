@@ -25,7 +25,8 @@ from src.core.logging_utils import setup_logging
 logger = setup_logging(settings.log_level)
 
 # Built-in skills directory shipped with the application.
-_REPO_SKILLS_DIR = (Path(__file__).resolve().parents[2] / "skills").resolve()
+_APP_DIR = Path(__file__).resolve().parent.parent.parent
+_REPO_SKILLS_DIR = (_APP_DIR / "skills").resolve()
 
 # Skill discovery is performed once at startup and cached.
 _skill_directories: list[str] = []
