@@ -23,17 +23,6 @@ def test_use_case_packages_expose_backend_modules() -> None:
     assert "debate-critic" in PATTERNS
 
 
-def test_legacy_module_imports_remain_available() -> None:
-    """Existing imports should continue to resolve during migration."""
-    from src.config import settings
-    from src.models import FleetRequest as LegacyFleetRequest
-    from src.patterns import PATTERNS as LEGACY_PATTERNS
-
-    assert settings.port == 5100
-    assert LegacyFleetRequest is FleetRequest
-    assert LEGACY_PATTERNS is PATTERNS
-
-
 @pytest.mark.parametrize(
     "raw_error",
     [

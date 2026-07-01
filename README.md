@@ -50,8 +50,7 @@ agentic-devops-starter/
 │   │   ├── core/                   # Pydantic settings, logging, observability
 │   │   ├── runtime/                # Copilot client/session pool, jobs, skills
 │   │   ├── storage/                # Azure Blob Storage and upload validation
-│   │   ├── teams/                  # Multi-agent team execution and pattern definitions
-│   │   └── *.py                    # Compatibility imports for legacy module paths
+│   │   └── teams/                  # Multi-agent team execution and pattern definitions
 │   ├── frontend/                   # React + TypeScript + Vite frontend
 │   ├── tests/                      # pytest test suite
 │   ├── pyproject.toml              # uv-managed Python project

@@ -115,7 +115,7 @@ def test_abort_thread_endpoint(client: TestClient, monkeypatch: pytest.MonkeyPat
     """The abort endpoint should call the session pool with the thread ID."""
     pool = MagicMock()
     pool.abort = AsyncMock(return_value=True)
-    monkeypatch.setattr("src.routes.get_session_pool", lambda: pool)
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
 
     response = client.post("/v1/threads/thread-123/abort")
 
@@ -130,7 +130,7 @@ def test_abort_thread_endpoint_reports_missing_thread(
     """The abort endpoint should report when no session is abortable."""
     pool = MagicMock()
     pool.abort = AsyncMock(return_value=False)
-    monkeypatch.setattr("src.routes.get_session_pool", lambda: pool)
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
 
     response = client.post("/v1/threads/missing-thread/abort")
 

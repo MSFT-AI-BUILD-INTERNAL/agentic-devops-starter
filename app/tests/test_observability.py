@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src import observability
-from src.observability import configure_observability
+from src.core import observability
+from src.core.observability import configure_observability
 
 
 @pytest.fixture(autouse=True)

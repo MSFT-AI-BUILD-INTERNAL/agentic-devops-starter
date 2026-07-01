@@ -512,11 +512,6 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
           </tr>
         </tbody>
       </table>
-      <p>
-        루트의 <code>app/src/*.py</code> 파일은 기존 import 경로(<code>src.routes</code>,
-        <code>src.state</code> 등)를 유지하기 위한 호환 모듈이며, 신규 구현 코드는 위 use case
-        패키지에 둔다.
-      </p>
 
       <h3>4.2 API 라우트와 함수 매핑</h3>
       <table>
@@ -1179,7 +1174,7 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
 
       <h3>10.2 스킬 디스커버리</h3>
       <p>
-        <code>src.skills.load_skills()</code>는 앱 시작 시 한 번 실행되어 스킬 디렉터리를 탐색·캐싱한다.
+        <code>src.runtime.skills.load_skills()</code>는 앱 시작 시 한 번 실행되어 스킬 디렉터리를 탐색·캐싱한다.
         애플리케이션은 <strong>스킬 레지스트리가 아니다</strong> — 스킬을 API로 나열하거나 서빙하지 않으며,
         SDK가 스캔할 파일시스템 경로만 결정한다.
       </p>

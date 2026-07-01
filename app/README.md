@@ -13,8 +13,7 @@ app/
 │   ├── core/                # Settings, logging, observability
 │   ├── runtime/             # Copilot client/session state, jobs, skills
 │   ├── storage/             # Blob storage and upload validation
-│   ├── teams/               # Multi-agent orchestration and pattern data
-│   └── *.py                 # Compatibility imports for legacy module paths
+│   └── teams/               # Multi-agent orchestration and pattern data
 ├── frontend/                # React + TypeScript + Vite
 ├── tests/                   # pytest test suite
 ├── pyproject.toml           # Python deps (uv-managed)
