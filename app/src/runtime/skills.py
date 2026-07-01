@@ -24,8 +24,17 @@ from src.core.logging_utils import setup_logging
 
 logger = setup_logging(settings.log_level)
 
+
+def _find_app_dir(start: Path) -> Path:
+    """Find the application directory that owns the built-in skills folder."""
+    for parent in start.parents:
+        if (parent / "pyproject.toml").is_file() and (parent / "skills").is_dir():
+            return parent
+    raise RuntimeError("Unable to locate application directory for Agent Skills")
+
+
 # Built-in skills directory shipped with the application.
-_APP_DIR = Path(__file__).resolve().parent.parent.parent
+_APP_DIR = _find_app_dir(Path(__file__).resolve())
 _REPO_SKILLS_DIR = (_APP_DIR / "skills").resolve()
 
 # Skill discovery is performed once at startup and cached.

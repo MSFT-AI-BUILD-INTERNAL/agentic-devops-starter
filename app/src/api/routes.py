@@ -107,7 +107,7 @@ def _chat_streaming_response(
     thread_id: str,
     run_id: str,
     prompt: str,
-    initialization_error_message: str,
+    default_error_message: str,
 ) -> StreamingResponse:
     """Create a streaming AG-UI response for a dedicated session pool."""
 
@@ -116,7 +116,7 @@ def _chat_streaming_response(
             session = await pool.get_or_create(thread_id)
         except RuntimeError as error:
             logger.exception("Chat session initialization failed", extra={"thread_id": thread_id})
-            message = _initialization_error_message(error, initialization_error_message)
+            message = initialization_error_message(error, default_error_message)
             yield sse_format({"type": "RUN_ERROR", "message": message})
             yield sse_format({"type": "RUN_FINISHED", "thread_id": thread_id, "run_id": run_id})
             return
@@ -200,10 +200,10 @@ def _chat_streaming_response(
     )
 
 
-def _initialization_error_message(error: RuntimeError, default_message: str) -> str:
+def initialization_error_message(error: RuntimeError, default_message: str) -> str:
     """Return a client-safe initialization error message."""
     error_message = str(error)
-    if error_message.startswith("Foundry BYOK is not configured:"):
+    if "Foundry BYOK is not configured" in error_message:
         return "Foundry BYOK is not configured. Check the server's Azure AI Foundry settings."
     return default_message
 

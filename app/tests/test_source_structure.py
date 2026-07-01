@@ -1,7 +1,9 @@
 """Tests for use-case-oriented backend source modules."""
 
+import pytest
+
 from src.api.models import FleetItem, FleetRequest
-from src.api.routes import _initialization_error_message
+from src.api.routes import initialization_error_message
 from src.core.config import Settings
 from src.runtime.jobs import create_job
 from src.storage.file_validation import validate_file_size
@@ -28,17 +30,22 @@ def test_legacy_module_imports_remain_available() -> None:
     assert LEGACY_PATTERNS is PATTERNS
 
 
-def test_foundry_initialization_errors_are_client_safe() -> None:
+@pytest.mark.parametrize(
+    "raw_error",
+    [
+        "Foundry BYOK is not configured: missing FOUNDRY_API_KEY",
+        "Foundry BYOK is not configured: FOUNDRY_WIRE_API must be responses or completions",
+        "Foundry BYOK is not configured: Azure Identity authentication failed",
+    ],
+)
+def test_foundry_initialization_errors_are_client_safe(raw_error: str) -> None:
     """Known Foundry setup errors should not echo raw exception text to clients."""
-    message = _initialization_error_message(
-        RuntimeError("Foundry BYOK is not configured: missing FOUNDRY_API_KEY"),
-        "default",
-    )
+    message = initialization_error_message(RuntimeError(raw_error), "default")
 
     assert message == "Foundry BYOK is not configured. Check the server's Azure AI Foundry settings."
-    assert "FOUNDRY_API_KEY" not in message
+    assert raw_error not in message
 
 
 def test_non_foundry_initialization_errors_use_default_message() -> None:
     """Unexpected initialization errors should use the provided safe default."""
-    assert _initialization_error_message(RuntimeError("database password failed"), "default") == "default"
+    assert initialization_error_message(RuntimeError("database password failed"), "default") == "default"
