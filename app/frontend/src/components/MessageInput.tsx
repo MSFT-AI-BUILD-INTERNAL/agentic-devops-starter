@@ -193,7 +193,7 @@ export function MessageInput({
 
       <FilePreview files={pendingFiles} onRemove={removeFile} />
 
-      <div className="flex items-end space-x-2">
+      <div className="flex items-start space-x-2">
         <input
           ref={fileInputRef}
           type="file"
@@ -208,12 +208,18 @@ export function MessageInput({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled || isAtLimit}
-          className="px-3 py-2 text-text-secondary hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          style={{ minHeight: '44px' }}
+          className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-full text-text-secondary hover:text-text-primary hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           aria-label="Attach file"
           title={isAtLimit ? 'Maximum files reached' : 'Attach file'}
         >
-          📎
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
+            />
+          </svg>
         </button>
 
         <div className="flex-1">
@@ -243,57 +249,48 @@ export function MessageInput({
             type="button"
             onClick={handleStopGenerating}
             disabled={isStopping}
-            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-border-focus focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-            style={{ minHeight: '44px' }}
-            aria-label="Stop generating"
+            className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-full bg-red-600 text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-border-focus focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            aria-label={isStopping ? 'Stopping generation' : 'Stop generating'}
+            title={isStopping ? 'Stopping...' : 'Stop generating'}
           >
-            <span>{isStopping ? 'Stopping...' : 'Stop Generating'}</span>
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <rect x="6" y="6" width="12" height="12" rx="1" />
+            </svg>
           </button>
         ) : (
           <button
             type="submit"
             disabled={isSendDisabled}
-            className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-border-focus focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-            style={{ minHeight: '44px' }}
-            aria-label="Send message"
+            className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-full bg-accent text-white hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-border-focus focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            aria-label={isSubmitting || isUploading ? (isUploading ? 'Uploading' : 'Sending') : 'Send message'}
+            title={isSubmitting || isUploading ? (isUploading ? 'Uploading...' : 'Sending...') : 'Send message'}
           >
             {isSubmitting || isUploading ? (
-              <>
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                    fill="none"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                <span>{isUploading ? 'Uploading...' : 'Sending...'}</span>
-              </>
-            ) : (
-              <>
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
+              <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
                   stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                  />
-                </svg>
-                <span>Send</span>
-              </>
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 19V5m0 0l-6 6m6-6l6 6"
+                />
+              </svg>
             )}
           </button>
         )}
