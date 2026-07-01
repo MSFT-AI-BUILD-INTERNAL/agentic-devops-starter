@@ -40,20 +40,22 @@ async def upload_file_to_blob(file: UploadFile) -> JSONResponse:
 
     content_type = resolve_content_type(content_type, filename)
     content = await file.read()
+    size_bytes = len(content)
 
     try:
-        validate_file_size(len(content))
+        validate_file_size(size_bytes)
     except ValueError:
-        status = 422 if len(content) == 0 else 413
-        error_code = "EMPTY_FILE" if len(content) == 0 else "FILE_TOO_LARGE"
-        detail = "File is empty." if len(content) == 0 else "File exceeds the maximum allowed size."
+        is_empty = size_bytes == 0
+        status = 422 if is_empty else 413
+        error_code = "EMPTY_FILE" if is_empty else "FILE_TOO_LARGE"
+        detail = "File is empty." if is_empty else "File exceeds the maximum allowed size."
         return log_and_respond(
             logger,
             status,
             error_code,
             detail,
             "Rejected file upload due to invalid file size",
-            extra={"upload_filename": filename, "size_bytes": len(content)},
+            extra={"upload_filename": filename, "size_bytes": size_bytes},
             extra_fields={"max_size_bytes": MAX_FILE_SIZE_BYTES},
         )
 
@@ -88,6 +90,6 @@ async def upload_file_to_blob(file: UploadFile) -> JSONResponse:
         blob_name=blob_name,
         original_filename=filename,
         content_type=content_type,
-        size_bytes=len(content),
+        size_bytes=size_bytes,
     )
     return JSONResponse(status_code=200, content=result.model_dump())
