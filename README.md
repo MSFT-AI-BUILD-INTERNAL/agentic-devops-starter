@@ -46,7 +46,8 @@ agentic-devops-starter/
 │   ├── agui_server.py              # FastAPI app factory and server entry point
 │   ├── agui_client.py              # CLI smoke-test client
 │   ├── src/
-│   │   ├── routes.py               # AG-UI, upload, job, and team routes
+│   │   ├── routes.py               # FastAPI route wiring
+│   │   ├── use_cases/              # Chat, upload, jobs, threads, and teams use cases
 │   │   ├── state.py                # Copilot SDK client/session pool
 │   │   ├── jobs.py                 # Fleet and Infinite Session background jobs
 │   │   ├── orchestrator.py         # Multi-agent team execution

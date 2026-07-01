@@ -10,7 +10,8 @@ app/
 ├── agui_client.py           # CLI chat client (smoke-test tool)
 ├── src/
 │   ├── config.py            # Pydantic settings (COPILOT_API_* env)
-│   ├── routes.py            # All API routes (AG-UI, Fleet, Infinite Session)
+│   ├── routes.py            # FastAPI route wiring
+│   ├── use_cases/           # Use-case modules for chat, uploads, jobs, threads, teams
 │   ├── jobs.py              # Background job manager (Fleet / Infinite Session)
 │   ├── models.py            # Pydantic request/response models
 │   ├── state.py             # CopilotClient singleton
@@ -22,6 +23,10 @@ app/
 ├── Dockerfile.appservice    # Production multi-stage build
 └── .env.example             # Environment variable reference
 ```
+
+`src/routes.py` only binds HTTP paths to use-case functions. Application behavior is
+organized under `src/use_cases/` so chat streaming, file upload, thread lifecycle,
+background jobs, and multi-agent team execution can evolve independently.
 
 ## Prerequisites
 
