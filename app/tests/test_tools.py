@@ -143,6 +143,22 @@ async def test_tool_wrapper_enforces_timeout() -> None:
     assert payload["error"]["code"] == "TOOL_TIMEOUT"
 
 
+def _sync_handler(_params: BaseModel, _invocation: ToolInvocation) -> dict[str, str]:
+    return {"result": "ok"}
+
+
+def test_build_tool_rejects_sync_handler() -> None:
+    definition = ToolDefinition(
+        name="sync_tool",
+        description="Sync handler that must be rejected",
+        params_model=_FailingParams,
+        handler=_sync_handler,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(TypeError, match="must be an async function"):
+        build_tools([definition], default_timeout_seconds=1.0)
+
+
 def test_tool_registry_rejects_duplicate_names() -> None:
     definitions = [
         ToolDefinition(

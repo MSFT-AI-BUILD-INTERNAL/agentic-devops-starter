@@ -32,7 +32,7 @@ class ToolDefinition:
     name: str
     description: str
     params_model: type[BaseModel]
-    handler: Callable[[BaseModel, ToolInvocation], Any | Awaitable[Any]]
+    handler: Callable[[BaseModel, ToolInvocation], Awaitable[Any]]
     timeout_seconds: float | None = None
     skip_permission: bool = False
 
@@ -126,6 +126,11 @@ def _build_base_definitions() -> list[ToolDefinition]:
 
 def build_tool(definition: ToolDefinition, default_timeout_seconds: float) -> Tool:
     """Build a Copilot SDK tool wrapped by a safety boundary."""
+    if not inspect.iscoroutinefunction(definition.handler):
+        raise TypeError(
+            f"Tool handler for '{definition.name}' must be an async function. "
+            "Synchronous handlers cannot be reliably cancelled on timeout and may exhaust the thread pool."
+        )
 
     async def wrapped_handler(invocation: ToolInvocation) -> ToolResult:
         started = time.monotonic()
@@ -148,16 +153,10 @@ def build_tool(definition: ToolDefinition, default_timeout_seconds: float) -> To
         )
         try:
             validated = definition.params_model.model_validate(invocation.arguments or {})
-            if inspect.iscoroutinefunction(definition.handler):
-                result_payload = await asyncio.wait_for(
-                    definition.handler(validated, invocation),
-                    timeout=timeout_seconds,
-                )
-            else:
-                result_payload = await asyncio.wait_for(
-                    asyncio.to_thread(definition.handler, validated, invocation),
-                    timeout=timeout_seconds,
-                )
+            result_payload = await asyncio.wait_for(
+                definition.handler(validated, invocation),
+                timeout=timeout_seconds,
+            )
 
             duration_ms = int((time.monotonic() - started) * 1000)
             logger.info(
