@@ -17,7 +17,7 @@ from src.runtime.tools import ToolDefinition, build_tools, get_registered_tools
 
 
 @pytest.fixture(autouse=True)
-def reset_tool_cache() -> Generator[None]:
+def reset_tool_cache() -> Generator[None, None, None]:
     tools_module._registered_tools = []
     tools_module._registered_tool_names = []
     yield
