@@ -97,6 +97,10 @@ uv run agui_client.py
 | `COPILOT_API_PORT` | No | `5100` | Server port |
 | `COPILOT_API_LOG_LEVEL` | No | `INFO` | Log level |
 | `COPILOT_API_SESSION_TIMEOUT` | No | `120.0` | Copilot session timeout (seconds) |
+| `COPILOT_API_TOOL_TIMEOUT` | No | `10.0` | Default timeout (seconds) for each code-based custom tool invocation |
+| `COPILOT_API_TOOL_EXTERNAL_API_URL` | No | `https://api.github.com/zen` | External API URL used by the example integration tool |
+| `COPILOT_API_EXCLUDED_TOOLS` | No | filesystem/shell/database tools | Comma-separated SDK built-in tools to disable for every session. Unset applies a secure-by-default denylist (`bash`, `write_bash`, `read_bash`, `stop_bash`, `list_bash`, `view`, `create`, `edit`, `grep`, `glob`, `sql`); set to a blank value to disable the denylist. Ignored when `COPILOT_API_ALLOWED_TOOLS` is set. |
+| `COPILOT_API_ALLOWED_TOOLS` | No | — | Comma-separated allowlist of SDK built-in tools. When set, only these tools are enabled and `COPILOT_API_EXCLUDED_TOOLS` is ignored. |
 | `CORS_ORIGINS` | No | `localhost:5173` | Comma-separated CORS origins |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | No | — | Enables Azure Monitor tracing |
 | `OTEL_SERVICE_NAME` | No | `agentic-devops-starter` | OpenTelemetry service name |

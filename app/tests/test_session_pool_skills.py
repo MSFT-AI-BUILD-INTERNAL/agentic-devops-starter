@@ -49,6 +49,8 @@ def isolate_skills_and_client(monkeypatch: pytest.MonkeyPatch) -> Generator[None
     monkeypatch.setattr(skills_module, "_loaded_skill_names", [])
     monkeypatch.setattr(state_module, "_client", None)
     monkeypatch.setattr(state_module.settings, "foundry_auth_mode", "auto")
+    monkeypatch.delenv("COPILOT_API_ALLOWED_TOOLS", raising=False)
+    monkeypatch.delenv("COPILOT_API_EXCLUDED_TOOLS", raising=False)
     yield
 
 
@@ -184,6 +186,105 @@ async def test_session_pool_passes_tool_allowlist(
 
         assert client.create_kwargs is not None
         assert client.create_kwargs["available_tools"] == ["bash", "read_file"]
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_excludes_unsafe_tools_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unset COPILOT_API_EXCLUDED_TOOLS must exclude the web-unsafe tool set."""
+    client = _FakeClient()
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-default-denylist")
+
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["excluded_tools"] == list(state_module._WEB_UNSAFE_TOOLS)
+        assert "available_tools" not in client.create_kwargs
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_uses_custom_tool_denylist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A configured COPILOT_API_EXCLUDED_TOOLS value overrides the default."""
+    client = _FakeClient()
+    monkeypatch.setenv("COPILOT_API_EXCLUDED_TOOLS", "bash, sql ,")
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-custom-denylist")
+
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["excluded_tools"] == ["bash", "sql"]
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_omits_blank_tool_denylist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A blank COPILOT_API_EXCLUDED_TOOLS disables the denylist entirely."""
+    client = _FakeClient()
+    monkeypatch.setenv("COPILOT_API_EXCLUDED_TOOLS", "  ,  ")
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-blank-denylist")
+
+        assert client.create_kwargs is not None
+        assert "excluded_tools" not in client.create_kwargs
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_allowlist_takes_precedence_over_denylist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """available_tools must win; excluded_tools is ignored by the SDK when both set."""
+    client = _FakeClient()
+    monkeypatch.setenv("COPILOT_API_ALLOWED_TOOLS", "read_file")
+    monkeypatch.setenv("COPILOT_API_EXCLUDED_TOOLS", "bash")
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-allowlist-precedence")
+
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["available_tools"] == ["read_file"]
+        assert "excluded_tools" not in client.create_kwargs
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_registers_code_based_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Session creation should include registered code-based tool handlers."""
+    client = _FakeClient()
+    monkeypatch.delenv("COPILOT_API_ALLOWED_TOOLS", raising=False)
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-with-runtime-tools")
+
+        assert client.create_kwargs is not None
+        tool_names = [tool.name for tool in client.create_kwargs["tools"]]
+        assert "transform_text" in tool_names
+        assert "fetch_github_zen" in tool_names
     finally:
         await pool.shutdown()
 

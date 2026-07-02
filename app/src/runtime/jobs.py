@@ -20,7 +20,8 @@ from copilot.session import PermissionHandler
 from src.api.models import JobStatusResponse
 from src.core.config import settings
 from src.runtime.skills import get_disabled_skills, get_skill_directories
-from src.runtime.state import get_client
+from src.runtime.state import _apply_tool_policy, get_client
+from src.runtime.tools import get_registered_tools
 
 _jobs: dict[str, JobStatusResponse] = {}
 
@@ -43,13 +44,16 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
     """Run a single Copilot session call and return the response text."""
     client = get_client()
     sys_content = system_message or "You are a helpful assistant."
-    session = await client.create_session(
-        on_permission_request=PermissionHandler.approve_all,
-        system_message={"mode": "replace", "content": sys_content},
-        streaming=True,
-        skill_directories=get_skill_directories(),
-        disabled_skills=get_disabled_skills(),
-    )
+    session_kwargs: dict[str, Any] = {
+        "on_permission_request": PermissionHandler.approve_all,
+        "system_message": {"mode": "replace", "content": sys_content},
+        "streaming": True,
+        "skill_directories": get_skill_directories(),
+        "disabled_skills": get_disabled_skills(),
+        "tools": get_registered_tools(),
+    }
+    _apply_tool_policy(session_kwargs)
+    session = await client.create_session(**session_kwargs)
     loop = asyncio.get_running_loop()
     idle_event = asyncio.Event()
     result_parts: list[str] = []

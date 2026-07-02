@@ -24,7 +24,8 @@ from copilot.session import CopilotSession, PermissionHandler
 from src.core.config import settings
 from src.core.logging_utils import setup_logging
 from src.runtime.skills import get_disabled_skills, get_skill_directories
-from src.runtime.state import get_client, get_session_pool
+from src.runtime.state import _apply_tool_policy, get_client, get_session_pool
+from src.runtime.tools import get_registered_tools
 from src.teams.patterns import AgentRole, get_pattern
 
 logger = setup_logging(settings.log_level)
@@ -76,13 +77,16 @@ def _agent_system_context(role: AgentRole, context: str) -> str:
 
 async def _create_agent_session(role: AgentRole, context: str) -> CopilotSession:
     client = get_client()
-    return await client.create_session(
-        on_permission_request=PermissionHandler.approve_all,
-        system_message={"mode": "replace", "content": _agent_system_context(role, context)},
-        streaming=True,
-        skill_directories=get_skill_directories(),
-        disabled_skills=get_disabled_skills(),
-    )
+    session_kwargs: dict[str, Any] = {
+        "on_permission_request": PermissionHandler.approve_all,
+        "system_message": {"mode": "replace", "content": _agent_system_context(role, context)},
+        "streaming": True,
+        "skill_directories": get_skill_directories(),
+        "disabled_skills": get_disabled_skills(),
+        "tools": get_registered_tools(),
+    }
+    _apply_tool_policy(session_kwargs)
+    return await client.create_session(**session_kwargs)
 
 
 async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[str, str]:

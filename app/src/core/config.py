@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     port: int = 5100
     log_level: str = "INFO"
     session_timeout: float = 120.0
+    tool_timeout: float = 10.0
+    # 공개 테스트용 엔드포인트 (외부 API 연동 예시)
+    tool_external_api_url: str = "https://api.github.com/zen"
 
     azure_storage_blob_endpoint: str = ""
     azure_storage_container_name: str = "uploads"

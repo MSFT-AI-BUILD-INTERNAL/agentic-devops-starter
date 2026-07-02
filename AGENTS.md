@@ -135,16 +135,6 @@ npm run dev | build | lint | type-check | test | test:e2e
 
 ---
 
-## documentation
-
-**Layout:** `README.md` (overview), `DEPLOYMENT.md` (workflows), `docs/` (architecture diagrams, history), `specs/` (feature specs), plus per-area READMEs in `app/`, `app/frontend/`, `infra/`.
-
-**Specs convention:** numbered folders `specs/{NNN}-{slug}/` containing `spec.md`, `plan.md`, `tasks.md` (and optional `data-model.md`, `quickstart.md`). Sequential 3-digit numbering; current highest is `004-` → next is `005-`. Workflow: specify → plan → tasks → implement (Speckit).
-
-Keep READMEs in sync with related code; diagrams in `docs/`.
-
----
-
 ## project-governance
 
 **Scope:** all application code (everything except `infra/`).
@@ -159,39 +149,3 @@ Keep READMEs in sync with related code; diagrams in `docs/`.
 > Dead-code rules in this section are subordinate to `llm-coding-guidance § 3` (Surgical Changes). Do not delete pre-existing dead code as part of an unrelated change.
 
 ---
-
-## code-review-criteria
-
-Every change must pass these five checks before being marked complete:
-
-1. **Stability & compatibility** — no breaking changes to public APIs/contracts; respect declared language/dependency versions (Python ≥3.12, Terraform ≥1.5); no unstable/experimental APIs; persistent side-effects must be intentional.
-2. **No over-engineering** — implement only what's required; no speculative abstractions, parameters, flags, or hooks.
-3. **No duplication** — reuse existing logic; extract shared patterns introduced by the change; remove dead/commented-out code introduced or exposed by the change.
-4. **No error hiding** — fallbacks must re-raise, log with context, or return a typed error; never swallow errors with broad `try/except` or hardcoded defaults.
-5. **Root-cause fixes** — address the cause, not the symptom. If deferral is necessary, mark with `# TODO(root-cause):` plus an issue link and reason.
-
----
-
-## code-generation-evaluation
-
-Self-review loop for non-trivial changes:
-
-1. **Generate** a complete first draft (apply all harness rules from the outset).
-2. **Evaluate** against each `code-review-criteria` item — score ✅ Pass / ⚠️ Warning / ❌ Fail.
-3. **Revise** every ❌ Fail with a minimal targeted fix; re-evaluate. Repeat until no Fail remains.
-
-A change is complete only when all five score ✅ Pass (or ⚠️ Warning with justification).
-
-**Apply the full loop** for new functions/classes/modules, business-logic or error-handling changes, security-sensitive paths, and bug fixes. For mechanical changes (rename, comment, format), a checklist scan suffices.
-
-When findings were resolved, include a brief summary in the response, e.g.:
-
-```
-- Stability & Compatibility: ✅
-- Over-Engineering: ✅
-- Duplicate Code: ⚠️ extracted _validate_input()
-- Error Hiding: ✅
-- Root-Cause: ✅
-```
-
-Omit for trivial changes.

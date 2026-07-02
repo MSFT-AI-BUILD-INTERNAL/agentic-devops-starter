@@ -24,6 +24,7 @@ from src.runtime.state import (
     set_foundry_session_pool,
     set_session_pool,
 )
+from src.runtime.tools import load_tools
 
 load_dotenv()
 
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
         # Discover predefined Agent Skills (SKILL.md open format) so the
         # Copilot SDK can load and apply them across all sessions.
         load_skills()
+        load_tools()
 
         subprocess_config = _build_copilot_subprocess_config()
         if subprocess_config is not None:
