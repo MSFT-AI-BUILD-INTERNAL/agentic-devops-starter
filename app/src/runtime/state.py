@@ -38,6 +38,60 @@ def _get_allowed_tools() -> list[str] | None:
     return non_empty_tools or None
 
 
+# Built-in SDK tools that expose the host filesystem, shell, or local database.
+# These are unsafe to offer when the Copilot SDK is served as a public web
+# service and are excluded from every session by default.
+_WEB_UNSAFE_TOOLS: tuple[str, ...] = (
+    "bash",
+    "write_bash",
+    "read_bash",
+    "stop_bash",
+    "list_bash",
+    "view",
+    "create",
+    "edit",
+    "grep",
+    "glob",
+    "sql",
+)
+
+
+def get_excluded_tools() -> list[str] | None:
+    """Return the SDK tool denylist applied to every session.
+
+    Controlled by ``COPILOT_API_EXCLUDED_TOOLS`` (comma-separated). When the
+    variable is unset the filesystem/shell/database tools in
+    :data:`_WEB_UNSAFE_TOOLS` are excluded by default (secure-by-default). A
+    blank value explicitly disables the denylist.
+
+    Note: the SDK ignores ``excluded_tools`` whenever an ``available_tools``
+    allowlist is also supplied, so the two must not be combined.
+    """
+    value = os.environ.get("COPILOT_API_EXCLUDED_TOOLS")
+    if value is None:
+        return list(_WEB_UNSAFE_TOOLS)
+
+    names = [tool.strip() for tool in value.split(",") if tool.strip()]
+    return names or None
+
+
+def _apply_tool_policy(session_kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Attach the SDK tool allow/deny policy to *session_kwargs* in place.
+
+    An ``available_tools`` allowlist takes precedence: when configured, the
+    SDK ignores ``excluded_tools``, so we only apply one of the two.
+    """
+    allowed_tools = _get_allowed_tools()
+    if allowed_tools is not None:
+        session_kwargs["available_tools"] = allowed_tools
+        return session_kwargs
+
+    excluded_tools = get_excluded_tools()
+    if excluded_tools is not None:
+        session_kwargs["excluded_tools"] = excluded_tools
+    return session_kwargs
+
+
 def set_client(client: CopilotClient) -> None:
     """Store the shared CopilotClient instance."""
     global _client
@@ -84,7 +138,6 @@ class SessionPool:
             github_token = os.environ.get("GITHUB_TOKEN")
             skill_directories = get_skill_directories()
             disabled_skills = get_disabled_skills()
-            allowed_tools = _get_allowed_tools()
             session_kwargs: dict[str, Any] = {
                 "on_permission_request": PermissionHandler.approve_all,
                 "system_message": {"mode": "replace", "content": _SYSTEM_MESSAGE},
@@ -94,8 +147,7 @@ class SessionPool:
                 "tools": get_registered_tools(),
                 "github_token": github_token,
             }
-            if allowed_tools is not None:
-                session_kwargs["available_tools"] = allowed_tools
+            _apply_tool_policy(session_kwargs)
             try:
                 session = await client.resume_session(
                     thread_id,
@@ -238,7 +290,6 @@ class FoundrySessionPool:
                 await session.disconnect()
 
             client = get_client()
-            allowed_tools = _get_allowed_tools()
             provider, token_expires_on = _build_foundry_provider()
             session_kwargs: dict[str, Any] = {
                 "session_id": f"foundry-{thread_id}",
@@ -251,8 +302,7 @@ class FoundrySessionPool:
                 "model": settings.azure_ai_model_deployment_name,
                 "provider": provider,
             }
-            if allowed_tools is not None:
-                session_kwargs["available_tools"] = allowed_tools
+            _apply_tool_policy(session_kwargs)
             session = await client.create_session(**session_kwargs)
 
             self._sessions[thread_id] = session
