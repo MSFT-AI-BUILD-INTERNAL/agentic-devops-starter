@@ -4,6 +4,7 @@ import { useTeamsStore } from '../stores/teamsStore';
 import { aguiClient } from '../services/aguiClient';
 import { getApiBaseUrl } from '../config/api';
 import { logger } from '../utils/logger';
+import { getIsolationSessionId } from '../utils/isolationSession';
 import { generateUUID } from '../utils/uuid';
 import type { TeamsEvent, TeamsRequest } from '../types/teams';
 import type { FileAttachment } from '../types/file';
@@ -150,7 +151,10 @@ export function useTeams() {
       try {
         const response = await fetch(`${baseUrl}/v1/teams/stream`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Isolation-Session-ID': getIsolationSessionId(),
+          },
           body: JSON.stringify(request),
         });
 
@@ -221,7 +225,7 @@ export function useTeams() {
     }
 
     try {
-      await aguiClient.abortThread(threadId);
+      await aguiClient.abortThread(threadId, getIsolationSessionId());
     } catch (err) {
       logger.error('Failed to abort teams generation', err, { threadId });
     }

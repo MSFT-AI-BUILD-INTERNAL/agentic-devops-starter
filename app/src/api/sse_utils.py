@@ -5,6 +5,8 @@ import json
 import logging
 from typing import Any
 
+from src.runtime.isolation import is_blob_name_in_isolation
+
 logger: logging.Logger | None = None
 
 
@@ -20,7 +22,9 @@ def sse_format(event: dict[str, Any]) -> str:
 
 
 def build_prompt(
-    messages: list[dict[str, str]], attachments: list[dict[str, Any]] | None = None
+    messages: list[dict[str, str]],
+    attachments: list[dict[str, Any]] | None = None,
+    isolation_session_id: str | None = None,
 ) -> str:
     """Extract the last user message content as the prompt, prepending file context if present."""
     user_messages = [m for m in messages if m.get("role") == "user"]
@@ -33,7 +37,9 @@ def build_prompt(
 
     if attachments:
         try:
-            file_context = resolve_attachments(attachments)
+            file_context = resolve_attachments(attachments, isolation_session_id)
+        except PermissionError:
+            raise
         except Exception:
             if logger:
                 logger.exception("Failed to resolve attachments for prompt")
@@ -44,7 +50,9 @@ def build_prompt(
     return content
 
 
-def resolve_attachments(attachments: list[dict[str, Any]]) -> str:
+def resolve_attachments(
+    attachments: list[dict[str, Any]], isolation_session_id: str | None = None
+) -> str:
     """Download attached blobs and format as context for the AI prompt."""
     from src.storage.blob_storage import get_blob_service
 
@@ -57,6 +65,10 @@ def resolve_attachments(attachments: list[dict[str, Any]]) -> str:
         content_type = att.get("content_type", "")
 
         try:
+            if isolation_session_id and not is_blob_name_in_isolation(blob_name, isolation_session_id):
+                raise PermissionError(
+                    f"Attachment '{original_filename}' is not available in this session."
+                )
             content = blob_service.download(blob_name)
 
             if content_type.startswith("text/") or content_type == "application/json":
@@ -68,6 +80,8 @@ def resolve_attachments(attachments: list[dict[str, Any]]) -> str:
                     f"[File: {original_filename} ({content_type}, {len(content)} bytes, "
                     f"base64-encoded)]\n{encoded}"
                 )
+        except PermissionError:
+            raise
         except Exception:
             if logger:
                 logger.exception("Failed to download attachment", extra={"blob_name": blob_name})

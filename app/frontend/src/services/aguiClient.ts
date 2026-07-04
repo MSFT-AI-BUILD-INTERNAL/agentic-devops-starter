@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { getApiBaseUrl } from '../config/api';
 import { processSSEStream } from '../utils/sseProcessor';
 import { generateUUID } from '../utils/uuid';
+import { getIsolationSessionId } from '../utils/isolationSession';
 import type { ModelProvider } from '../types/modelProvider';
 
 // Simple event interface for streaming events
@@ -65,7 +66,8 @@ class AGUIClient {
       contentType: string;
       sizeBytes: number;
     }>,
-    modelProvider: ModelProvider = 'github-copilot'
+    modelProvider: ModelProvider = 'github-copilot',
+    isolationSessionId?: string
   ): Promise<ChatResponse> {
     const correlationId = logger.generateCorrelationId();
     logger.setCorrelationId(correlationId);
@@ -98,6 +100,7 @@ class AGUIClient {
         headers: {
           'Content-Type': 'application/json',
           'X-Correlation-ID': correlationId,
+          'X-Isolation-Session-ID': isolationSessionId || getIsolationSessionId(),
         },
         body: JSON.stringify(request),
       });
@@ -154,11 +157,14 @@ class AGUIClient {
     }
   }
 
-  async abortThread(threadId: string): Promise<void> {
+  async abortThread(threadId: string, isolationSessionId?: string): Promise<void> {
     logger.info('Aborting chat generation', { threadId });
 
     const response = await fetch(`${this.baseUrl}/v1/threads/${encodeURIComponent(threadId)}/abort`, {
       method: 'POST',
+      headers: {
+        'X-Isolation-Session-ID': isolationSessionId || getIsolationSessionId(),
+      },
     });
 
     if (!response.ok) {

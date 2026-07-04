@@ -4,6 +4,7 @@ import { useChatStore } from '../stores/chatStore';
 import { useModelProviderStore } from '../stores/modelProviderStore';
 import { aguiClient } from '../services/aguiClient';
 import { logger } from '../utils/logger';
+import { getIsolationSessionId } from '../utils/isolationSession';
 import { generateUUID } from '../utils/uuid';
 import type { Message } from '../types/message';
 import type { FileAttachment } from '../types/file';
@@ -154,7 +155,8 @@ export function useChat() {
             }
           },
           clientAttachments,
-          selectedProvider
+          selectedProvider,
+          getIsolationSessionId()
         );
 
         logger.info('Message sent successfully', { messageId: userMessage.id });
@@ -189,7 +191,7 @@ export function useChat() {
     }
 
     try {
-      await aguiClient.abortThread(activeThread.id);
+      await aguiClient.abortThread(activeThread.id, getIsolationSessionId());
     } catch (error) {
       logger.error('Failed to abort chat generation', error, { threadId: activeThread.id });
     }

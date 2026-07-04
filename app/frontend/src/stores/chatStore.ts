@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { generateUUID } from '../utils/uuid';
 import { getApiBaseUrl } from '../config/api';
+import { getIsolationSessionId } from '../utils/isolationSession';
 import type { Message } from '../types/message';
 import type { Thread, ThreadStatus } from '../types/session';
 import type { Connection, ConnectionStatus, StreamingState, ToolCall } from '../types/agui';
@@ -123,7 +124,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
     // Notify backend to disconnect the session so resources are freed.
     if (prevThread?.id) {
-      fetch(`${getApiBaseUrl()}/v1/threads/${prevThread.id}`, { method: 'DELETE' }).catch(() => {
+      fetch(`${getApiBaseUrl()}/v1/threads/${prevThread.id}`, {
+        method: 'DELETE',
+        headers: { 'X-Isolation-Session-ID': getIsolationSessionId() },
+      }).catch(() => {
         // Best-effort cleanup; ignore failures.
       });
     }
