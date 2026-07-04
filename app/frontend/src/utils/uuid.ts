@@ -2,26 +2,33 @@
 
 /**
  * Generate a UUID v4
- * Uses crypto.randomUUID() when available (secure contexts), falls back to fallback implementation
+ * Uses Web Crypto APIs only.
  */
 export function generateUUID(): string {
-  // Use crypto.randomUUID() if available (HTTPS/secure contexts)
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
+  const cryptoApi = globalThis.crypto;
+
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
   }
-  
-  // Fallback for non-secure contexts
-  return fallbackUUID();
+
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+
+    // RFC 4122 version/variant bits for UUID v4
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    return formatUuidBytes(bytes);
+  }
+
+  throw new Error('Secure random UUID generation is unavailable in this environment.');
 }
 
 /**
- * Fallback UUID v4 generation for non-secure contexts
- * Based on RFC4122 standard
+ * Format 16 random bytes as UUID v4 string.
  */
-function fallbackUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+function formatUuidBytes(bytes: Uint8Array): string {
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }

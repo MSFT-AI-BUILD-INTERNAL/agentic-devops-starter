@@ -1,5 +1,7 @@
 // Logger utility with correlation ID support
 
+import { generateUUID } from './uuid';
+
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 interface LogContext {
@@ -37,7 +39,7 @@ class Logger {
    * Generate a new correlation ID
    */
   generateCorrelationId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    return generateUUID();
   }
 
   /**
