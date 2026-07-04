@@ -1,6 +1,7 @@
 // File upload service using XMLHttpRequest for progress tracking
 import { getApiBaseUrl } from '../config/api';
 import type { FileAttachment, UploadError } from '../types/file';
+import { getIsolationSessionId } from '../utils/isolationSession';
 
 export function uploadFile(
   file: File,
@@ -52,6 +53,7 @@ export function uploadFile(
 
     const baseUrl = getApiBaseUrl();
     xhr.open('POST', `${baseUrl}/v1/files/upload`);
+    xhr.setRequestHeader('X-Isolation-Session-ID', getIsolationSessionId());
     xhr.send(formData);
   });
 }

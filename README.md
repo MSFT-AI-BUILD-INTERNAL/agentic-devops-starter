@@ -152,6 +152,8 @@ by frontend/proxy layers.
 | `GET` | `/v1/jobs/{job_id}` | Poll async job status |
 | `GET` | `/docs` | FastAPI OpenAPI UI |
 
+All session-scoped routes also accept `X-Isolation-Session-ID` to isolate runtime state and file access.
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
@@ -161,6 +163,8 @@ by frontend/proxy layers.
 | `COPILOT_API_PORT` | No | `5100` | Backend port |
 | `COPILOT_API_LOG_LEVEL` | No | `INFO` | Backend log level |
 | `COPILOT_API_SESSION_TIMEOUT` | No | `120.0` | Idle session timeout in seconds |
+| `COPILOT_API_ISOLATION_SESSION_HEADER` | No | `X-Isolation-Session-ID` | Header used to scope runtime and file isolation |
+| `COPILOT_API_SESSION_CONFIG_ROOT_DIR` | No | `.copilot-session-config` | Base directory for per-isolation Copilot session config |
 | `COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT` | File upload | unset | Blob endpoint, for example `https://<account>.blob.core.windows.net` |
 | `COPILOT_API_AZURE_STORAGE_CONTAINER_NAME` | No | `uploads` | Upload container name |
 | `COPILOT_API_SKILL_DIRECTORIES` | No | unset | Extra directories (`os.pathsep`- or comma-separated) scanned for Agent Skills (`SKILL.md`), in addition to built-in `app/skills/` |

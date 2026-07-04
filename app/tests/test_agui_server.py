@@ -121,7 +121,7 @@ def test_abort_thread_endpoint(client: TestClient, monkeypatch: pytest.MonkeyPat
 
     assert response.status_code == 200
     assert response.json() == {"status": "aborted", "thread_id": "thread-123"}
-    pool.abort.assert_awaited_once_with("thread-123")
+    pool.abort.assert_awaited_once_with("thread-123", isolation_session_id="thread-123")
 
 
 def test_abort_thread_endpoint_reports_missing_thread(
@@ -136,4 +136,21 @@ def test_abort_thread_endpoint_reports_missing_thread(
 
     assert response.status_code == 200
     assert response.json() == {"status": "not_found", "thread_id": "missing-thread"}
-    pool.abort.assert_awaited_once_with("missing-thread")
+    pool.abort.assert_awaited_once_with("missing-thread", isolation_session_id="missing-thread")
+
+
+def test_abort_thread_endpoint_uses_isolation_header(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Abort should scope by the caller isolation session header."""
+    pool = MagicMock()
+    pool.abort = AsyncMock(return_value=True)
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
+
+    response = client.post(
+        "/v1/threads/thread-123/abort",
+        headers={"X-Isolation-Session-ID": "tenant-a"},
+    )
+
+    assert response.status_code == 200
+    pool.abort.assert_awaited_once_with("thread-123", isolation_session_id="tenant-a")

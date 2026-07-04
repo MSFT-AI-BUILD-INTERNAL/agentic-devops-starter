@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     session_timeout: float = 120.0
     tool_timeout: float = 10.0
+    isolation_session_header: str = "X-Isolation-Session-ID"
+    session_config_root_dir: str = ".copilot-session-config"
     # 공개 테스트용 엔드포인트 (외부 API 연동 예시)
     tool_external_api_url: str = "https://api.github.com/zen"
 

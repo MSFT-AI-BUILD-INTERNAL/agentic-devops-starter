@@ -23,6 +23,11 @@ from copilot.session import CopilotSession, PermissionHandler
 
 from src.core.config import settings
 from src.core.logging_utils import setup_logging
+from src.runtime.isolation import (
+    build_config_dir,
+    build_copilot_session_id,
+    normalize_isolation_session_id,
+)
 from src.runtime.skills import get_disabled_skills, get_skill_directories
 from src.runtime.state import _apply_tool_policy, get_client, get_session_pool
 from src.runtime.tools import get_registered_tools
@@ -33,6 +38,9 @@ logger = setup_logging(settings.log_level)
 # In-memory store: thread_id -> list of prior run summaries
 _teams_history: dict[str, list[str]] = {}
 _team_thread_id_var: ContextVar[str | None] = ContextVar("team_thread_id", default=None)
+_team_isolation_session_id_var: ContextVar[str | None] = ContextVar(
+    "team_isolation_session_id", default=None
+)
 
 _MAX_HISTORY_TURNS = 10
 
@@ -60,11 +68,19 @@ def _append_history(thread_id: str | None, run_summary: str) -> None:
 
 
 async def _register_team_session(thread_id: str, session: CopilotSession) -> None:
-    await get_session_pool().register_active_session(thread_id, session)
+    await get_session_pool().register_active_session(
+        thread_id,
+        session,
+        isolation_session_id=_team_isolation_session_id_var.get(),
+    )
 
 
 async def _unregister_team_session(thread_id: str, session: CopilotSession) -> None:
-    await get_session_pool().unregister_active_session(thread_id, session)
+    await get_session_pool().unregister_active_session(
+        thread_id,
+        session,
+        isolation_session_id=_team_isolation_session_id_var.get(),
+    )
 
 
 def _agent_role_label(role: AgentRole) -> str:
@@ -77,13 +93,21 @@ def _agent_system_context(role: AgentRole, context: str) -> str:
 
 async def _create_agent_session(role: AgentRole, context: str) -> CopilotSession:
     client = get_client()
+    thread_id = _team_thread_id_var.get()
+    isolation_session_id = normalize_isolation_session_id(
+        _team_isolation_session_id_var.get(),
+        thread_id or role.name,
+    )
+    session_id = build_copilot_session_id("teams", isolation_session_id, f"{thread_id}:{role.name}")
     session_kwargs: dict[str, Any] = {
+        "session_id": session_id,
         "on_permission_request": PermissionHandler.approve_all,
         "system_message": {"mode": "replace", "content": _agent_system_context(role, context)},
         "streaming": True,
         "skill_directories": get_skill_directories(),
         "disabled_skills": get_disabled_skills(),
         "tools": get_registered_tools(),
+        "config_dir": build_config_dir(settings.session_config_root_dir, isolation_session_id),
     }
     _apply_tool_policy(session_kwargs)
     return await client.create_session(**session_kwargs)
@@ -469,6 +493,7 @@ async def run_teams(
     prompt: str,
     max_rounds: int = 3,
     thread_id: str | None = None,
+    isolation_session_id: str | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Execute a multi-agent pattern and yield SSE event dicts.
 
@@ -492,6 +517,9 @@ async def run_teams(
     run_outputs: list[str] = []
 
     token = _team_thread_id_var.set(thread_id)
+    isolation_token = _team_isolation_session_id_var.set(
+        normalize_isolation_session_id(isolation_session_id, thread_id or "teams")
+    )
     try:
         try:
             async for event in runner(pattern.roles, prompt, max_rounds, prior_context):
@@ -510,6 +538,7 @@ async def run_teams(
             return
     finally:
         _team_thread_id_var.reset(token)
+        _team_isolation_session_id_var.reset(isolation_token)
 
     # Store this run's output for multi-turn context
     if run_outputs:

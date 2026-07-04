@@ -13,6 +13,12 @@ from copilot.session import CopilotSession, PermissionHandler
 
 from src.core.config import settings
 from src.core.logging_utils import setup_logging
+from src.runtime.isolation import (
+    build_config_dir,
+    build_copilot_session_id,
+    build_pool_key,
+    normalize_isolation_session_id,
+)
 from src.runtime.skills import get_disabled_skills, get_skill_directories
 from src.runtime.tools import get_registered_tools
 
@@ -106,7 +112,7 @@ def get_client() -> CopilotClient:
 
 
 class SessionPool:
-    """Manages persistent CopilotSession instances keyed by thread_id.
+    """Manages persistent CopilotSession instances keyed by isolation session and thread.
 
     Sessions are kept alive between turns so the Copilot SDK maintains full
     conversation history internally. Idle sessions are disconnected after a
@@ -121,17 +127,22 @@ class SessionPool:
         self._pool_lock = asyncio.Lock()
         self._idle_timeout = idle_timeout
 
-    async def get_or_create(self, thread_id: str) -> CopilotSession:
+    async def get_or_create(
+        self, thread_id: str, isolation_session_id: str | None = None
+    ) -> CopilotSession:
         """Return an active session for *thread_id*, resuming or creating as needed."""
+        isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
+        pool_key = build_pool_key(isolated_id, thread_id)
+        sdk_session_id = build_copilot_session_id("chat", isolated_id, thread_id)
         async with self._pool_lock:
-            if thread_id not in self._locks:
-                self._locks[thread_id] = asyncio.Lock()
-            lock = self._locks[thread_id]
+            if pool_key not in self._locks:
+                self._locks[pool_key] = asyncio.Lock()
+            lock = self._locks[pool_key]
 
         async with lock:
-            session = self._sessions.get(thread_id)
+            session = self._sessions.get(pool_key)
             if session is not None:
-                self._last_active[thread_id] = time.monotonic()
+                self._last_active[pool_key] = time.monotonic()
                 return session
 
             client = get_client()
@@ -146,72 +157,91 @@ class SessionPool:
                 "disabled_skills": disabled_skills,
                 "tools": get_registered_tools(),
                 "github_token": github_token,
+                "config_dir": build_config_dir(settings.session_config_root_dir, isolated_id),
             }
             _apply_tool_policy(session_kwargs)
             try:
                 session = await client.resume_session(
-                    thread_id,
+                    sdk_session_id,
                     **session_kwargs,
                 )
             except Exception:
                 # Session doesn't exist on disk yet — create a new one.
                 session = await client.create_session(
-                    session_id=thread_id,
+                    session_id=sdk_session_id,
                     **session_kwargs,
                 )
 
-            self._sessions[thread_id] = session
-            self._last_active[thread_id] = time.monotonic()
+            self._sessions[pool_key] = session
+            self._last_active[pool_key] = time.monotonic()
             return session
 
-    async def register_active_session(self, thread_id: str, session: CopilotSession) -> None:
+    async def register_active_session(
+        self,
+        thread_id: str,
+        session: CopilotSession,
+        isolation_session_id: str | None = None,
+    ) -> None:
         """Track a transient session as abortable for *thread_id*."""
+        isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
+        pool_key = build_pool_key(isolated_id, thread_id)
         async with self._pool_lock:
-            if thread_id not in self._locks:
-                self._locks[thread_id] = asyncio.Lock()
-            lock = self._locks[thread_id]
+            if pool_key not in self._locks:
+                self._locks[pool_key] = asyncio.Lock()
+            lock = self._locks[pool_key]
 
         async with lock:
-            active_sessions = self._active_sessions.setdefault(thread_id, [])
+            active_sessions = self._active_sessions.setdefault(pool_key, [])
             if not any(active_session is session for active_session in active_sessions):
                 active_sessions.append(session)
 
-    async def unregister_active_session(self, thread_id: str, session: CopilotSession) -> None:
+    async def unregister_active_session(
+        self,
+        thread_id: str,
+        session: CopilotSession,
+        isolation_session_id: str | None = None,
+    ) -> None:
         """Stop tracking a transient session for *thread_id*."""
+        isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
+        pool_key = build_pool_key(isolated_id, thread_id)
         async with self._pool_lock:
-            lock = self._locks.get(thread_id)
+            lock = self._locks.get(pool_key)
         if lock is None:
             return
         async with lock:
-            sessions = self._active_sessions.get(thread_id)
+            sessions = self._active_sessions.get(pool_key)
             if not sessions:
                 return
             if session in sessions:
                 sessions.remove(session)
             if not sessions:
-                self._active_sessions.pop(thread_id, None)
+                self._active_sessions.pop(pool_key, None)
 
-    async def disconnect(self, thread_id: str) -> None:
+    async def disconnect(self, thread_id: str, isolation_session_id: str | None = None) -> None:
         """Disconnect a session (preserves state on disk for later resume)."""
+        isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
+        pool_key = build_pool_key(isolated_id, thread_id)
         async with self._pool_lock:
-            lock = self._locks.get(thread_id)
+            lock = self._locks.get(pool_key)
         if lock is None:
             return
         async with lock:
-            session = self._sessions.pop(thread_id, None)
-            self._last_active.pop(thread_id, None)
+            session = self._sessions.pop(pool_key, None)
+            self._last_active.pop(pool_key, None)
             if session is not None:
                 await session.disconnect()
 
-    async def abort(self, thread_id: str) -> bool:
+    async def abort(self, thread_id: str, isolation_session_id: str | None = None) -> bool:
         """Abort active requests for a thread."""
+        isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
+        pool_key = build_pool_key(isolated_id, thread_id)
         async with self._pool_lock:
-            lock = self._locks.get(thread_id)
+            lock = self._locks.get(pool_key)
         if lock is None:
             return False
         async with lock:
-            persistent_session = self._sessions.get(thread_id)
-            active_sessions = self._active_sessions.get(thread_id, [])
+            persistent_session = self._sessions.get(pool_key)
+            active_sessions = self._active_sessions.get(pool_key, [])
             sessions_to_abort = list(active_sessions)
             if persistent_session is not None and not any(
                 session is persistent_session for session in sessions_to_abort
@@ -227,7 +257,7 @@ class SessionPool:
         for error in errors:
             logger.error(
                 "Failed to abort session for thread %s (%d session(s) requested): %r",
-                thread_id,
+                pool_key,
                 len(sessions_to_abort),
                 error,
             )
@@ -235,7 +265,7 @@ class SessionPool:
             if len(errors) == 1:
                 raise errors[0]
             raise ExceptionGroup(
-                f"Failed to abort {len(errors)} sessions for thread {thread_id}", errors
+                f"Failed to abort {len(errors)} sessions for thread {pool_key}", errors
             )
         return True
 
@@ -250,13 +280,19 @@ class SessionPool:
                     to_disconnect.append(tid)
 
         for tid in to_disconnect:
-            await self.disconnect(tid)
+            session = self._sessions.pop(tid, None)
+            self._last_active.pop(tid, None)
+            if session is not None:
+                await session.disconnect()
 
     async def shutdown(self) -> None:
         """Disconnect all sessions (called during app shutdown)."""
-        thread_ids = list(self._sessions.keys())
-        for tid in thread_ids:
-            await self.disconnect(tid)
+        session_ids = list(self._sessions.keys())
+        for session_id in session_ids:
+            session = self._sessions.pop(session_id, None)
+            self._last_active.pop(session_id, None)
+            if session is not None:
+                await session.disconnect()
 
 
 class FoundrySessionPool:
@@ -270,29 +306,34 @@ class FoundrySessionPool:
         self._pool_lock = asyncio.Lock()
         self._idle_timeout = idle_timeout
 
-    async def get_or_create(self, thread_id: str) -> CopilotSession:
+    async def get_or_create(
+        self, thread_id: str, isolation_session_id: str | None = None
+    ) -> CopilotSession:
         """Return an active Foundry BYOK session for *thread_id*."""
         _validate_foundry_settings()
+        isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
+        pool_key = build_pool_key(isolated_id, thread_id)
+        sdk_session_id = build_copilot_session_id("foundry", isolated_id, thread_id)
         async with self._pool_lock:
-            if thread_id not in self._locks:
-                self._locks[thread_id] = asyncio.Lock()
-            lock = self._locks[thread_id]
+            if pool_key not in self._locks:
+                self._locks[pool_key] = asyncio.Lock()
+            lock = self._locks[pool_key]
 
         async with lock:
-            session = self._sessions.get(thread_id)
+            session = self._sessions.get(pool_key)
             if session is not None:
-                if not self._is_token_expiring(thread_id):
-                    self._last_active[thread_id] = time.monotonic()
+                if not self._is_token_expiring(pool_key):
+                    self._last_active[pool_key] = time.monotonic()
                     return session
-                self._sessions.pop(thread_id, None)
-                self._last_active.pop(thread_id, None)
-                self._token_expires_on.pop(thread_id, None)
+                self._sessions.pop(pool_key, None)
+                self._last_active.pop(pool_key, None)
+                self._token_expires_on.pop(pool_key, None)
                 await session.disconnect()
 
             client = get_client()
             provider, token_expires_on = _build_foundry_provider()
             session_kwargs: dict[str, Any] = {
-                "session_id": f"foundry-{thread_id}",
+                "session_id": sdk_session_id,
                 "on_permission_request": PermissionHandler.approve_all,
                 "system_message": {"mode": "replace", "content": _FOUNDRY_SYSTEM_MESSAGE},
                 "streaming": True,
@@ -301,26 +342,29 @@ class FoundrySessionPool:
                 "tools": get_registered_tools(),
                 "model": settings.azure_ai_model_deployment_name,
                 "provider": provider,
+                "config_dir": build_config_dir(settings.session_config_root_dir, isolated_id),
             }
             _apply_tool_policy(session_kwargs)
             session = await client.create_session(**session_kwargs)
 
-            self._sessions[thread_id] = session
-            self._last_active[thread_id] = time.monotonic()
+            self._sessions[pool_key] = session
+            self._last_active[pool_key] = time.monotonic()
             if token_expires_on is not None:
-                self._token_expires_on[thread_id] = token_expires_on
+                self._token_expires_on[pool_key] = token_expires_on
             return session
 
-    async def disconnect(self, thread_id: str) -> None:
+    async def disconnect(self, thread_id: str, isolation_session_id: str | None = None) -> None:
         """Disconnect a Foundry BYOK session."""
+        isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
+        pool_key = build_pool_key(isolated_id, thread_id)
         async with self._pool_lock:
-            lock = self._locks.get(thread_id)
+            lock = self._locks.get(pool_key)
         if lock is None:
             return
         async with lock:
-            session = self._sessions.pop(thread_id, None)
-            self._last_active.pop(thread_id, None)
-            self._token_expires_on.pop(thread_id, None)
+            session = self._sessions.pop(pool_key, None)
+            self._last_active.pop(pool_key, None)
+            self._token_expires_on.pop(pool_key, None)
             if session is not None:
                 await session.disconnect()
 
@@ -335,17 +379,25 @@ class FoundrySessionPool:
                     to_disconnect.append(tid)
 
         for tid in to_disconnect:
-            await self.disconnect(tid)
+            session = self._sessions.pop(tid, None)
+            self._last_active.pop(tid, None)
+            self._token_expires_on.pop(tid, None)
+            if session is not None:
+                await session.disconnect()
 
     async def shutdown(self) -> None:
         """Disconnect all Foundry BYOK sessions."""
-        thread_ids = list(self._sessions.keys())
-        for tid in thread_ids:
-            await self.disconnect(tid)
+        session_ids = list(self._sessions.keys())
+        for session_id in session_ids:
+            session = self._sessions.pop(session_id, None)
+            self._last_active.pop(session_id, None)
+            self._token_expires_on.pop(session_id, None)
+            if session is not None:
+                await session.disconnect()
 
-    def _is_token_expiring(self, thread_id: str) -> bool:
+    def _is_token_expiring(self, pool_key: str) -> bool:
         """Return whether an Azure Identity bearer token needs session renewal."""
-        expires_on = self._token_expires_on.get(thread_id)
+        expires_on = self._token_expires_on.get(pool_key)
         if expires_on is None:
             return False
         return expires_on <= int(time.time()) + _FOUNDRY_TOKEN_REFRESH_SKEW_SECONDS

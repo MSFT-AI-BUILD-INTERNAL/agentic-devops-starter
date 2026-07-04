@@ -27,6 +27,7 @@ from src.api.models import (
 from src.api.sse_utils import build_prompt, sse_format
 from src.core.config import settings
 from src.core.logging_utils import setup_logging
+from src.runtime.isolation import normalize_isolation_session_id
 from src.runtime.jobs import create_job, get_job, run_fleet, run_infinite_session
 from src.runtime.state import (
     FoundryConfigurationError,
@@ -53,6 +54,11 @@ sse_utils.set_logger(logger)
 router = APIRouter()
 
 
+def _resolve_isolation_session_id(request: Request, fallback: str) -> str:
+    raw = request.headers.get(settings.isolation_session_header)
+    return normalize_isolation_session_id(raw, fallback)
+
+
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "healthy"}
@@ -69,13 +75,18 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
     input_data = await request.json()
     thread_id: str = input_data.get("thread_id") or uuid.uuid4().hex[:12]
     run_id: str = input_data.get("run_id") or uuid.uuid4().hex[:12]
+    isolation_session_id = _resolve_isolation_session_id(request, thread_id)
     messages: list[dict[str, str]] = input_data.get("messages", [])
     attachments: list[dict[str, Any]] | None = input_data.get("attachments")
 
-    prompt = build_prompt(messages, attachments)
+    try:
+        prompt = build_prompt(messages, attachments, isolation_session_id)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
 
     return _chat_streaming_response(
         get_session_pool(),
+        isolation_session_id,
         thread_id,
         run_id,
         prompt,
@@ -89,13 +100,18 @@ async def foundry_byok_endpoint(request: Request) -> StreamingResponse:
     input_data = await request.json()
     thread_id: str = input_data.get("thread_id") or uuid.uuid4().hex[:12]
     run_id: str = input_data.get("run_id") or uuid.uuid4().hex[:12]
+    isolation_session_id = _resolve_isolation_session_id(request, thread_id)
     messages: list[dict[str, str]] = input_data.get("messages", [])
     attachments: list[dict[str, Any]] | None = input_data.get("attachments")
 
-    prompt = build_prompt(messages, attachments)
+    try:
+        prompt = build_prompt(messages, attachments, isolation_session_id)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
 
     return _chat_streaming_response(
         get_foundry_session_pool(),
+        isolation_session_id,
         thread_id,
         run_id,
         prompt,
@@ -105,6 +121,7 @@ async def foundry_byok_endpoint(request: Request) -> StreamingResponse:
 
 def _chat_streaming_response(
     pool: SessionPool | FoundrySessionPool,
+    isolation_session_id: str,
     thread_id: str,
     run_id: str,
     prompt: str,
@@ -114,7 +131,7 @@ def _chat_streaming_response(
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
-            session = await pool.get_or_create(thread_id)
+            session = await pool.get_or_create(thread_id, isolation_session_id=isolation_session_id)
         except RuntimeError as error:
             logger.exception("Chat session initialization failed", extra={"thread_id": thread_id})
             message = initialization_error_message(error, fallback_error_message)
@@ -182,7 +199,7 @@ def _chat_streaming_response(
             logger.exception("Copilot session error; terminating stream")
             yield sse_format({"type": "RUN_ERROR", "message": "An internal error occurred"})
             # On error, disconnect so next request gets a fresh session
-            await pool.disconnect(thread_id)
+            await pool.disconnect(thread_id, isolation_session_id=isolation_session_id)
         finally:
             if unsubscribe:
                 unsubscribe()
@@ -209,7 +226,7 @@ def initialization_error_message(error: RuntimeError, default_message: str) -> s
 
 
 @router.post("/v1/files/upload")
-async def upload_file(file: UploadFile) -> JSONResponse:
+async def upload_file(request: Request, file: UploadFile) -> JSONResponse:
     """Upload a file to Azure Blob Storage."""
     filename = file.filename or "unnamed"
     content_type = file.content_type or "application/octet-stream"
@@ -246,7 +263,8 @@ async def upload_file(file: UploadFile) -> JSONResponse:
             extra_fields={"max_size_bytes": MAX_FILE_SIZE_BYTES},
         )
 
-    blob_name = generate_blob_name(filename)
+    isolation_session_id = _resolve_isolation_session_id(request, "upload")
+    blob_name = generate_blob_name(filename, isolation_session_id=isolation_session_id)
     try:
         blob_service = get_blob_service()
         blob_service.upload(content, blob_name, content_type)
@@ -283,24 +301,26 @@ async def upload_file(file: UploadFile) -> JSONResponse:
 
 
 @router.delete("/v1/threads/{thread_id}")
-async def delete_thread(thread_id: str) -> dict[str, str]:
+async def delete_thread(thread_id: str, request: Request) -> dict[str, str]:
     """Disconnect and clean up a conversation thread."""
+    isolation_session_id = _resolve_isolation_session_id(request, thread_id)
     pool = get_session_pool()
-    await pool.disconnect(thread_id)
+    await pool.disconnect(thread_id, isolation_session_id=isolation_session_id)
     foundry_pool = get_foundry_session_pool()
-    await foundry_pool.disconnect(thread_id)
+    await foundry_pool.disconnect(thread_id, isolation_session_id=isolation_session_id)
     return {"status": "deleted", "thread_id": thread_id}
 
 
 @router.post("/v1/threads/{thread_id}/abort")
-async def abort_thread(thread_id: str) -> dict[str, str]:
+async def abort_thread(thread_id: str, request: Request) -> dict[str, str]:
     """Abort the active request for a conversation thread.
 
     Returns status "aborted" for an active session and "not_found" when the
     thread has no active in-memory session to abort.
     """
+    isolation_session_id = _resolve_isolation_session_id(request, thread_id)
     pool = get_session_pool()
-    aborted = await pool.abort(thread_id)
+    aborted = await pool.abort(thread_id, isolation_session_id=isolation_session_id)
     return {"status": "aborted" if aborted else "not_found", "thread_id": thread_id}
 
 
@@ -336,22 +356,34 @@ async def list_patterns() -> list[PatternInfo]:
 
 
 @router.post("/v1/teams/stream")
-async def teams_stream(request: TeamsRequest) -> StreamingResponse:
+async def teams_stream(request: TeamsRequest, http_request: Request) -> StreamingResponse:
     """Execute a multi-agent pattern with SSE streaming."""
     if request.pattern_id not in PATTERNS:
         raise HTTPException(status_code=404, detail="Pattern not found")
 
     prompt = request.prompt
+    isolation_session_id = _resolve_isolation_session_id(
+        http_request,
+        request.thread_id or "teams",
+    )
     if request.attachments:
-        file_context = sse_utils.resolve_attachments(
-            [att.model_dump() for att in request.attachments]
-        )
+        try:
+            file_context = sse_utils.resolve_attachments(
+                [att.model_dump() for att in request.attachments],
+                isolation_session_id=isolation_session_id,
+            )
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
         if file_context:
             prompt = file_context + "\n\n" + prompt
 
     async def event_generator() -> AsyncGenerator[str, None]:
         async for event in run_teams(
-            request.pattern_id, prompt, request.max_rounds, request.thread_id
+            request.pattern_id,
+            prompt,
+            request.max_rounds,
+            request.thread_id,
+            isolation_session_id=isolation_session_id,
         ):
             yield sse_format(event)
 

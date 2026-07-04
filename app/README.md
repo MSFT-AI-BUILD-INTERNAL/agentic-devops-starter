@@ -97,6 +97,8 @@ uv run agui_client.py
 | `COPILOT_API_PORT` | No | `5100` | Server port |
 | `COPILOT_API_LOG_LEVEL` | No | `INFO` | Log level |
 | `COPILOT_API_SESSION_TIMEOUT` | No | `120.0` | Copilot session timeout (seconds) |
+| `COPILOT_API_ISOLATION_SESSION_HEADER` | No | `X-Isolation-Session-ID` | Request header used for session/file isolation |
+| `COPILOT_API_SESSION_CONFIG_ROOT_DIR` | No | `.copilot-session-config` | Base directory for per-isolation Copilot config |
 | `COPILOT_API_TOOL_TIMEOUT` | No | `10.0` | Default timeout (seconds) for each code-based custom tool invocation |
 | `COPILOT_API_TOOL_EXTERNAL_API_URL` | No | `https://api.github.com/zen` | External API URL used by the example integration tool |
 | `COPILOT_API_EXCLUDED_TOOLS` | No | filesystem/shell/database tools | Comma-separated SDK built-in tools to disable for every session. Unset applies a secure-by-default denylist (`bash`, `write_bash`, `read_bash`, `stop_bash`, `list_bash`, `view`, `create`, `edit`, `grep`, `glob`, `sql`); set to a blank value to disable the denylist. Ignored when `COPILOT_API_ALLOWED_TOOLS` is set. |
@@ -109,6 +111,8 @@ uv run agui_client.py
 | `COPILOT_API_CLI_OTEL_FILE_PATH` | No | — | JSON-lines telemetry file path when using the `file` exporter |
 | `COPILOT_API_CLI_OTEL_SOURCE_NAME` | No | `agentic-devops-starter` | Instrumentation source name reported by the Copilot CLI |
 | `COPILOT_API_CLI_OTEL_CAPTURE_CONTENT` | No | `false` | Whether Copilot CLI telemetry captures prompt/response content |
+
+Session-scoped routes and file upload accept `X-Isolation-Session-ID`; clients should send a stable per-browser/per-user value on every request.
 
 ### GitHub Copilot CLI telemetry
 

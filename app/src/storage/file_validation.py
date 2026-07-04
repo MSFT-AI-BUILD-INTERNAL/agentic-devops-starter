@@ -3,6 +3,8 @@
 import re
 import uuid
 
+from src.runtime.isolation import build_namespaced_blob_name
+
 MAX_FILE_SIZE_BYTES: int = 10_485_760  # 10 MB
 MAX_FILES_PER_MESSAGE: int = 3
 ALLOWED_CONTENT_TYPES: set[str] = {
@@ -82,7 +84,7 @@ def validate_file_size(size: int) -> None:
         )
 
 
-def generate_blob_name(filename: str) -> str:
+def generate_blob_name(filename: str, isolation_session_id: str | None = None) -> str:
     """Generate a unique blob name from a sanitized filename.
 
     The UUID prefix guarantees uniqueness; the filename is stripped of path
@@ -94,7 +96,10 @@ def generate_blob_name(filename: str) -> str:
         basename = "unnamed"
     # Remove characters that are unsafe in blob names
     basename = re.sub(r"[^\w.\-]", "_", basename)
-    return f"{uuid.uuid4().hex}_{basename}"
+    leaf_name = f"{uuid.uuid4().hex}_{basename}"
+    if isolation_session_id:
+        return build_namespaced_blob_name(isolation_session_id, leaf_name)
+    return leaf_name
 
 
 def _get_extension(filename: str) -> str:

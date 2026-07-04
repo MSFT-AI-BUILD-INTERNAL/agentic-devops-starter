@@ -93,7 +93,7 @@ async def test_standard_session_pool_does_not_use_byok_provider(
         await pool.get_or_create("standard-thread")
 
         assert client.create_kwargs is not None
-        assert client.create_kwargs["session_id"] == "standard-thread"
+        assert client.create_kwargs["session_id"].startswith("chat-standard-thread-")
         assert "provider" not in client.create_kwargs
         assert "model" not in client.create_kwargs
     finally:
@@ -121,7 +121,7 @@ async def test_foundry_session_pool_uses_isolated_byok_provider(
         await pool.get_or_create("shared-thread")
 
         assert client.create_kwargs is not None
-        assert client.create_kwargs["session_id"] == "foundry-shared-thread"
+        assert client.create_kwargs["session_id"].startswith("foundry-shared-thread-")
         assert client.create_kwargs["model"] == "gpt-5.2-codex"
         assert client.create_kwargs["provider"] == {
             "type": "openai",
@@ -388,3 +388,23 @@ async def test_session_pool_abort_reports_multiple_failures() -> None:
     finally:
         for session in sessions:
             await pool.unregister_active_session("team-thread", cast(Any, session))
+
+
+@pytest.mark.asyncio
+async def test_session_pool_isolates_same_thread_across_isolation_sessions() -> None:
+    """Same thread_id in different isolation sessions must not share runtime state."""
+    client = _FakeClient()
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        first = cast(
+            _FakeSession, await pool.get_or_create("shared-thread", isolation_session_id="tenant-a")
+        )
+        second = cast(
+            _FakeSession, await pool.get_or_create("shared-thread", isolation_session_id="tenant-b")
+        )
+
+        assert first is not second
+    finally:
+        await pool.shutdown()
