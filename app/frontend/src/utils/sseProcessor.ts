@@ -59,7 +59,7 @@ export async function processSSEStream(
     // Ensure reader is properly released
     try {
       reader.releaseLock();
-    } catch (e) {
+    } catch {
       // Reader may already be released, ignore error
     }
   }
