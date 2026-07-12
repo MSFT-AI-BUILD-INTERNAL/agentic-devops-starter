@@ -19,9 +19,14 @@ export const MessageBubble = memo(({ message }: MessageBubbleProps) => {
     : 'bg-message-tool text-message-tool-text mx-auto border border-border';
 
   const alignmentClass = isUser ? 'justify-end' : 'justify-start';
+  const testId = isUser
+    ? 'user-message-bubble'
+    : isAssistant
+    ? 'assistant-message-bubble'
+    : 'tool-message-bubble';
 
   return (
-    <div className={`flex ${alignmentClass} mb-4`}>
+    <div className={`flex ${alignmentClass} mb-4`} data-testid={testId}>
       <div className={`max-w-[70%] rounded-lg px-4 py-2 shadow-sm ${bubbleClass}`}>
         {/* Role indicator for non-user messages */}
         {!isUser && (
