@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 
+const MIN_ASSISTANT_RESPONSE_LENGTH = 20;
+
 test('normal chat returns an assistant response for "Hello Copilot"', async ({ page }) => {
+  test.setTimeout(150_000);
+
   if (process.env.PLAYWRIGHT_MOCK_CHAT === 'true') {
     await page.route('**/api/', async (route) => {
       await route.fulfill({
@@ -28,11 +32,13 @@ test('normal chat returns an assistant response for "Hello Copilot"', async ({ p
   await page.getByRole('button', { name: 'Send message' }).click();
 
   await expect(
-    page.locator('.whitespace-pre-wrap.break-words').filter({ hasText: 'Hello Copilot' }).first()
+    page.getByTestId('user-message-bubble').filter({ hasText: 'Hello Copilot' }).first()
   ).toBeVisible();
 
-  const assistantBubble = page.locator('.bg-message-assistant').last();
+  const assistantBubble = page.getByTestId('assistant-message-bubble').last();
   await expect(assistantBubble).toBeVisible();
   await expect(assistantBubble).not.toContainText('Thinking…');
-  await expect.poll(async () => (await assistantBubble.innerText()).trim().length).toBeGreaterThan(20);
+  await expect
+    .poll(async () => (await assistantBubble.innerText()).trim().length, { timeout: 90_000 })
+    .toBeGreaterThan(MIN_ASSISTANT_RESPONSE_LENGTH);
 });

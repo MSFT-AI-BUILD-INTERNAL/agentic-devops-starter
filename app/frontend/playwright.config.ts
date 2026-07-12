@@ -6,9 +6,9 @@ const useLocalWebServer = !process.env.PLAYWRIGHT_BASE_URL;
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.e2e.ts',
-  timeout: 120_000,
+  timeout: 60_000,
   expect: {
-    timeout: 90_000,
+    timeout: 10_000,
   },
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
