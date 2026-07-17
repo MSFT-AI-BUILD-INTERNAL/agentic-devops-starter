@@ -121,8 +121,13 @@ APP_SERVICE_NAME: <your-app-service-name>
 RESOURCE_GROUP: <your-resource-group-name>
 
 # Application configuration (optional)
-# Azure App Configuration is the recommended way to supply runtime feature-flag
-# values (e.g. Foundry endpoints/keys) instead of storing them as GitHub secrets.
+AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-endpoint>
+AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment-name>
+AZURE_OPENAI_API_VERSION: <api-version>
+
+# Azure App Configuration (optional — for feature flags)
+# When set, the application loads key-values from App Configuration at startup.
+# The App Service managed identity must have the "App Configuration Data Reader" role.
 APP_CONFIG_ENDPOINT: <https://your-store.azconfig.io>
 APP_CONFIG_LABEL: <label-to-filter-by>  # optional
 ```
