@@ -121,9 +121,10 @@ APP_SERVICE_NAME: <your-app-service-name>
 RESOURCE_GROUP: <your-resource-group-name>
 
 # Application configuration (optional)
-AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-endpoint>
-AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment-name>
-AZURE_OPENAI_API_VERSION: <api-version>
+# Azure App Configuration is the recommended way to supply runtime feature-flag
+# values (e.g. Foundry endpoints/keys) instead of storing them as GitHub secrets.
+APP_CONFIG_ENDPOINT: <https://your-store.azconfig.io>
+APP_CONFIG_LABEL: <label-to-filter-by>  # optional
 ```
 
 **Common Mistake to Avoid:**
