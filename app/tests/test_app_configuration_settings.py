@@ -127,6 +127,47 @@ class TestApplyAppConfigurationEnvVarPrecedence:
         # env var wins; App Config value must not take effect
         assert s.foundry_auth_mode == "api_key"
 
+    def test_prefixed_env_var_blocks_bare_app_config_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """COPILOT_API_X in env prevents App Config key 'X' from overwriting the field."""
+        monkeypatch.setenv("COPILOT_API_FOUNDRY_AUTH_MODE", "api_key")
+        s = Settings(app_config_endpoint="https://example.azconfig.io")
+
+        # App Config key uses bare form (no COPILOT_API_ prefix)
+        item = _make_item("FOUNDRY_AUTH_MODE", "azure_identity")
+
+        with patch(
+            "azure.appconfiguration.AzureAppConfigurationClient"
+        ) as MockClient, patch("azure.identity.DefaultAzureCredential"):
+            MockClient.return_value.list_configuration_settings.return_value = [item]
+            apply_app_configuration(s)
+
+        # env var (COPILOT_API_FOUNDRY_AUTH_MODE) must still win
+        assert s.foundry_auth_mode == "api_key"
+
+    def test_bare_env_var_blocks_prefixed_app_config_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Bare env var 'X' prevents App Config key 'COPILOT_API_X' from overwriting."""
+        monkeypatch.setenv("FOUNDRY_AUTH_MODE", "api_key")
+        s = Settings(
+            app_config_endpoint="https://example.azconfig.io",
+            foundry_auth_mode="api_key",
+        )
+
+        # App Config key uses full prefixed form
+        item = _make_item("COPILOT_API_FOUNDRY_AUTH_MODE", "azure_identity")
+
+        with patch(
+            "azure.appconfiguration.AzureAppConfigurationClient"
+        ) as MockClient, patch("azure.identity.DefaultAzureCredential"):
+            MockClient.return_value.list_configuration_settings.return_value = [item]
+            apply_app_configuration(s)
+
+        # bare env var (FOUNDRY_AUTH_MODE) must still win
+        assert s.foundry_auth_mode == "api_key"
+
 
 class TestApplyAppConfigurationErrorHandling:
     """App Configuration failures must be non-fatal."""

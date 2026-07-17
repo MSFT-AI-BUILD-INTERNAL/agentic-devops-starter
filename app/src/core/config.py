@@ -57,7 +57,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("FOUNDRY_WIRE_API", "COPILOT_API_FOUNDRY_WIRE_API"),
     )
 
-    # Azure App Configuration (optional — used for feature flags).
+    # Azure App Configuration (optional — used for runtime configuration values
+    # such as feature flags).
     # When the endpoint is set the application fetches key-values at startup and
     # applies them with lower precedence than environment variables.
     app_config_endpoint: str = ""
@@ -121,8 +122,16 @@ def apply_app_configuration(s: Settings) -> None:
             key: str = item.key
             value: str = item.value or ""
 
-            # Env var takes precedence — skip if the raw key is already in the environment.
-            if key in os.environ:
+            # Env var takes precedence — skip if the key or any recognised
+            # alias form is already present in the environment.
+            # App Config keys may omit the COPILOT_API_ prefix, so check both:
+            #   e.g. "FOUNDRY_AUTH_MODE" and "COPILOT_API_FOUNDRY_AUTH_MODE".
+            bare_key = key.upper().removeprefix("COPILOT_API_")
+            if (
+                key in os.environ
+                or bare_key in os.environ
+                or f"COPILOT_API_{bare_key}" in os.environ
+            ):
                 continue
 
             # Map App Config key to the Settings field name.
