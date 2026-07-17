@@ -144,6 +144,7 @@ def apply_app_configuration(s: Settings) -> None:
     if not ac_values:
         return
 
+    env_keys = frozenset(os.environ)
     for field_name, field_info in Settings.model_fields.items():
         # Bootstrap fields must always come from the environment; skip them.
         if field_name in ("app_config_endpoint", "app_config_label"):
@@ -152,7 +153,7 @@ def apply_app_configuration(s: Settings) -> None:
         env_names = _env_names_for_field(field_name, field_info)
 
         # If ANY env var alias for this field is explicitly set, keep that value.
-        if any(name in os.environ for name in env_names):
+        if any(name in env_keys for name in env_names):
             continue
 
         # Apply the first matching App Configuration key.
