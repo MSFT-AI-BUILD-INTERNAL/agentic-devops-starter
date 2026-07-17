@@ -86,11 +86,8 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 | Secret | Description |
 |--------|-------------|
 | `COPILOT_GITHUB_TOKEN` | GitHub PAT with `copilot` scope for Copilot SDK authentication |
-| `AZURE_AI_PROJECT_ENDPOINT` | Azure AI Foundry endpoint used by BYOK chat routing |
-| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Azure AI Foundry model deployment name |
-| `FOUNDRY_AUTH_MODE` | Foundry auth mode: `auto`, `api_key`, or `azure_identity` |
-| `FOUNDRY_API_KEY` | Foundry API key, required only when `FOUNDRY_AUTH_MODE=api_key` |
-| `FOUNDRY_WIRE_API` | Foundry wire API: `responses` or `completions` |
+| `APP_CONFIG_ENDPOINT` | Azure App Configuration endpoint — runtime config (Foundry endpoint, model, etc.) is loaded from here at startup |
+| `APP_CONFIG_LABEL` | Label filter for App Configuration key-value pairs (optional) |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables backend Azure Monitor telemetry and starts the local OpenTelemetry Collector for GitHub Copilot CLI telemetry |
 
 ## Workflow Triggers
@@ -192,19 +189,17 @@ The deployed application:
 
 ## Configuration Management
 
-Static infrastructure settings (e.g., `WEBSITES_PORT`, `CORS`) are managed by **Terraform** as the single source of truth. The deploy workflow only injects **secrets-based** settings that cannot be stored in Terraform:
+Static infrastructure settings (e.g., `WEBSITES_PORT`, `CORS`) are managed by **Terraform** as the single source of truth. The deploy workflow only injects **secrets-based** settings that cannot be stored in Terraform. Runtime configuration (Foundry endpoints, model names, etc.) is loaded from **Azure App Configuration** at startup, so it does not need to be stored as workflow secrets.
 
 | Setting | Managed By | Reason |
 |---------|-----------|--------|
 | `WEBSITES_PORT` | Terraform | Static infrastructure config |
 | `CORS` | Terraform (`site_config.cors`) | Static infrastructure config |
 | `GITHUB_TOKEN` | deploy.yml | Copilot SDK auth (from `COPILOT_GITHUB_TOKEN` secret) |
-| `AZURE_AI_PROJECT_ENDPOINT` | deploy.yml | Foundry BYOK endpoint from GitHub secret |
-| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | deploy.yml | Foundry BYOK model deployment from GitHub secret |
-| `FOUNDRY_AUTH_MODE` | deploy.yml | Foundry BYOK auth mode from GitHub secret |
-| `FOUNDRY_API_KEY` | deploy.yml | Optional Foundry BYOK API key from GitHub secret |
-| `FOUNDRY_WIRE_API` | deploy.yml | Foundry BYOK wire protocol from GitHub secret |
+| `COPILOT_API_APP_CONFIG_ENDPOINT` | deploy.yml | App Configuration bootstrap (from `APP_CONFIG_ENDPOINT` secret) |
+| `COPILOT_API_APP_CONFIG_LABEL` | deploy.yml | App Configuration label filter (from `APP_CONFIG_LABEL` secret) |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | deploy.yml | Azure Monitor/App Insights exporter secret for backend and Collector telemetry |
+| Foundry settings, model names, etc. | Azure App Configuration | Runtime config sourced at startup; manage in App Configuration, not in workflow secrets |
 
 ## Troubleshooting
 

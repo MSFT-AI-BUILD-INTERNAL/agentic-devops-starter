@@ -69,18 +69,23 @@ jobs:
 
       - name: Update App Service configuration
         run: |
-          # Set GitHub PAT for Copilot SDK authentication and other secrets.
+          # Set GitHub PAT for Copilot SDK authentication.
+          # Foundry and other runtime settings are sourced from Azure App Configuration at runtime.
           # Static settings (WEBSITES_PORT, CORS_ORIGINS) are managed by Terraform.
+          SETTINGS="GITHUB_TOKEN=${{ secrets.COPILOT_GITHUB_TOKEN }}"
+
+          if [ -n "${{ secrets.APP_CONFIG_ENDPOINT }}" ]; then
+            SETTINGS="$SETTINGS COPILOT_API_APP_CONFIG_ENDPOINT=${{ secrets.APP_CONFIG_ENDPOINT }}"
+          fi
+
+          if [ -n "${{ secrets.APP_CONFIG_LABEL }}" ]; then
+            SETTINGS="$SETTINGS COPILOT_API_APP_CONFIG_LABEL=${{ secrets.APP_CONFIG_LABEL }}"
+          fi
+
           az webapp config appsettings set \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.APP_SERVICE_NAME }} \
-            --settings \
-              GITHUB_TOKEN="${{ secrets.COPILOT_GITHUB_TOKEN }}" \
-              AZURE_AI_PROJECT_ENDPOINT="${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" \
-              AZURE_AI_MODEL_DEPLOYMENT_NAME="${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" \
-              FOUNDRY_AUTH_MODE="${{ secrets.FOUNDRY_AUTH_MODE }}" \
-              FOUNDRY_API_KEY="${{ secrets.FOUNDRY_API_KEY }}" \
-              FOUNDRY_WIRE_API="${{ secrets.FOUNDRY_WIRE_API }}"
+            --settings $SETTINGS
 
           if [ -n "${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" ]; then
             az webapp config appsettings set \

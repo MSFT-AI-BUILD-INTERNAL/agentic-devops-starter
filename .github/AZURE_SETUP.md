@@ -121,9 +121,10 @@ APP_SERVICE_NAME: <your-app-service-name>
 RESOURCE_GROUP: <your-resource-group-name>
 
 # Application configuration (optional)
-AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-endpoint>
-AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment-name>
-AZURE_OPENAI_API_VERSION: <api-version>
+COPILOT_GITHUB_TOKEN: <GitHub PAT with copilot scope>
+APP_CONFIG_ENDPOINT: <your-azure-app-config-endpoint>   # e.g. https://<store>.azconfig.io
+APP_CONFIG_LABEL: <label>                                # optional label filter
+APPLICATIONINSIGHTS_CONNECTION_STRING: <connection-string>  # optional, enables Azure Monitor
 ```
 
 **Common Mistake to Avoid:**

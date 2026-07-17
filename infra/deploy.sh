@@ -101,9 +101,6 @@ LOG_NAME=$(get_var log_analytics_workspace_name)
 VNET_NAME=$(get_var vnet_name)
 STORAGE_NAME=$(get_var storage_account_name)
 UPLOADS_CONTAINER=$(get_var uploads_container_name)
-AZURE_AI_PROJECT_ENDPOINT=$(get_var azure_ai_project_endpoint)
-AZURE_AI_MODEL_DEPLOYMENT_NAME=$(get_var azure_ai_model_deployment_name)
-AZURE_OPENAI_API_VERSION=$(get_var azure_openai_api_version)
 AI_FOUNDRY_RESOURCE_ID=$(get_var ai_foundry_resource_id)
 
 SUB_ID=$(az account show --query id -o tsv)
@@ -239,12 +236,16 @@ ensure_app_configuration() {
     local settings_to_update=()
     local desired_settings=(
       "AZURE_TENANT_ID=$TENANT_ID"
-      "AZURE_AI_PROJECT_ENDPOINT=$AZURE_AI_PROJECT_ENDPOINT"
-      "AZURE_AI_MODEL_DEPLOYMENT_NAME=$AZURE_AI_MODEL_DEPLOYMENT_NAME"
-      "AZURE_OPENAI_API_VERSION=$AZURE_OPENAI_API_VERSION"
       "COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT=$blob_endpoint"
       "COPILOT_API_AZURE_STORAGE_CONTAINER_NAME=$UPLOADS_CONTAINER"
     )
+
+    if [ -n "${COPILOT_API_APP_CONFIG_ENDPOINT:-}" ]; then
+      desired_settings+=("COPILOT_API_APP_CONFIG_ENDPOINT=$COPILOT_API_APP_CONFIG_ENDPOINT")
+    fi
+    if [ -n "${COPILOT_API_APP_CONFIG_LABEL:-}" ]; then
+      desired_settings+=("COPILOT_API_APP_CONFIG_LABEL=$COPILOT_API_APP_CONFIG_LABEL")
+    fi
 
     for setting in "${desired_settings[@]}"; do
       local key="${setting%%=*}"

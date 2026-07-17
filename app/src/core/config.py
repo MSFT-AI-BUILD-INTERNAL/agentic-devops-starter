@@ -1,9 +1,33 @@
-"""Application configuration via environment variables."""
+"""Application configuration via environment variables and Azure App Configuration."""
 
+import logging
+import os
 from typing import Literal
 
 from pydantic import AliasChoices, Field
+from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings
+
+_log = logging.getLogger(__name__)
+
+_ENV_PREFIX = "COPILOT_API_"
+
+
+def _env_names_for_field(field_name: str, field_info: FieldInfo) -> list[str]:
+    """Return all env var names that pydantic-settings will check for a field.
+
+    Fields with ``AliasChoices`` use those alias strings directly (no prefix).
+    Plain fields use ``COPILOT_API_<FIELD_NAME>``.
+    """
+    names: list[str] = [f"{_ENV_PREFIX}{field_name.upper()}"]
+    alias = field_info.validation_alias
+    if isinstance(alias, AliasChoices):
+        for choice in alias.choices:
+            if isinstance(choice, str):
+                names.append(choice)
+    elif isinstance(alias, str):
+        names.append(alias)
+    return list(dict.fromkeys(names))  # preserve order, deduplicate
 
 
 class Settings(BaseSettings):
@@ -69,6 +93,12 @@ class Settings(BaseSettings):
     cli_otel_source_name: str = "agentic-devops-starter"
     cli_otel_capture_content: bool = True
 
+    # Azure App Configuration bootstrap (optional).
+    # When set, runtime config is loaded from App Configuration with the
+    # precedence: defaults < App Configuration < environment variables.
+    app_config_endpoint: str = ""
+    app_config_label: str = ""
+
     model_config = {
         "env_prefix": "COPILOT_API_",
         "env_file": ".env",
@@ -77,4 +107,68 @@ class Settings(BaseSettings):
     }
 
 
+def apply_app_configuration(s: Settings) -> None:
+    """Overlay Azure App Configuration values onto *s* with env-var precedence.
+
+    Precedence (lowest → highest):
+        defaults → Azure App Configuration → environment variables
+
+    Fields already set by an explicit environment variable are left unchanged.
+    This function is a no-op when ``app_config_endpoint`` is empty.
+    """
+    endpoint = s.app_config_endpoint.strip()
+    if not endpoint:
+        return
+
+    try:
+        from azure.appconfiguration import AzureAppConfigurationClient
+        from azure.identity import DefaultAzureCredential
+    except ImportError:
+        _log.warning(
+            "azure-appconfiguration is not installed; skipping App Configuration overlay"
+        )
+        return
+
+    label = s.app_config_label.strip() or None
+    try:
+        client = AzureAppConfigurationClient(endpoint, DefaultAzureCredential())
+        ac_values: dict[str, str] = {
+            cfg.key: cfg.value
+            for cfg in client.list_configuration_settings(label_filter=label)
+            if cfg.key and cfg.value is not None
+        }
+    except Exception as exc:
+        _log.warning("Failed to load Azure App Configuration from %s: %s", endpoint, exc)
+        return
+
+    if not ac_values:
+        return
+
+    for field_name, field_info in Settings.model_fields.items():
+        # Bootstrap fields must always come from the environment; skip them.
+        if field_name in ("app_config_endpoint", "app_config_label"):
+            continue
+
+        env_names = _env_names_for_field(field_name, field_info)
+
+        # If ANY env var alias for this field is explicitly set, keep that value.
+        if any(name in os.environ for name in env_names):
+            continue
+
+        # Apply the first matching App Configuration key.
+        for env_name in env_names:
+            if env_name in ac_values:
+                try:
+                    setattr(s, field_name, ac_values[env_name])
+                except Exception as exc:
+                    _log.warning(
+                        "Could not apply App Configuration key %s to %s: %s",
+                        env_name,
+                        field_name,
+                        exc,
+                    )
+                break
+
+
 settings = Settings()
+apply_app_configuration(settings)

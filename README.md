@@ -165,6 +165,8 @@ All session-scoped routes also accept `X-Isolation-Session-ID` to isolate runtim
 | `COPILOT_API_SESSION_TIMEOUT` | No | `120.0` | Idle session timeout in seconds |
 | `COPILOT_API_ISOLATION_SESSION_HEADER` | No | `X-Isolation-Session-ID` | Header used to scope runtime and file isolation |
 | `COPILOT_API_SESSION_CONFIG_ROOT_DIR` | No | `.copilot-session-config` | Base directory for per-isolation Copilot session config |
+| `COPILOT_API_APP_CONFIG_ENDPOINT` | No | unset | Azure App Configuration endpoint; when set, runtime config is loaded from App Configuration (env vars take precedence) |
+| `COPILOT_API_APP_CONFIG_LABEL` | No | unset | Label filter for Azure App Configuration key-value pairs |
 | `COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT` | File upload | unset | Blob endpoint, for example `https://<account>.blob.core.windows.net` |
 | `COPILOT_API_AZURE_STORAGE_CONTAINER_NAME` | No | `uploads` | Upload container name |
 | `COPILOT_API_SKILL_DIRECTORIES` | No | unset | Extra directories (`os.pathsep`- or comma-separated) scanned for Agent Skills (`SKILL.md`), in addition to built-in `app/skills/` |
