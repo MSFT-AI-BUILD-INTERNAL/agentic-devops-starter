@@ -120,10 +120,22 @@ ACR_NAME: <your-acr-name>
 APP_SERVICE_NAME: <your-app-service-name>
 RESOURCE_GROUP: <your-resource-group-name>
 
-# Application configuration (optional)
+# Application configuration
 COPILOT_GITHUB_TOKEN: <GitHub PAT with copilot scope>
+
+# Option A — Azure App Configuration (recommended): runtime settings are loaded from the store.
 APP_CONFIG_ENDPOINT: <your-azure-app-config-endpoint>   # e.g. https://<store>.azconfig.io
 APP_CONFIG_LABEL: <label>                                # optional label filter
+
+# Option B — Direct secret injection (fallback): used when App Config is not configured,
+# or to override individual App Config values. Env vars always win over App Config.
+AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-project-endpoint>
+AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment-name>
+FOUNDRY_AUTH_MODE: <aad|key>
+FOUNDRY_API_KEY: <api-key-if-using-key-auth>
+FOUNDRY_WIRE_API: <wire-api-override-if-needed>
+
+# Optional extras
 APPLICATIONINSIGHTS_CONNECTION_STRING: <connection-string>  # optional, enables Azure Monitor
 ```
 

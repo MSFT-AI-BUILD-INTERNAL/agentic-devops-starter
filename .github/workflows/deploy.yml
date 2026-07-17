@@ -70,7 +70,10 @@ jobs:
       - name: Update App Service configuration
         run: |
           # Set GitHub PAT for Copilot SDK authentication.
-          # Foundry and other runtime settings are sourced from Azure App Configuration at runtime.
+          # Runtime settings (Foundry endpoints, model names, etc.) can be provided via two paths:
+          #   1. Azure App Configuration (recommended): set APP_CONFIG_ENDPOINT secret.
+          #   2. Direct secret injection (fallback): set FOUNDRY_AUTH_MODE etc. secrets directly.
+          #      Env vars always take precedence over App Config values at runtime.
           # Static settings (WEBSITES_PORT, CORS_ORIGINS) are managed by Terraform.
           SETTINGS="GITHUB_TOKEN=${{ secrets.COPILOT_GITHUB_TOKEN }}"
 
@@ -80,6 +83,28 @@ jobs:
 
           if [ -n "${{ secrets.APP_CONFIG_LABEL }}" ]; then
             SETTINGS="$SETTINGS COPILOT_API_APP_CONFIG_LABEL=${{ secrets.APP_CONFIG_LABEL }}"
+          fi
+
+          # Foundry / Azure AI direct-inject fallbacks (used when App Config is not configured,
+          # or to override App Config values for a specific setting).
+          if [ -n "${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" ]; then
+            SETTINGS="$SETTINGS AZURE_AI_PROJECT_ENDPOINT=${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}"
+          fi
+
+          if [ -n "${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" ]; then
+            SETTINGS="$SETTINGS AZURE_AI_MODEL_DEPLOYMENT_NAME=${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}"
+          fi
+
+          if [ -n "${{ secrets.FOUNDRY_AUTH_MODE }}" ]; then
+            SETTINGS="$SETTINGS FOUNDRY_AUTH_MODE=${{ secrets.FOUNDRY_AUTH_MODE }}"
+          fi
+
+          if [ -n "${{ secrets.FOUNDRY_API_KEY }}" ]; then
+            SETTINGS="$SETTINGS FOUNDRY_API_KEY=${{ secrets.FOUNDRY_API_KEY }}"
+          fi
+
+          if [ -n "${{ secrets.FOUNDRY_WIRE_API }}" ]; then
+            SETTINGS="$SETTINGS FOUNDRY_WIRE_API=${{ secrets.FOUNDRY_WIRE_API }}"
           fi
 
           az webapp config appsettings set \
