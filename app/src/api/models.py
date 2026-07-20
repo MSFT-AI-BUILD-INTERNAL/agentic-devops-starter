@@ -1,5 +1,7 @@
 """Pydantic models for Fleet and Infinite Session features."""
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -96,4 +98,4 @@ class MCPToolResponse(BaseModel):
 
     name: str
     description: str
-    input_schema: dict[str, object]
+    input_schema: dict[str, Any]

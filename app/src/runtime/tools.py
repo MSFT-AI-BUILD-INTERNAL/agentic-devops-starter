@@ -416,6 +416,7 @@ def load_tools() -> list[Tool]:
     starts with only the built-in code-based tools.
     """
     import asyncio
+    import concurrent.futures
 
     global _registered_tools, _registered_tool_names
     definitions: list[ToolDefinition] = list(_build_base_definitions())
@@ -424,15 +425,28 @@ def load_tools() -> list[Tool]:
         from src.runtime.mcp_client import list_mcp_tools
 
         try:
-            mcp_tool_infos = asyncio.run(list_mcp_tools(settings.mcp_server_url))
+            running_loop = asyncio.get_running_loop()
         except RuntimeError:
-            # asyncio.run() raises RuntimeError when called from inside a running
-            # event loop (e.g. during tests).  Use a new thread-based approach.
-            import concurrent.futures
+            running_loop = None
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(asyncio.run, list_mcp_tools(settings.mcp_server_url))
-                mcp_tool_infos = future.result()
+        if running_loop is not None:
+            # Already inside an event loop (e.g. during async tests).  Run the
+            # coroutine in a dedicated thread so asyncio.run() gets its own loop.
+            logger.debug("MCP tool load: running inside event loop — using thread executor")
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(
+                        asyncio.run, list_mcp_tools(settings.mcp_server_url)
+                    )
+                    mcp_tool_infos = future.result()
+            except Exception as exc:
+                logger.warning(
+                    "MCP tool load via thread executor failed",
+                    extra={"mcp_server_url": settings.mcp_server_url, "error": str(exc)},
+                )
+                mcp_tool_infos = []
+        else:
+            mcp_tool_infos = asyncio.run(list_mcp_tools(settings.mcp_server_url))
 
         mcp_definitions = build_mcp_tool_definitions(mcp_tool_infos)
         definitions.extend(mcp_definitions)
