@@ -1,9 +1,13 @@
 """Application configuration via environment variables."""
 
+import logging
+import os
 from typing import Literal
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -53,6 +57,13 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("FOUNDRY_WIRE_API", "COPILOT_API_FOUNDRY_WIRE_API"),
     )
 
+    # Azure App Configuration (optional — used for runtime configuration values
+    # such as feature flags).
+    # When the endpoint is set the application fetches key-values at startup and
+    # applies them with lower precedence than environment variables.
+    app_config_endpoint: str = ""
+    app_config_label: str = ""
+
     # Additional directories (os.pathsep- or comma-separated) the Copilot SDK
     # should scan for Agent Skills (SKILL.md files), in addition to the
     # built-in ``app/skills/`` directory. Leave empty to use only built-ins.
@@ -77,4 +88,68 @@ class Settings(BaseSettings):
     }
 
 
+def apply_app_configuration(s: Settings) -> None:
+    """Load key-values from Azure App Configuration and apply to *s*.
+
+    Precedence: env vars > App Config > defaults.
+    Values whose corresponding environment variable is already present in
+    ``os.environ`` are never overwritten — env vars always win.
+
+    The endpoint is read from ``COPILOT_API_APP_CONFIG_ENDPOINT``; an empty
+    endpoint makes this function a no-op so callers need not guard.
+
+    App Config keys are expected to use the full environment-variable name
+    (e.g. ``COPILOT_API_FOUNDRY_AUTH_MODE``) or the bare form without the
+    ``COPILOT_API_`` prefix (e.g. ``FOUNDRY_AUTH_MODE``).  Both are mapped to
+    the corresponding ``Settings`` field.
+    """
+    if not s.app_config_endpoint:
+        return
+
+    try:
+        from azure.appconfiguration import (
+            AzureAppConfigurationClient,  # type: ignore[import-untyped]
+        )
+        from azure.identity import DefaultAzureCredential
+
+        client = AzureAppConfigurationClient(
+            base_url=s.app_config_endpoint,
+            credential=DefaultAzureCredential(),
+        )
+        label_filter = s.app_config_label or None
+
+        for item in client.list_configuration_settings(label_filter=label_filter):
+            key: str = item.key
+            value: str = item.value or ""
+
+            # Env var takes precedence — skip if the key or any recognised
+            # alias form is already present in the environment.
+            # App Config keys may omit the COPILOT_API_ prefix, so check both:
+            #   e.g. "FOUNDRY_AUTH_MODE" and "COPILOT_API_FOUNDRY_AUTH_MODE".
+            bare_key = key.upper().removeprefix("COPILOT_API_")
+            if (
+                key in os.environ
+                or bare_key in os.environ
+                or f"COPILOT_API_{bare_key}" in os.environ
+            ):
+                continue
+
+            # Map App Config key to the Settings field name.
+            # Strip the COPILOT_API_ prefix (case-insensitive) when present.
+            field_name = key.lower().removeprefix("copilot_api_")
+            if not hasattr(s, field_name):
+                logger.debug("App Config: unknown key %r — skipped", key)
+                continue
+
+            try:
+                setattr(s, field_name, value)
+                logger.debug("App Config applied: %s = %r", field_name, value)
+            except Exception:
+                logger.debug("App Config: could not set %r", field_name, exc_info=True)
+
+    except Exception as exc:
+        logger.warning("Azure App Configuration load failed (non-fatal): %s", exc)
+
+
 settings = Settings()
+apply_app_configuration(settings)

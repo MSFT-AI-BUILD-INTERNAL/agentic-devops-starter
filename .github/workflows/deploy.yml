@@ -80,7 +80,9 @@ jobs:
               AZURE_AI_MODEL_DEPLOYMENT_NAME="${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" \
               FOUNDRY_AUTH_MODE="${{ secrets.FOUNDRY_AUTH_MODE }}" \
               FOUNDRY_API_KEY="${{ secrets.FOUNDRY_API_KEY }}" \
-              FOUNDRY_WIRE_API="${{ secrets.FOUNDRY_WIRE_API }}"
+              FOUNDRY_WIRE_API="${{ secrets.FOUNDRY_WIRE_API }}" \
+              COPILOT_API_APP_CONFIG_ENDPOINT="${{ secrets.APP_CONFIG_ENDPOINT }}" \
+              COPILOT_API_APP_CONFIG_LABEL="${{ secrets.APP_CONFIG_LABEL }}"
 
           if [ -n "${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" ]; then
             az webapp config appsettings set \

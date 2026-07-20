@@ -124,6 +124,12 @@ RESOURCE_GROUP: <your-resource-group-name>
 AZURE_AI_PROJECT_ENDPOINT: <your-azure-ai-endpoint>
 AZURE_AI_MODEL_DEPLOYMENT_NAME: <your-model-deployment-name>
 AZURE_OPENAI_API_VERSION: <api-version>
+
+# Azure App Configuration (optional — for feature flags)
+# When set, the application loads key-values from App Configuration at startup.
+# The App Service managed identity must have the "App Configuration Data Reader" role.
+APP_CONFIG_ENDPOINT: <https://your-store.azconfig.io>
+APP_CONFIG_LABEL: <label-to-filter-by>  # optional
 ```
 
 **Common Mistake to Avoid:**

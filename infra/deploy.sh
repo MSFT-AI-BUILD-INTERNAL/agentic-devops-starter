@@ -256,6 +256,22 @@ ensure_app_configuration() {
       fi
     done
 
+    # Optional App Configuration bootstrap hints (passed through from environment).
+    if [ -n "${COPILOT_API_APP_CONFIG_ENDPOINT:-}" ]; then
+      local current_endpoint
+      current_endpoint=$(get_app_setting "COPILOT_API_APP_CONFIG_ENDPOINT")
+      if [ "$current_endpoint" != "$COPILOT_API_APP_CONFIG_ENDPOINT" ]; then
+        settings_to_update+=("COPILOT_API_APP_CONFIG_ENDPOINT=$COPILOT_API_APP_CONFIG_ENDPOINT")
+      fi
+      if [ -n "${COPILOT_API_APP_CONFIG_LABEL:-}" ]; then
+        local current_label
+        current_label=$(get_app_setting "COPILOT_API_APP_CONFIG_LABEL")
+        if [ "$current_label" != "$COPILOT_API_APP_CONFIG_LABEL" ]; then
+          settings_to_update+=("COPILOT_API_APP_CONFIG_LABEL=$COPILOT_API_APP_CONFIG_LABEL")
+        fi
+      fi
+    fi
+
     if [ "${#settings_to_update[@]}" -gt 0 ]; then
       info "Updating changed non-secret App Service settings..."
       az webapp config appsettings set \

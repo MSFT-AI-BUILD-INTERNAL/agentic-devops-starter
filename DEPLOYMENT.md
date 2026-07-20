@@ -91,6 +91,8 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 | `FOUNDRY_AUTH_MODE` | Foundry auth mode: `auto`, `api_key`, or `azure_identity` |
 | `FOUNDRY_API_KEY` | Foundry API key, required only when `FOUNDRY_AUTH_MODE=api_key` |
 | `FOUNDRY_WIRE_API` | Foundry wire API: `responses` or `completions` |
+| `APP_CONFIG_ENDPOINT` | Azure App Configuration endpoint (e.g. `https://<store>.azconfig.io`); injected as `COPILOT_API_APP_CONFIG_ENDPOINT` for feature-flag loading at runtime |
+| `APP_CONFIG_LABEL` | Label filter for Azure App Configuration key-values (optional); injected as `COPILOT_API_APP_CONFIG_LABEL` |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables backend Azure Monitor telemetry and starts the local OpenTelemetry Collector for GitHub Copilot CLI telemetry |
 
 ## Workflow Triggers
@@ -204,6 +206,8 @@ Static infrastructure settings (e.g., `WEBSITES_PORT`, `CORS`) are managed by **
 | `FOUNDRY_AUTH_MODE` | deploy.yml | Foundry BYOK auth mode from GitHub secret |
 | `FOUNDRY_API_KEY` | deploy.yml | Optional Foundry BYOK API key from GitHub secret |
 | `FOUNDRY_WIRE_API` | deploy.yml | Foundry BYOK wire protocol from GitHub secret |
+| `COPILOT_API_APP_CONFIG_ENDPOINT` | deploy.yml | App Configuration bootstrap hint for feature-flag loading (from `APP_CONFIG_ENDPOINT` secret) |
+| `COPILOT_API_APP_CONFIG_LABEL` | deploy.yml | App Configuration label filter (from `APP_CONFIG_LABEL` secret) |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | deploy.yml | Azure Monitor/App Insights exporter secret for backend and Collector telemetry |
 
 ## Troubleshooting
