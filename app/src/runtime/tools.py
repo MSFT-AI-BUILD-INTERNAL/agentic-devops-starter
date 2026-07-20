@@ -7,13 +7,13 @@ import inspect
 import json
 import time
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from copilot.tools import Tool, ToolInvocation, ToolResult
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from src.core.config import settings
 from src.core.logging_utils import correlation_id, new_correlation_id, setup_logging
@@ -35,6 +35,10 @@ class ToolDefinition:
     handler: Callable[[BaseModel, ToolInvocation], Awaitable[Any]]
     timeout_seconds: float | None = None
     skip_permission: bool = False
+    # Optional override for the JSON Schema passed to the SDK.  When set this
+    # replaces the schema derived from params_model (useful for MCP tools where
+    # the schema comes from the remote server rather than a local Pydantic model).
+    parameters_schema: dict[str, Any] | None = field(default=None, compare=False)
 
 
 class TransformTextArgs(BaseModel):
@@ -54,6 +58,16 @@ class FetchGitHubZenArgs(BaseModel):
         le=300,
         description="Maximum response length returned to the model.",
     )
+
+
+class MCPToolArgs(BaseModel):
+    """Generic pass-through arguments model for remote MCP tools.
+
+    Accepts any JSON object from the model and forwards it verbatim to the MCP
+    server.  The actual schema is provided via ``ToolDefinition.parameters_schema``.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
 
 def _encode_result(payload: dict[str, Any]) -> str:
@@ -328,7 +342,7 @@ def build_tool(definition: ToolDefinition, default_timeout_seconds: float) -> To
     return Tool(
         name=definition.name,
         description=definition.description,
-        parameters=definition.params_model.model_json_schema(),
+        parameters=definition.parameters_schema or definition.params_model.model_json_schema(),
         handler=wrapped_handler,
         skip_permission=definition.skip_permission,
     )
@@ -349,15 +363,81 @@ def build_tools(
     return [build_tool(definition, default_timeout) for definition in definitions]
 
 
+def build_mcp_tool_definitions(
+    mcp_tools: list[Any],
+) -> list[ToolDefinition]:
+    """Convert a list of :class:`~src.runtime.mcp_client.MCPToolInfo` objects into
+    :class:`ToolDefinition` instances that proxy calls to the remote MCP server.
+
+    Each generated handler opens a short-lived MCP session, calls the tool, and
+    returns the result.  The MCP server URL is read from ``settings.mcp_server_url``
+    at call time so that it can be overridden without restarting the process.
+    """
+    from src.runtime.mcp_client import MCPToolInfo, call_mcp_tool
+
+    definitions: list[ToolDefinition] = []
+    for tool_info in mcp_tools:
+        if not isinstance(tool_info, MCPToolInfo):
+            continue
+
+        # Capture the tool name in a closure so each handler refers to its own tool.
+        tool_name = tool_info.name
+
+        async def _mcp_handler(
+            params: BaseModel,
+            _invocation: ToolInvocation,
+            _tool_name: str = tool_name,
+        ) -> dict[str, Any]:
+            args = params.model_dump()
+            return await call_mcp_tool(settings.mcp_server_url, _tool_name, args)
+
+        definitions.append(
+            ToolDefinition(
+                name=tool_info.name,
+                description=tool_info.description,
+                params_model=MCPToolArgs,
+                handler=_mcp_handler,
+                parameters_schema=tool_info.input_schema or None,
+            )
+        )
+    return definitions
+
+
 _registered_tools: list[Tool] = []
 _registered_tool_names: list[str] = []
 
 
 def load_tools() -> list[Tool]:
-    """Build and cache the default runtime tool registry."""
+    """Build and cache the default runtime tool registry.
+
+    When ``settings.mcp_server_url`` is configured the function also fetches
+    tools from the remote MCP server (synchronously via :func:`asyncio.run`).
+    MCP tool loading failures are non-fatal: a warning is logged and the server
+    starts with only the built-in code-based tools.
+    """
+    import asyncio
 
     global _registered_tools, _registered_tool_names
-    built = build_tools(_build_base_definitions(), settings.tool_timeout)
+    definitions: list[ToolDefinition] = list(_build_base_definitions())
+
+    if settings.mcp_server_url:
+        from src.runtime.mcp_client import list_mcp_tools
+
+        try:
+            mcp_tool_infos = asyncio.run(list_mcp_tools(settings.mcp_server_url))
+        except RuntimeError:
+            # asyncio.run() raises RuntimeError when called from inside a running
+            # event loop (e.g. during tests).  Use a new thread-based approach.
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(asyncio.run, list_mcp_tools(settings.mcp_server_url))
+                mcp_tool_infos = future.result()
+
+        mcp_definitions = build_mcp_tool_definitions(mcp_tool_infos)
+        definitions.extend(mcp_definitions)
+
+    built = build_tools(definitions, settings.tool_timeout)
     _registered_tools = built
     _registered_tool_names = [tool.name for tool in built]
     logger.info(

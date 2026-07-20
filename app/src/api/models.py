@@ -89,3 +89,11 @@ class AgentEvent(BaseModel):
     converged: bool | None = None
     summary: str | None = None
     message: str | None = None
+
+
+class MCPToolResponse(BaseModel):
+    """Summary of a tool exposed by the remote MCP server."""
+
+    name: str
+    description: str
+    input_schema: dict[str, object]

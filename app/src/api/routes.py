@@ -20,6 +20,7 @@ from src.api.models import (
     FleetRequest,
     InfiniteSessionRequest,
     JobStatusResponse,
+    MCPToolResponse,
     PatternInfo,
     TeamsRequest,
     UploadResult,
@@ -404,3 +405,26 @@ async def job_status_endpoint(job_id: str) -> JobStatusResponse:
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+@router.get("/v1/mcp/tools")
+async def list_mcp_tools_endpoint() -> list[MCPToolResponse]:
+    """List tools available on the configured remote MCP server.
+
+    Returns an empty list when no MCP server URL is configured or when the
+    server is unreachable.
+    """
+    if not settings.mcp_server_url:
+        return []
+
+    from src.runtime.mcp_client import list_mcp_tools
+
+    tools = await list_mcp_tools(settings.mcp_server_url)
+    return [
+        MCPToolResponse(
+            name=t.name,
+            description=t.description,
+            input_schema=t.input_schema,
+        )
+        for t in tools
+    ]
