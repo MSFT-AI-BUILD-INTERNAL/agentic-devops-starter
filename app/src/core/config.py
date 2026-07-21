@@ -80,6 +80,16 @@ class Settings(BaseSettings):
     cli_otel_source_name: str = "agentic-devops-starter"
     cli_otel_capture_content: bool = True
 
+    # Remote MCP (Model Context Protocol) server that exposes additional tools.
+    # When set, tools are fetched at startup and made available to all sessions.
+    mcp_server_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "MCP_SERVER_URL",
+            "COPILOT_API_MCP_SERVER_URL",
+        ),
+    )
+
     model_config = {
         "env_prefix": "COPILOT_API_",
         "env_file": ".env",
