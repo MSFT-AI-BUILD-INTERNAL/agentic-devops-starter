@@ -25,6 +25,11 @@ class _FakeSession:
         pass
 
 
+class _FakeTool:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
 class _FailingAbortSession(_FakeSession):
     async def abort(self) -> None:
         self.abort_count += 1
@@ -185,7 +190,12 @@ async def test_session_pool_passes_tool_allowlist(
         await pool.get_or_create("thread-with-tool-allowlist")
 
         assert client.create_kwargs is not None
-        assert client.create_kwargs["available_tools"] == ["bash", "read_file"]
+        assert client.create_kwargs["available_tools"] == [
+            "bash",
+            "read_file",
+            "transform_text",
+            "fetch_github_zen",
+        ]
     finally:
         await pool.shutdown()
 
@@ -262,8 +272,40 @@ async def test_session_pool_allowlist_takes_precedence_over_denylist(
         await pool.get_or_create("thread-allowlist-precedence")
 
         assert client.create_kwargs is not None
-        assert client.create_kwargs["available_tools"] == ["read_file"]
+        assert client.create_kwargs["available_tools"] == [
+            "read_file",
+            "transform_text",
+            "fetch_github_zen",
+        ]
         assert "excluded_tools" not in client.create_kwargs
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_allowlist_keeps_custom_runtime_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Allowlist mode must still keep runtime custom tools visible to the model."""
+    client = _FakeClient()
+    monkeypatch.setenv("COPILOT_API_ALLOWED_TOOLS", "read_file")
+    monkeypatch.setattr(
+        state_module,
+        "get_registered_tools",
+        lambda: [_FakeTool("transform_text"), _FakeTool("mcp_remote_tool")],
+    )
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-allowlist-custom-tools")
+
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["available_tools"] == [
+            "read_file",
+            "transform_text",
+            "mcp_remote_tool",
+        ]
     finally:
         await pool.shutdown()
 
