@@ -89,7 +89,14 @@ def _apply_tool_policy(session_kwargs: dict[str, Any]) -> dict[str, Any]:
     """
     allowed_tools = _get_allowed_tools()
     if allowed_tools is not None:
-        session_kwargs["available_tools"] = allowed_tools
+        # Keep runtime-registered custom tools (including MCP-proxied tools)
+        # visible even when a built-in SDK allowlist is configured.
+        available_tools = list(allowed_tools)
+        for tool in session_kwargs.get("tools", []):
+            tool_name = getattr(tool, "name", "")
+            if isinstance(tool_name, str) and tool_name and tool_name not in available_tools:
+                available_tools.append(tool_name)
+        session_kwargs["available_tools"] = available_tools
         return session_kwargs
 
     excluded_tools = get_excluded_tools()
