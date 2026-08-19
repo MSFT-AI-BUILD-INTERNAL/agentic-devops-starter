@@ -286,19 +286,29 @@ ensure_app_configuration() {
   fi
 
   if [ -n "${COPILOT_APP_CLIENT_ID:-}" ] && [ -n "${COPILOT_APP_CLIENT_SECRET:-}" ]; then
-    local current_client_id current_client_secret
+    local current_client_id current_client_secret current_redirect_uri oauth_redirect_uri
     current_client_id=$(get_app_setting "GITHUB_CLIENT_ID")
     current_client_secret=$(get_app_setting "GITHUB_CLIENT_SECRET")
-    if [ "$current_client_id" != "$COPILOT_APP_CLIENT_ID" ] || [ "$current_client_secret" != "$COPILOT_APP_CLIENT_SECRET" ]; then
-      info "Setting GitHub App OAuth credentials..."
+    current_redirect_uri=$(get_app_setting "GITHUB_OAUTH_REDIRECT_URI")
+    oauth_redirect_uri="${COPILOT_APP_REDIRECT_URI:-${GITHUB_OAUTH_REDIRECT_URI:-}}"
+    if [ -z "$oauth_redirect_uri" ]; then
+      oauth_redirect_uri="https://${APP_NAME}.azurewebsites.net/auth/callback"
+    fi
+    if [ "$current_client_id" != "$COPILOT_APP_CLIENT_ID" ] \
+      || [ "$current_client_secret" != "$COPILOT_APP_CLIENT_SECRET" ] \
+      || [ "$current_redirect_uri" != "$oauth_redirect_uri" ]; then
+      info "Setting GitHub App OAuth credentials and callback URI..."
       az webapp config appsettings set \
         --resource-group "$RG_NAME" \
         --name "$APP_NAME" \
-        --settings GITHUB_CLIENT_ID="$COPILOT_APP_CLIENT_ID" GITHUB_CLIENT_SECRET="$COPILOT_APP_CLIENT_SECRET" \
+        --settings \
+          GITHUB_CLIENT_ID="$COPILOT_APP_CLIENT_ID" \
+          GITHUB_CLIENT_SECRET="$COPILOT_APP_CLIENT_SECRET" \
+          GITHUB_OAUTH_REDIRECT_URI="$oauth_redirect_uri" \
         --only-show-errors 1>/dev/null
-      ok "GitHub App OAuth credentials are ready"
+      ok "GitHub App OAuth credentials and callback URI are ready"
     else
-      ok "GitHub App OAuth credentials already match"
+      ok "GitHub App OAuth credentials and callback URI already match"
     fi
   else
     warn "GitHub App OAuth credentials are not set. Export COPILOT_APP_CLIENT_ID and COPILOT_APP_CLIENT_SECRET."
