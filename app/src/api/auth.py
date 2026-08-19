@@ -20,6 +20,7 @@ _SESSION_COOKIE = "github_oauth_session"
 _SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
 _OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
 _FERNET_KEY_SALT = b"agentic-devops-starter/oauth-cookie-encryption/v1"
+_OAUTH_HMAC_KEY_SALT = b"agentic-devops-starter/oauth-hmac-key/v1"
 _oauth_states: dict[str, float] = {}
 
 
@@ -107,12 +108,24 @@ def _session_cipher(client_secret: str) -> Fernet:
 
 
 def initialize_session_cipher() -> None:
-    """Warm the OAuth cookie cipher cache when OAuth is configured."""
+    """Warm OAuth cryptographic key caches when OAuth is configured."""
     if settings.github_client_secret:
         _session_cipher(settings.github_client_secret)
+        _oauth_hmac_key(settings.github_client_secret)
 
 
 def _oauth_hmac(payload: bytes) -> str:
     """Return a URL-safe HMAC for an OAuth value without exposing the key."""
-    digest = hmac.new(settings.github_client_secret.encode(), payload, hashlib.sha512).digest()
+    digest = hmac.new(_oauth_hmac_key(settings.github_client_secret), payload, hashlib.sha512).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+@lru_cache
+def _oauth_hmac_key(client_secret: str) -> bytes:
+    """Derive a separate key for OAuth HMAC operations."""
+    return PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=64,
+        salt=_OAUTH_HMAC_KEY_SALT,
+        iterations=600_000,
+    ).derive(client_secret.encode())
