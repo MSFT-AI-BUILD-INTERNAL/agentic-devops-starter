@@ -1,6 +1,7 @@
 """GitHub OAuth helpers for Copilot SDK user authentication."""
 
 import base64
+from functools import lru_cache
 import hashlib
 import hmac
 import secrets
@@ -64,7 +65,7 @@ async def exchange_code(code: str) -> OAuthToken:
 
 def store_token(token: OAuthToken) -> str:
     """Encrypt a token for the opaque browser session cookie."""
-    return _session_cipher().encrypt(token.access_token.encode()).decode()
+    return _session_cipher(settings.github_client_secret).encrypt(token.access_token.encode()).decode()
 
 
 def verify_oauth_state(nonce: str, state: str) -> bool:
@@ -86,7 +87,7 @@ def get_user_token(request: Request) -> str:
     if not session_id:
         raise HTTPException(status_code=401, detail="GitHub authentication required")
     try:
-        return _session_cipher().decrypt(
+        return _session_cipher(settings.github_client_secret).decrypt(
             session_id.encode(), ttl=_SESSION_MAX_AGE_SECONDS
         ).decode()
     except (InvalidToken, UnicodeDecodeError):
@@ -98,14 +99,15 @@ def get_user_session_id(request: Request) -> str:
     return _oauth_hmac(get_user_token(request).encode())
 
 
-def _session_cipher() -> Fernet:
+@lru_cache
+def _session_cipher(client_secret: str) -> Fernet:
     """Build a cookie cipher from the GitHub App client secret."""
     key = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
         salt=_FERNET_KEY_SALT,
         iterations=600_000,
-    ).derive(settings.github_client_secret.encode())
+    ).derive(client_secret.encode())
     return Fernet(base64.urlsafe_b64encode(key))
 
 
