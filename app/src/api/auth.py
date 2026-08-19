@@ -53,6 +53,20 @@ def store_token(token: OAuthToken) -> str:
     return _session_cipher().encrypt(token.access_token.encode()).decode()
 
 
+def protect_oauth_state(state: str) -> str:
+    """Encrypt an OAuth state value for the browser cookie."""
+    return _session_cipher().encrypt(state.encode()).decode()
+
+
+def verify_oauth_state(protected_state: str, state: str) -> bool:
+    """Return whether a state cookie contains the callback's state value."""
+    try:
+        cookie_state = _session_cipher().decrypt(protected_state.encode(), ttl=600).decode()
+    except (InvalidToken, UnicodeDecodeError):
+        return False
+    return hmac.compare_digest(cookie_state, state)
+
+
 def get_user_token(request: Request) -> str:
     """Return the authenticated user's GitHub token or reject the request."""
     session_id = request.cookies.get(_SESSION_COOKIE)

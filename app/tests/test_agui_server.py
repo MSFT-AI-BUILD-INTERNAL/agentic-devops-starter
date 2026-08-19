@@ -4,7 +4,6 @@ Tests the AG-UI server endpoints and configuration.
 Follows all constitution requirements including type safety and test coverage.
 """
 
-from hashlib import sha256
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import AsyncMock, MagicMock
 
@@ -108,7 +107,7 @@ def test_github_oauth_callback_stores_token_in_secure_cookie(
     )
 
     with TestClient(agui_server.create_app()) as test_client:
-        test_client.cookies.set(auth._STATE_COOKIE, sha256(state.encode()).hexdigest())
+        test_client.cookies.set(auth._STATE_COOKIE, auth.protect_oauth_state(state))
         response = test_client.get(
             f"/auth/callback?code=authorization-code&state={state}",
             follow_redirects=False,

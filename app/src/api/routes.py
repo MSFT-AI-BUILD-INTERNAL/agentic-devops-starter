@@ -2,7 +2,6 @@
 
 import asyncio
 import hashlib
-import hmac
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -25,7 +24,9 @@ from src.api.auth import (
     exchange_code,
     get_user_session_id,
     get_user_token,
+    protect_oauth_state,
     store_token,
+    verify_oauth_state,
 )
 from src.api.error_handler import log_and_respond
 from src.api.models import (
@@ -85,9 +86,9 @@ async def github_login() -> RedirectResponse:
         }
     )
     response = RedirectResponse(f"https://github.com/login/oauth/authorize?{query}")
-    state_digest = hashlib.sha256(state.encode()).hexdigest()
+    protected_state = protect_oauth_state(state)
     response.set_cookie(
-        _STATE_COOKIE, state_digest, httponly=True, secure=True, samesite="lax", max_age=600
+        _STATE_COOKIE, protected_state, httponly=True, secure=True, samesite="lax", max_age=600
     )
     return response
 
@@ -95,8 +96,7 @@ async def github_login() -> RedirectResponse:
 @router.get("/auth/callback")
 async def github_callback(request: Request, code: str, state: str) -> RedirectResponse:
     """Complete GitHub OAuth and establish an opaque browser session."""
-    expected_state_digest = hashlib.sha256(state.encode()).hexdigest()
-    if not hmac.compare_digest(request.cookies.get(_STATE_COOKIE, ""), expected_state_digest):
+    if not verify_oauth_state(request.cookies.get(_STATE_COOKIE, ""), state):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     session_id = store_token(await exchange_code(code))
     response = RedirectResponse("/")
