@@ -1,10 +1,10 @@
 """GitHub OAuth helpers for Copilot SDK user authentication."""
 
 import base64
-from functools import lru_cache
 import secrets
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
