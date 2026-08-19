@@ -13,7 +13,7 @@ from copilot.generated.session_events import (
     SessionIdleData,
 )
 from fastapi import APIRouter, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 
 import src.api.sse_utils as sse_utils
 from src.api.auth import (

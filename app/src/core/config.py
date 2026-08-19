@@ -28,7 +28,10 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("COPILOT_APP_CLIENT_SECRET", "GITHUB_CLIENT_SECRET"),
     )
-    github_oauth_redirect_uri: str = "https://app-agentic-devops.azurewebsites.net/auth/callback"
+    github_oauth_redirect_uri: str = Field(
+        default="https://app-agentic-devops.azurewebsites.net/auth/callback",
+        validation_alias=AliasChoices("COPILOT_APP_REDIRECT_URI", "GITHUB_OAUTH_REDIRECT_URI"),
+    )
     # 공개 테스트용 엔드포인트 (외부 API 연동 예시)
     tool_external_api_url: str = "https://api.github.com/zen"
 
