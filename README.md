@@ -107,7 +107,9 @@ cp .env.example .env
 ```
 
 Set `COPILOT_APP_CLIENT_ID` and `COPILOT_APP_CLIENT_SECRET` for the GitHub App.
-The production OAuth callback is `https://app-agentic-devops.azurewebsites.net/auth/callback`.
+Configure the GitHub App **Callback URL** (not the Webhook URL) to match
+`COPILOT_APP_REDIRECT_URI`; the production value is
+`https://app-agentic-devops.azurewebsites.net/auth/callback`.
 
 ### 3. Start the backend
 

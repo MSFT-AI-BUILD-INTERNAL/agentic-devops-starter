@@ -43,19 +43,23 @@ def create_oauth_state() -> str:
 
 async def exchange_code(code: str) -> OAuthToken:
     """Exchange a GitHub authorization code for a user access token."""
+    payload = {
+        "client_id": settings.github_client_id,
+        "client_secret": settings.github_client_secret,
+        "code": code,
+    }
+    if settings.github_oauth_redirect_uri:
+        payload["redirect_uri"] = settings.github_oauth_redirect_uri
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.post(
             "https://github.com/login/oauth/access_token",
             headers={"Accept": "application/json"},
-            json={
-                "client_id": settings.github_client_id,
-                "client_secret": settings.github_client_secret,
-                "code": code,
-            },
+            json=payload,
         )
     response.raise_for_status()
-    payload = response.json()
-    token = payload.get("access_token")
+    token_data = response.json()
+    token = token_data.get("access_token")
     if not isinstance(token, str) or not token:
         raise HTTPException(status_code=401, detail="GitHub authorization failed")
     return OAuthToken(access_token=token)

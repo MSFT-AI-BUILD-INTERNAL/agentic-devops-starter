@@ -87,6 +87,7 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 |--------|-------------|
 | `COPILOT_APP_CLIENT_ID` | GitHub App client ID for user OAuth |
 | `COPILOT_APP_CLIENT_SECRET` | GitHub App client secret for user OAuth |
+| `COPILOT_APP_REDIRECT_URI` | GitHub App Callback URL; defaults to `https://<app-service-name>.azurewebsites.net/auth/callback` |
 | `AZURE_AI_PROJECT_ENDPOINT` | Azure AI Foundry endpoint used by BYOK chat routing |
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Azure AI Foundry model deployment name |
 | `FOUNDRY_AUTH_MODE` | Foundry auth mode: `auto`, `api_key`, or `azure_identity` |

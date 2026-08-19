@@ -121,6 +121,63 @@ def test_github_oauth_callback_stores_token_in_secure_cookie(
     assert "Secure" in cookie
 
 
+@pytest.mark.asyncio
+async def test_github_oauth_exchange_code_posts_configured_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OAuth token exchange should use the same GitHub App callback URI."""
+    from src.api import auth
+
+    captured_payload: dict[str, str] = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, str]:
+            return {"access_token": "user-token"}
+
+    class FakeAsyncClient:
+        def __init__(self, timeout: float) -> None:
+            assert timeout == 10.0
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+            pass
+
+        async def post(
+            self,
+            url: str,
+            headers: dict[str, str],
+            json: dict[str, str],
+        ) -> FakeResponse:
+            assert url == "https://github.com/login/oauth/access_token"
+            assert headers == {"Accept": "application/json"}
+            captured_payload.update(json)
+            return FakeResponse()
+
+    monkeypatch.setattr(auth.settings, "github_client_id", "client-id")
+    monkeypatch.setattr(auth.settings, "github_client_secret", "client-secret")
+    monkeypatch.setattr(
+        auth.settings,
+        "github_oauth_redirect_uri",
+        "https://app-agentic-devops.azurewebsites.net/auth/callback",
+    )
+    monkeypatch.setattr(auth.httpx, "AsyncClient", FakeAsyncClient)
+
+    token = await auth.exchange_code("authorization-code")
+
+    assert token.access_token == "user-token"
+    assert captured_payload == {
+        "client_id": "client-id",
+        "client_secret": "client-secret",
+        "code": "authorization-code",
+        "redirect_uri": "https://app-agentic-devops.azurewebsites.net/auth/callback",
+    }
+
+
 def test_github_oauth_session_rejects_anonymous_browser(client: TestClient) -> None:
     """The authenticated-session endpoint must reject requests without a session cookie."""
     response = client.get("/auth/session")
