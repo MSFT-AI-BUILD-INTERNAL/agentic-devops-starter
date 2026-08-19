@@ -285,29 +285,23 @@ ensure_app_configuration() {
     fi
   fi
 
-  if [ -n "${COPILOT_GITHUB_TOKEN:-}" ]; then
-    local current_token
-    current_token=$(get_app_setting "GITHUB_TOKEN")
-    if [ "$current_token" != "$COPILOT_GITHUB_TOKEN" ]; then
-      info "Setting GITHUB_TOKEN from COPILOT_GITHUB_TOKEN environment variable..."
+  if [ -n "${COPILOT_APP_CLIENT_ID:-}" ] && [ -n "${COPILOT_APP_CLIENT_SECRET:-}" ]; then
+    local current_client_id current_client_secret
+    current_client_id=$(get_app_setting "GITHUB_CLIENT_ID")
+    current_client_secret=$(get_app_setting "GITHUB_CLIENT_SECRET")
+    if [ "$current_client_id" != "$COPILOT_APP_CLIENT_ID" ] || [ "$current_client_secret" != "$COPILOT_APP_CLIENT_SECRET" ]; then
+      info "Setting GitHub App OAuth credentials..."
       az webapp config appsettings set \
         --resource-group "$RG_NAME" \
         --name "$APP_NAME" \
-        --settings GITHUB_TOKEN="$COPILOT_GITHUB_TOKEN" \
+        --settings GITHUB_CLIENT_ID="$COPILOT_APP_CLIENT_ID" GITHUB_CLIENT_SECRET="$COPILOT_APP_CLIENT_SECRET" \
         --only-show-errors 1>/dev/null
-      ok "GITHUB_TOKEN is ready"
+      ok "GitHub App OAuth credentials are ready"
     else
-      ok "GITHUB_TOKEN already matches"
+      ok "GitHub App OAuth credentials already match"
     fi
   else
-    local current_token
-    current_token=$(get_app_setting "GITHUB_TOKEN")
-
-    if [ -z "$current_token" ]; then
-      warn "GITHUB_TOKEN is not set. Export COPILOT_GITHUB_TOKEN before running this script, re-run deploy.yml, or set it manually."
-    else
-      ok "GITHUB_TOKEN is present"
-    fi
+    warn "GitHub App OAuth credentials are not set. Export COPILOT_APP_CLIENT_ID and COPILOT_APP_CLIENT_SECRET."
   fi
 }
 

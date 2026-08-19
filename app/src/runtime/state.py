@@ -135,7 +135,10 @@ class SessionPool:
         self._idle_timeout = idle_timeout
 
     async def get_or_create(
-        self, thread_id: str, isolation_session_id: str | None = None
+        self,
+        thread_id: str,
+        github_token: str | None = None,
+        isolation_session_id: str | None = None,
     ) -> CopilotSession:
         """Return an active session for *thread_id*, resuming or creating as needed."""
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
@@ -153,7 +156,6 @@ class SessionPool:
                 return session
 
             client = get_client()
-            github_token = os.environ.get("GITHUB_TOKEN")
             skill_directories = get_skill_directories()
             disabled_skills = get_disabled_skills()
             session_kwargs: dict[str, Any] = {

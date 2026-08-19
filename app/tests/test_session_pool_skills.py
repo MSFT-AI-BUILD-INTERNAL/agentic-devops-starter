@@ -106,6 +106,22 @@ async def test_standard_session_pool_does_not_use_byok_provider(
 
 
 @pytest.mark.asyncio
+async def test_standard_session_pool_uses_authenticated_user_token() -> None:
+    """Standard Copilot sessions use the OAuth token supplied for the user."""
+    client = _FakeClient()
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("oauth-thread", github_token="user-token")
+
+        assert client.create_kwargs is not None
+        assert client.create_kwargs["github_token"] == "user-token"
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_foundry_session_pool_uses_isolated_byok_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

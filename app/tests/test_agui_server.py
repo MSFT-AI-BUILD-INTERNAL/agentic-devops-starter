@@ -5,6 +5,7 @@ Follows all constitution requirements including type safety and test coverage.
 """
 
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from copilot import SubprocessConfig
@@ -50,8 +51,8 @@ def test_health_check_endpoint(client: TestClient) -> None:
     assert response.json() == {"status": "healthy"}
 
 
-def test_lifespan_starts_client_with_github_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Startup must not pass GITHUB_TOKEN to the CopilotClient constructor."""
+def test_lifespan_starts_client_without_permanent_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Startup must not pass a permanent GitHub token to the CopilotClient constructor."""
     import agui_server
 
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
@@ -68,6 +69,63 @@ def test_lifespan_starts_client_with_github_token(monkeypatch: pytest.MonkeyPatc
 
     assert response.status_code == 200
     copilot_client.assert_called_once_with()
+
+
+def test_github_oauth_login_redirects_with_csrf_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OAuth login should redirect to GitHub with the configured callback and state."""
+    import agui_server
+
+    monkeypatch.setattr(agui_server.settings, "github_client_id", "client-id")
+    monkeypatch.setattr(agui_server.settings, "github_client_secret", "client-secret")
+    monkeypatch.setattr(
+        agui_server.settings,
+        "github_oauth_redirect_uri",
+        "https://app-agentic-devops.azurewebsites.net/auth/callback",
+    )
+
+    with TestClient(agui_server.create_app()) as test_client:
+        response = test_client.get("/auth/login", follow_redirects=False)
+
+    assert response.status_code == 307
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    assert query["client_id"] == ["client-id"]
+    assert query["redirect_uri"] == [agui_server.settings.github_oauth_redirect_uri]
+    assert len(query["state"][0]) >= 32
+    assert "set-cookie" not in response.headers
+
+
+def test_github_oauth_callback_stores_token_in_secure_cookie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OAuth callback must keep the GitHub token server-side."""
+    import agui_server
+    from src.api import auth
+
+    state = auth.create_oauth_state()
+    monkeypatch.setattr(
+        "src.api.routes.exchange_code",
+        AsyncMock(return_value=auth.OAuthToken(access_token="user-token")),
+    )
+
+    with TestClient(agui_server.create_app()) as test_client:
+        response = test_client.get(
+            f"/auth/callback?code=authorization-code&state={state}",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 307
+    cookie = response.headers["set-cookie"]
+    assert "github_oauth_session=" in cookie
+    assert "user-token" not in cookie
+    assert "HttpOnly" in cookie
+    assert "Secure" in cookie
+
+
+def test_github_oauth_session_rejects_anonymous_browser(client: TestClient) -> None:
+    """The authenticated-session endpoint must reject requests without a session cookie."""
+    response = client.get("/auth/session")
+
+    assert response.status_code == 401
 
 
 def test_lifespan_configures_copilot_cli_otel(monkeypatch: pytest.MonkeyPatch) -> None:

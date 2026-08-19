@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.auth import initialize_session_cipher
 from src.api.routes import router
 from src.core.config import settings
 from src.core.logging_utils import setup_logging
@@ -71,12 +72,7 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        github_token = os.environ.get("GITHUB_TOKEN")
-        logger.info(
-            "GitHub token configuration loaded",
-            extra={"has_github_token": bool(github_token)},
-        )
-
+        initialize_session_cipher()
         # Discover predefined Agent Skills (SKILL.md open format) so the
         # Copilot SDK can load and apply them across all sessions.
         load_skills()

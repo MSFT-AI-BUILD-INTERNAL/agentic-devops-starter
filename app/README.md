@@ -26,9 +26,7 @@ app/
 - **Python ≥ 3.12**
 - **[uv](https://docs.astral.sh/uv/)** — Python package manager
 - **Node.js ≥ 20** — for the frontend
-- **GitHub CLI** (`gh`) — authenticated with `gh auth login`
-  - Required for the Copilot SDK (it uses your GitHub Copilot entitlement)
-  - Your GitHub account must have an active Copilot subscription
+- A GitHub account with an active Copilot subscription
 
 ## Quick Start (Local Development)
 
@@ -43,7 +41,7 @@ uv sync --frozen --all-extras
 
 ```bash
 cp .env.example .env
-# No edits needed for local dev — SDK uses `gh auth` automatically
+# Set COPILOT_APP_CLIENT_ID and COPILOT_APP_CLIENT_SECRET for your GitHub App.
 ```
 
 ### 3. Start the backend
@@ -56,6 +54,7 @@ uv run agui_server.py
 The server starts at **http://127.0.0.1:5100**:
 - `POST /` — AG-UI streaming endpoint (used by frontend)
 - `GET /health` — health check
+- `GET /auth/login` — start GitHub App OAuth sign-in
 - `POST /v1/fleet` — parallel multi-prompt execution
 - `POST /v1/infinite-session` — chained reasoning loop
 - `GET /v1/jobs/{job_id}` — async job status
@@ -83,6 +82,7 @@ uv run agui_client.py
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST /` | AG-UI SSE stream | Chat with streaming (frontend uses this) |
+| `GET /auth/login` | GitHub OAuth | Start GitHub App sign-in |
 | `GET /health` | Health check | Returns `{"status": "healthy"}` |
 | `POST /v1/fleet` | Fleet execution | Run up to 20 prompts in parallel |
 | `POST /v1/infinite-session` | Chained reasoning | Output N → Input N+1, up to 10 iterations |
@@ -92,7 +92,9 @@ uv run agui_client.py
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GITHUB_TOKEN` | Production only | — | GitHub PAT with `copilot` scope (local dev uses `gh auth`) |
+| `COPILOT_APP_CLIENT_ID` | Production | — | GitHub App client ID |
+| `COPILOT_APP_CLIENT_SECRET` | Production | — | GitHub App client secret |
+| `COPILOT_APP_REDIRECT_URI` | Production | — | GitHub App OAuth callback URI |
 | `COPILOT_API_HOST` | No | `0.0.0.0` | Server bind address |
 | `COPILOT_API_PORT` | No | `5100` | Server port |
 | `COPILOT_API_LOG_LEVEL` | No | `INFO` | Log level |
@@ -193,7 +195,8 @@ See [`Dockerfile.appservice`](./Dockerfile.appservice) and the [deploy workflow]
 | `AZURE_CLIENT_ID` | OIDC service principal |
 | `AZURE_TENANT_ID` | Azure AD tenant |
 | `AZURE_SUBSCRIPTION_ID` | Azure subscription |
-| `COPILOT_GITHUB_TOKEN` | GitHub PAT with `copilot` scope |
+| `COPILOT_APP_CLIENT_ID` | GitHub App client ID |
+| `COPILOT_APP_CLIENT_SECRET` | GitHub App client secret |
 
 ## How It Works
 
@@ -209,9 +212,8 @@ Browser → React (useChat hook)
   ← Real-time token rendering in chat UI
 ```
 
-**Authentication flow:**
-- **Local dev**: SDK spawns bundled CLI → uses `gh auth` token automatically
-- **Production**: `GITHUB_TOKEN` env var → `CopilotClient(github_token=...)` → CLI authenticates via PAT
+**Authentication flow:** the browser starts at `/auth/login`, GitHub App OAuth exchanges the
+authorization code server-side, and each Copilot session receives the authenticated user's token.
 
 ## License
 
