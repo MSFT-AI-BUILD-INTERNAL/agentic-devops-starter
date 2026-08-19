@@ -111,6 +111,9 @@ def _session_cipher(client_secret: str) -> Fernet:
     return Fernet(base64.urlsafe_b64encode(key))
 
 
+_session_cipher(settings.github_client_secret)
+
+
 def _oauth_hmac(payload: bytes) -> str:
     """Return a URL-safe HMAC for an OAuth value without exposing the key."""
     digest = hmac.new(settings.github_client_secret.encode(), payload, hashlib.sha256).digest()
