@@ -4,6 +4,7 @@ import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
+from urllib.parse import urlencode
 
 from copilot.generated.session_events import (
     AssistantMessageDeltaData,
@@ -12,9 +13,20 @@ from copilot.generated.session_events import (
     SessionIdleData,
 )
 from fastapi import APIRouter, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 
 import src.api.sse_utils as sse_utils
+from src.api.auth import (
+    _SESSION_COOKIE,
+    _STATE_COOKIE,
+    clear_token,
+    consume_oauth_state,
+    create_oauth_state,
+    exchange_code,
+    get_user_session_id,
+    get_user_token,
+    store_token,
+)
 from src.api.error_handler import log_and_respond
 from src.api.models import (
     FleetRequest,
@@ -55,6 +67,59 @@ sse_utils.set_logger(logger)
 router = APIRouter()
 
 
+@router.get("/auth/login")
+async def github_login() -> RedirectResponse:
+    """Redirect the browser to GitHub's OAuth authorization page."""
+    if not settings.github_client_id or not settings.github_client_secret:
+        raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
+    state = create_oauth_state()
+    query = urlencode(
+        {
+            "client_id": settings.github_client_id,
+            "redirect_uri": settings.github_oauth_redirect_uri,
+            "state": state,
+        }
+    )
+    response = RedirectResponse(f"https://github.com/login/oauth/authorize?{query}")
+    response.set_cookie(_STATE_COOKIE, state, httponly=True, secure=True, samesite="lax", max_age=600)
+    return response
+
+
+@router.get("/auth/callback")
+async def github_callback(request: Request, code: str, state: str) -> RedirectResponse:
+    """Complete GitHub OAuth and establish an opaque browser session."""
+    if request.cookies.get(_STATE_COOKIE) != state or not consume_oauth_state(state):
+        raise HTTPException(status_code=400, detail="Invalid OAuth state")
+    session_id = store_token(await exchange_code(code))
+    response = RedirectResponse("/")
+    response.set_cookie(
+        _SESSION_COOKIE,
+        session_id,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=8 * 60 * 60,
+    )
+    response.delete_cookie(_STATE_COOKIE)
+    return response
+
+
+@router.get("/auth/session")
+async def github_session(request: Request) -> dict[str, bool]:
+    """Return whether the current browser has an authenticated GitHub session."""
+    get_user_token(request)
+    return {"authenticated": True}
+
+
+@router.post("/auth/logout", status_code=204)
+async def github_logout(request: Request) -> Response:
+    """End the current browser session and discard its GitHub token."""
+    clear_token(request)
+    response = Response(status_code=204)
+    response.delete_cookie(_SESSION_COOKIE)
+    return response
+
+
 def _resolve_isolation_session_id(request: Request, fallback: str) -> str:
     raw = request.headers.get(settings.isolation_session_header)
     return normalize_isolation_session_id(raw, fallback)
@@ -76,7 +141,8 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
     input_data = await request.json()
     thread_id: str = input_data.get("thread_id") or uuid.uuid4().hex[:12]
     run_id: str = input_data.get("run_id") or uuid.uuid4().hex[:12]
-    isolation_session_id = _resolve_isolation_session_id(request, thread_id)
+    github_token = get_user_token(request)
+    isolation_session_id = get_user_session_id(request)
     messages: list[dict[str, str]] = input_data.get("messages", [])
     attachments: list[dict[str, Any]] | None = input_data.get("attachments")
 
@@ -88,6 +154,7 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
     return _chat_streaming_response(
         get_session_pool(),
         isolation_session_id,
+        github_token,
         thread_id,
         run_id,
         prompt,
@@ -113,6 +180,7 @@ async def foundry_byok_endpoint(request: Request) -> StreamingResponse:
     return _chat_streaming_response(
         get_foundry_session_pool(),
         isolation_session_id,
+        None,
         thread_id,
         run_id,
         prompt,
@@ -123,6 +191,7 @@ async def foundry_byok_endpoint(request: Request) -> StreamingResponse:
 def _chat_streaming_response(
     pool: SessionPool | FoundrySessionPool,
     isolation_session_id: str,
+    github_token: str | None,
     thread_id: str,
     run_id: str,
     prompt: str,
@@ -132,7 +201,14 @@ def _chat_streaming_response(
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
-            session = await pool.get_or_create(thread_id, isolation_session_id=isolation_session_id)
+            if isinstance(pool, SessionPool):
+                session = await pool.get_or_create(
+                    thread_id,
+                    github_token,
+                    isolation_session_id=isolation_session_id,
+                )
+            else:
+                session = await pool.get_or_create(thread_id, isolation_session_id=isolation_session_id)
         except RuntimeError as error:
             logger.exception("Chat session initialization failed", extra={"thread_id": thread_id})
             message = initialization_error_message(error, fallback_error_message)

@@ -69,13 +69,14 @@ jobs:
 
       - name: Update App Service configuration
         run: |
-          # Set GitHub PAT for Copilot SDK authentication and other secrets.
+          # Set GitHub App OAuth credentials and other secrets.
           # Static settings (WEBSITES_PORT, CORS_ORIGINS) are managed by Terraform.
           az webapp config appsettings set \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.APP_SERVICE_NAME }} \
             --settings \
-              GITHUB_TOKEN="${{ secrets.COPILOT_GITHUB_TOKEN }}" \
+              GITHUB_CLIENT_ID="${{ secrets.COPILOT_APP_CLIENT_ID }}" \
+              GITHUB_CLIENT_SECRET="${{ secrets.COPILOT_APP_CLIENT_SECRET }}" \
               AZURE_AI_PROJECT_ENDPOINT="${{ secrets.AZURE_AI_PROJECT_ENDPOINT }}" \
               AZURE_AI_MODEL_DEPLOYMENT_NAME="${{ secrets.AZURE_AI_MODEL_DEPLOYMENT_NAME }}" \
               FOUNDRY_AUTH_MODE="${{ secrets.FOUNDRY_AUTH_MODE }}" \

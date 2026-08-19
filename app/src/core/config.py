@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     tool_timeout: float = 10.0
     isolation_session_header: str = "X-Isolation-Session-ID"
     session_config_root_dir: str = ".copilot-session-config"
+    github_client_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("COPILOT_APP_CLIENT_ID", "GITHUB_CLIENT_ID"),
+    )
+    github_client_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices("COPILOT_APP_CLIENT_SECRET", "GITHUB_CLIENT_SECRET"),
+    )
+    github_oauth_redirect_uri: str = "https://app-agentic-devops.azurewebsites.net/auth/callback"
     # 공개 테스트용 엔드포인트 (외부 API 연동 예시)
     tool_external_api_url: str = "https://api.github.com/zen"
 

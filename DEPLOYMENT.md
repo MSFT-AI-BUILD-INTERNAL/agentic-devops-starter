@@ -85,7 +85,8 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 ### Application Configuration (Optional)
 | Secret | Description |
 |--------|-------------|
-| `COPILOT_GITHUB_TOKEN` | GitHub PAT with `copilot` scope for Copilot SDK authentication |
+| `COPILOT_APP_CLIENT_ID` | GitHub App client ID for user OAuth |
+| `COPILOT_APP_CLIENT_SECRET` | GitHub App client secret for user OAuth |
 | `AZURE_AI_PROJECT_ENDPOINT` | Azure AI Foundry endpoint used by BYOK chat routing |
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Azure AI Foundry model deployment name |
 | `FOUNDRY_AUTH_MODE` | Foundry auth mode: `auto`, `api_key`, or `azure_identity` |
@@ -201,7 +202,8 @@ Static infrastructure settings (e.g., `WEBSITES_PORT`, `CORS`) are managed by **
 |---------|-----------|--------|
 | `WEBSITES_PORT` | Terraform | Static infrastructure config |
 | `CORS` | Terraform (`site_config.cors`) | Static infrastructure config |
-| `GITHUB_TOKEN` | deploy.yml | Copilot SDK auth (from `COPILOT_GITHUB_TOKEN` secret) |
+| `GITHUB_CLIENT_ID` | deploy.yml | GitHub App OAuth client ID (from `COPILOT_APP_CLIENT_ID`) |
+| `GITHUB_CLIENT_SECRET` | deploy.yml | GitHub App OAuth client secret (from `COPILOT_APP_CLIENT_SECRET`) |
 | `AZURE_AI_PROJECT_ENDPOINT` | deploy.yml | Foundry BYOK endpoint from GitHub secret |
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | deploy.yml | Foundry BYOK model deployment from GitHub secret |
 | `FOUNDRY_AUTH_MODE` | deploy.yml | Foundry BYOK auth mode from GitHub secret |

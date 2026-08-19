@@ -104,12 +104,10 @@ uv sync --frozen --all-extras
 
 ```bash
 cp .env.example .env
-gh auth login
 ```
 
-For local development, `GITHUB_TOKEN` is optional because the Copilot SDK can use
-the authenticated GitHub CLI user. In production, set `GITHUB_TOKEN` from the
-`COPILOT_GITHUB_TOKEN` GitHub Actions secret.
+Set `COPILOT_APP_CLIENT_ID` and `COPILOT_APP_CLIENT_SECRET` for the GitHub App.
+The production OAuth callback is `https://app-agentic-devops.azurewebsites.net/auth/callback`.
 
 ### 3. Start the backend
 
@@ -141,6 +139,7 @@ by frontend/proxy layers.
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/` | Chat SSE stream |
+| `GET` | `/auth/login` | Start GitHub App OAuth sign-in |
 | `GET` | `/health` | Health check |
 | `POST` | `/v1/files/upload` | Upload a validated file to Azure Blob Storage |
 | `DELETE` | `/v1/threads/{thread_id}` | Disconnect and clean up a chat thread |
@@ -158,7 +157,8 @@ All session-scoped routes also accept `X-Isolation-Session-ID` to isolate runtim
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GITHUB_TOKEN` | Production | unset | GitHub PAT with `copilot` scope for Copilot SDK authentication |
+| `COPILOT_APP_CLIENT_ID` | Production | unset | GitHub App client ID |
+| `COPILOT_APP_CLIENT_SECRET` | Production | unset | GitHub App client secret |
 | `COPILOT_API_HOST` | No | `0.0.0.0` | Backend bind host |
 | `COPILOT_API_PORT` | No | `5100` | Backend port |
 | `COPILOT_API_LOG_LEVEL` | No | `INFO` | Backend log level |
@@ -251,7 +251,8 @@ Required GitHub Actions secrets:
 | `ACR_NAME` | Azure Container Registry name |
 | `APP_SERVICE_NAME` | App Service name |
 | `RESOURCE_GROUP` | Resource group name |
-| `COPILOT_GITHUB_TOKEN` | GitHub PAT with `copilot` scope |
+| `COPILOT_APP_CLIENT_ID` | GitHub App client ID |
+| `COPILOT_APP_CLIENT_SECRET` | GitHub App client secret |
 | `AZURE_AI_PROJECT_ENDPOINT` | Azure AI Foundry endpoint for BYOK routing |
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Azure AI Foundry model deployment name |
 | `FOUNDRY_AUTH_MODE` | Foundry auth mode: `auto`, `api_key`, or `azure_identity` |
