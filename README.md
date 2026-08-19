@@ -159,6 +159,7 @@ All session-scoped routes also accept `X-Isolation-Session-ID` to isolate runtim
 |----------|----------|---------|-------------|
 | `COPILOT_APP_CLIENT_ID` | Production | unset | GitHub App client ID |
 | `COPILOT_APP_CLIENT_SECRET` | Production | unset | GitHub App client secret |
+| `COPILOT_APP_REDIRECT_URI` | Production | unset | GitHub App OAuth callback URI |
 | `COPILOT_API_HOST` | No | `0.0.0.0` | Backend bind host |
 | `COPILOT_API_PORT` | No | `5100` | Backend port |
 | `COPILOT_API_LOG_LEVEL` | No | `INFO` | Backend log level |

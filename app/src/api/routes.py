@@ -69,7 +69,11 @@ router = APIRouter()
 @router.get("/auth/login")
 async def github_login() -> RedirectResponse:
     """Redirect the browser to GitHub's OAuth authorization page."""
-    if not settings.github_client_id or not settings.github_client_secret:
+    if (
+        not settings.github_client_id
+        or not settings.github_client_secret
+        or not settings.github_oauth_redirect_uri
+    ):
         raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
     state = create_oauth_state()
     query = urlencode(
@@ -105,8 +109,9 @@ async def github_callback(request: Request, code: str, state: str) -> RedirectRe
 
 @router.get("/auth/session")
 async def github_session(request: Request) -> dict[str, bool]:
-    """Return whether the current browser has an authenticated GitHub session."""
-    return {"authenticated": bool(get_user_token(request))}
+    """Confirm that the current browser has an authenticated GitHub session."""
+    get_user_token(request)
+    return {"authenticated": True}
 
 
 @router.post("/auth/logout", status_code=204)

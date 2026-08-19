@@ -94,6 +94,7 @@ uv run agui_client.py
 |----------|----------|---------|-------------|
 | `COPILOT_APP_CLIENT_ID` | Production | — | GitHub App client ID |
 | `COPILOT_APP_CLIENT_SECRET` | Production | — | GitHub App client secret |
+| `COPILOT_APP_REDIRECT_URI` | Production | — | GitHub App OAuth callback URI |
 | `COPILOT_API_HOST` | No | `0.0.0.0` | Server bind address |
 | `COPILOT_API_PORT` | No | `5100` | Server port |
 | `COPILOT_API_LOG_LEVEL` | No | `INFO` | Log level |

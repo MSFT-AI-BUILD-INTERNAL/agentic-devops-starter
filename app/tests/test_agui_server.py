@@ -77,6 +77,11 @@ def test_github_oauth_login_redirects_with_csrf_state(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(agui_server.settings, "github_client_id", "client-id")
     monkeypatch.setattr(agui_server.settings, "github_client_secret", "client-secret")
+    monkeypatch.setattr(
+        agui_server.settings,
+        "github_oauth_redirect_uri",
+        "https://app-agentic-devops.azurewebsites.net/auth/callback",
+    )
 
     with TestClient(agui_server.create_app()) as test_client:
         response = test_client.get("/auth/login", follow_redirects=False)

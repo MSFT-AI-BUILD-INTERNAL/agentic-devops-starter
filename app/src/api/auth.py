@@ -67,12 +67,8 @@ def get_user_token(request: Request) -> str:
 
 
 def get_user_session_id(request: Request) -> str:
-    """Return the opaque ID for the authenticated browser session."""
-    session_id = request.cookies.get(_SESSION_COOKIE)
-    get_user_token(request)
-    if session_id is None:
-        raise HTTPException(status_code=401, detail="GitHub authentication required")
-    return session_id
+    """Return a stable, non-secret namespace for the authenticated user token."""
+    return hashlib.sha256(get_user_token(request).encode()).hexdigest()
 
 
 def _session_cipher() -> Fernet:
