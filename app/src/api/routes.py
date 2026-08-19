@@ -1,6 +1,7 @@
 """API route handlers for the AG-UI server."""
 
 import asyncio
+import hashlib
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -20,7 +21,6 @@ from src.api.auth import (
     _SESSION_COOKIE,
     _STATE_COOKIE,
     clear_token,
-    consume_oauth_state,
     create_oauth_state,
     exchange_code,
     get_user_session_id,
@@ -88,7 +88,7 @@ async def github_login() -> RedirectResponse:
 @router.get("/auth/callback")
 async def github_callback(request: Request, code: str, state: str) -> RedirectResponse:
     """Complete GitHub OAuth and establish an opaque browser session."""
-    if request.cookies.get(_STATE_COOKIE) != state or not consume_oauth_state(state):
+    if request.cookies.get(_STATE_COOKIE) != state:
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     session_id = store_token(await exchange_code(code))
     response = RedirectResponse("/")
@@ -125,6 +125,13 @@ def _resolve_isolation_session_id(request: Request, fallback: str) -> str:
     return normalize_isolation_session_id(raw, fallback)
 
 
+def _resolve_authenticated_isolation_session_id(request: Request, fallback: str) -> str:
+    """Namespace a client-selected isolation ID by the authenticated browser session."""
+    client_isolation_id = _resolve_isolation_session_id(request, fallback)
+    session_id = get_user_session_id(request)
+    return hashlib.sha256(f"{session_id}:{client_isolation_id}".encode()).hexdigest()
+
+
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "healthy"}
@@ -142,7 +149,7 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
     thread_id: str = input_data.get("thread_id") or uuid.uuid4().hex[:12]
     run_id: str = input_data.get("run_id") or uuid.uuid4().hex[:12]
     github_token = get_user_token(request)
-    isolation_session_id = get_user_session_id(request)
+    isolation_session_id = _resolve_authenticated_isolation_session_id(request, thread_id)
     messages: list[dict[str, str]] = input_data.get("messages", [])
     attachments: list[dict[str, Any]] | None = input_data.get("attachments")
 

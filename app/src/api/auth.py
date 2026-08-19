@@ -10,7 +10,6 @@ from src.core.config import settings
 
 _SESSION_COOKIE = "github_oauth_session"
 _STATE_COOKIE = "github_oauth_state"
-_oauth_states: set[str] = set()
 _tokens: dict[str, str] = {}
 
 
@@ -22,18 +21,8 @@ class OAuthToken:
 
 
 def create_oauth_state() -> str:
-    """Create and retain a one-time OAuth CSRF state value."""
-    state = secrets.token_urlsafe(32)
-    _oauth_states.add(state)
-    return state
-
-
-def consume_oauth_state(state: str) -> bool:
-    """Consume an OAuth state value, returning whether it was valid."""
-    if state not in _oauth_states:
-        return False
-    _oauth_states.remove(state)
-    return True
+    """Create an OAuth CSRF state value bound to an HttpOnly browser cookie."""
+    return secrets.token_urlsafe(32)
 
 
 async def exchange_code(code: str) -> OAuthToken:
