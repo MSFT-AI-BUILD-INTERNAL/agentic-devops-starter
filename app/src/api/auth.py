@@ -2,15 +2,14 @@
 
 import base64
 from functools import lru_cache
-import hashlib
-import hmac
 import secrets
 import time
 from dataclasses import dataclass
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import cmac, hashes
+from cryptography.hazmat.primitives.ciphers import algorithms
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from fastapi import HTTPException, Request
 
@@ -20,7 +19,7 @@ _SESSION_COOKIE = "github_oauth_session"
 _SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
 _OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
 _FERNET_KEY_SALT = b"agentic-devops-starter/oauth-cookie-encryption/v1"
-_OAUTH_HMAC_KEY_SALT = b"agentic-devops-starter/oauth-hmac-key/v1"
+_OAUTH_CMAC_KEY_SALT = b"agentic-devops-starter/oauth-cmac-key/v1"
 _oauth_states: dict[str, float] = {}
 
 
@@ -87,12 +86,12 @@ def get_user_token(request: Request) -> str:
 
 def get_user_session_id(request: Request) -> str:
     """Return a stable, non-secret namespace for the authenticated user token."""
-    return _oauth_hmac(get_user_token(request).encode())
+    return _oauth_cmac(get_user_token(request).encode())
 
 
 def get_user_isolation_namespace(session_id: str, client_isolation_id: str) -> str:
     """Return an authenticated namespace for a client-selected isolation ID."""
-    return _oauth_hmac(f"{session_id}:{client_isolation_id}".encode())
+    return _oauth_cmac(f"{session_id}:{client_isolation_id}".encode())
 
 
 @lru_cache
@@ -111,21 +110,23 @@ def initialize_session_cipher() -> None:
     """Warm OAuth cryptographic key caches when OAuth is configured."""
     if settings.github_client_secret:
         _session_cipher(settings.github_client_secret)
-        _oauth_hmac_key(settings.github_client_secret)
+        _oauth_cmac_key(settings.github_client_secret)
 
 
-def _oauth_hmac(payload: bytes) -> str:
-    """Return a URL-safe HMAC for an OAuth value without exposing the key."""
-    digest = hmac.new(_oauth_hmac_key(settings.github_client_secret), payload, hashlib.sha512).digest()
+def _oauth_cmac(payload: bytes) -> str:
+    """Return a URL-safe CMAC for an OAuth value without exposing the key."""
+    signer = cmac.CMAC(algorithms.AES(_oauth_cmac_key(settings.github_client_secret)))
+    signer.update(payload)
+    digest = signer.finalize()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
 @lru_cache
-def _oauth_hmac_key(client_secret: str) -> bytes:
-    """Derive a separate key for OAuth HMAC operations."""
+def _oauth_cmac_key(client_secret: str) -> bytes:
+    """Derive a separate key for OAuth CMAC operations."""
     return PBKDF2HMAC(
         algorithm=hashes.SHA256(),
-        length=64,
-        salt=_OAUTH_HMAC_KEY_SALT,
+        length=32,
+        salt=_OAUTH_CMAC_KEY_SALT,
         iterations=600_000,
     ).derive(client_secret.encode())
