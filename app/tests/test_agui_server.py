@@ -4,8 +4,8 @@ Tests the AG-UI server endpoints and configuration.
 Follows all constitution requirements including type safety and test coverage.
 """
 
-from urllib.parse import parse_qs, urlparse
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from copilot import SubprocessConfig
@@ -91,6 +91,8 @@ def test_github_oauth_login_redirects_with_csrf_state(monkeypatch: pytest.Monkey
     assert query["client_id"] == ["client-id"]
     assert query["redirect_uri"] == [agui_server.settings.github_oauth_redirect_uri]
     assert len(query["state"][0]) >= 32
+    assert "github_oauth_nonce=" in response.headers["set-cookie"]
+    assert query["state"][0] not in response.headers["set-cookie"]
 
 
 def test_github_oauth_callback_stores_token_in_secure_cookie(
@@ -100,14 +102,15 @@ def test_github_oauth_callback_stores_token_in_secure_cookie(
     import agui_server
     from src.api import auth
 
-    state = auth.create_oauth_state()
+    nonce = auth.create_oauth_nonce()
+    state = auth.create_oauth_state(nonce)
     monkeypatch.setattr(
         "src.api.routes.exchange_code",
         AsyncMock(return_value=auth.OAuthToken(access_token="user-token")),
     )
 
     with TestClient(agui_server.create_app()) as test_client:
-        test_client.cookies.set(auth._STATE_COOKIE, auth.protect_oauth_state(state))
+        test_client.cookies.set(auth._OAUTH_NONCE_COOKIE, nonce)
         response = test_client.get(
             f"/auth/callback?code=authorization-code&state={state}",
             follow_redirects=False,

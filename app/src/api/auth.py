@@ -4,17 +4,22 @@ import base64
 import hashlib
 import hmac
 import secrets
+import time
 from dataclasses import dataclass
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from fastapi import HTTPException, Request
 
 from src.core.config import settings
 
 _SESSION_COOKIE = "github_oauth_session"
-_STATE_COOKIE = "github_oauth_state"
+_OAUTH_NONCE_COOKIE = "github_oauth_nonce"
 _SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
+_OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
+_FERNET_KEY_SALT = b"agentic-devops-starter/oauth-cookie-encryption/v1"
 
 
 @dataclass(frozen=True)
@@ -24,9 +29,17 @@ class OAuthToken:
     access_token: str
 
 
-def create_oauth_state() -> str:
-    """Create an OAuth CSRF state value bound to an HttpOnly browser cookie."""
+def create_oauth_nonce() -> str:
+    """Create an opaque nonce for the HttpOnly OAuth correlation cookie."""
     return secrets.token_urlsafe(32)
+
+
+def create_oauth_state(nonce: str) -> str:
+    """Create an expiry-bound OAuth CSRF state token for a browser nonce."""
+    expires_at = int(time.time()) + _OAUTH_STATE_MAX_AGE_SECONDS
+    payload = f"{nonce}.{expires_at}".encode()
+    signature = _oauth_hmac(payload)
+    return f"{expires_at}.{signature}"
 
 
 async def exchange_code(code: str) -> OAuthToken:
@@ -54,18 +67,17 @@ def store_token(token: OAuthToken) -> str:
     return _session_cipher().encrypt(token.access_token.encode()).decode()
 
 
-def protect_oauth_state(state: str) -> str:
-    """Encrypt an OAuth state value for the browser cookie."""
-    return _session_cipher().encrypt(state.encode()).decode()
-
-
-def verify_oauth_state(protected_state: str, state: str) -> bool:
-    """Return whether a state cookie contains the callback's state value."""
+def verify_oauth_state(nonce: str, state: str) -> bool:
+    """Return whether a callback state token is valid for the browser nonce."""
     try:
-        cookie_state = _session_cipher().decrypt(protected_state.encode(), ttl=600).decode()
-    except (InvalidToken, UnicodeDecodeError):
+        expires_at_text, _ = state.split(".", maxsplit=1)
+        expires_at = int(expires_at_text)
+    except (ValueError, AttributeError):
         return False
-    return hmac.compare_digest(cookie_state, state)
+    if not nonce or expires_at < time.time():
+        return False
+    expected_state = f"{expires_at}.{_oauth_hmac(f'{nonce}.{expires_at}'.encode())}"
+    return hmac.compare_digest(expected_state, state)
 
 
 def get_user_token(request: Request) -> str:
@@ -83,10 +95,21 @@ def get_user_token(request: Request) -> str:
 
 def get_user_session_id(request: Request) -> str:
     """Return a stable, non-secret namespace for the authenticated user token."""
-    return hashlib.sha256(get_user_token(request).encode()).hexdigest()
+    return _oauth_hmac(get_user_token(request).encode())
 
 
 def _session_cipher() -> Fernet:
     """Build a cookie cipher from the GitHub App client secret."""
-    key = base64.urlsafe_b64encode(hashlib.sha256(settings.github_client_secret.encode()).digest())
-    return Fernet(key)
+    key = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=_FERNET_KEY_SALT,
+        iterations=600_000,
+    ).derive(settings.github_client_secret.encode())
+    return Fernet(base64.urlsafe_b64encode(key))
+
+
+def _oauth_hmac(payload: bytes) -> str:
+    """Return a URL-safe HMAC for an OAuth value without exposing the key."""
+    digest = hmac.new(settings.github_client_secret.encode(), payload, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()

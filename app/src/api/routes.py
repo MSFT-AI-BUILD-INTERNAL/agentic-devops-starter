@@ -18,13 +18,13 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response, Streamin
 
 import src.api.sse_utils as sse_utils
 from src.api.auth import (
+    _OAUTH_NONCE_COOKIE,
     _SESSION_COOKIE,
-    _STATE_COOKIE,
+    create_oauth_nonce,
     create_oauth_state,
     exchange_code,
     get_user_session_id,
     get_user_token,
-    protect_oauth_state,
     store_token,
     verify_oauth_state,
 )
@@ -77,7 +77,8 @@ async def github_login() -> RedirectResponse:
         or not settings.github_oauth_redirect_uri
     ):
         raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
-    state = create_oauth_state()
+    nonce = create_oauth_nonce()
+    state = create_oauth_state(nonce)
     query = urlencode(
         {
             "client_id": settings.github_client_id,
@@ -86,9 +87,8 @@ async def github_login() -> RedirectResponse:
         }
     )
     response = RedirectResponse(f"https://github.com/login/oauth/authorize?{query}")
-    protected_state = protect_oauth_state(state)
     response.set_cookie(
-        _STATE_COOKIE, protected_state, httponly=True, secure=True, samesite="lax", max_age=600
+        _OAUTH_NONCE_COOKIE, nonce, httponly=True, secure=True, samesite="lax", max_age=600
     )
     return response
 
@@ -96,7 +96,7 @@ async def github_login() -> RedirectResponse:
 @router.get("/auth/callback")
 async def github_callback(request: Request, code: str, state: str) -> RedirectResponse:
     """Complete GitHub OAuth and establish an opaque browser session."""
-    if not verify_oauth_state(request.cookies.get(_STATE_COOKIE, ""), state):
+    if not verify_oauth_state(request.cookies.get(_OAUTH_NONCE_COOKIE, ""), state):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     session_id = store_token(await exchange_code(code))
     response = RedirectResponse("/")
@@ -108,7 +108,7 @@ async def github_callback(request: Request, code: str, state: str) -> RedirectRe
         samesite="lax",
         max_age=8 * 60 * 60,
     )
-    response.delete_cookie(_STATE_COOKIE)
+    response.delete_cookie(_OAUTH_NONCE_COOKIE)
     return response
 
 
