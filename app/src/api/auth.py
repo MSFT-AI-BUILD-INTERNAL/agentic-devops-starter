@@ -111,7 +111,10 @@ def _session_cipher(client_secret: str) -> Fernet:
     return Fernet(base64.urlsafe_b64encode(key))
 
 
-_session_cipher(settings.github_client_secret)
+def initialize_session_cipher() -> None:
+    """Warm the OAuth cookie cipher cache when OAuth is configured."""
+    if settings.github_client_secret:
+        _session_cipher(settings.github_client_secret)
 
 
 def _oauth_hmac(payload: bytes) -> str:
