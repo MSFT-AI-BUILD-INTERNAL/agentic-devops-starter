@@ -58,8 +58,8 @@ async def exchange_code(code: str) -> OAuthToken:
             json=payload,
         )
     response.raise_for_status()
-    payload = response.json()
-    token = payload.get("access_token")
+    token_data = response.json()
+    token = token_data.get("access_token")
     if not isinstance(token, str) or not token:
         raise HTTPException(status_code=401, detail="GitHub authorization failed")
     return OAuthToken(access_token=token)
