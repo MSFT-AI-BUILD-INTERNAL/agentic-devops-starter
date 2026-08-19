@@ -1,16 +1,19 @@
 """GitHub OAuth helpers for Copilot SDK user authentication."""
 
+import base64
+import hashlib
 import secrets
 from dataclasses import dataclass
 
 import httpx
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException, Request
 
 from src.core.config import settings
 
 _SESSION_COOKIE = "github_oauth_session"
 _STATE_COOKIE = "github_oauth_state"
-_tokens: dict[str, str] = {}
+_SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -46,31 +49,33 @@ async def exchange_code(code: str) -> OAuthToken:
 
 
 def store_token(token: OAuthToken) -> str:
-    """Store a token server-side and return its opaque browser session ID."""
-    session_id = secrets.token_urlsafe(32)
-    _tokens[session_id] = token.access_token
-    return session_id
+    """Encrypt a token for the opaque browser session cookie."""
+    return _session_cipher().encrypt(token.access_token.encode()).decode()
 
 
 def get_user_token(request: Request) -> str:
     """Return the authenticated user's GitHub token or reject the request."""
     session_id = request.cookies.get(_SESSION_COOKIE)
-    token = _tokens.get(session_id or "")
-    if token is None:
+    if not session_id:
         raise HTTPException(status_code=401, detail="GitHub authentication required")
-    return token
+    try:
+        return _session_cipher().decrypt(
+            session_id.encode(), ttl=_SESSION_MAX_AGE_SECONDS
+        ).decode()
+    except (InvalidToken, UnicodeDecodeError):
+        raise HTTPException(status_code=401, detail="GitHub authentication required") from None
 
 
 def get_user_session_id(request: Request) -> str:
     """Return the opaque ID for the authenticated browser session."""
     session_id = request.cookies.get(_SESSION_COOKIE)
-    if session_id not in _tokens:
+    get_user_token(request)
+    if session_id is None:
         raise HTTPException(status_code=401, detail="GitHub authentication required")
     return session_id
 
 
-def clear_token(request: Request) -> None:
-    """Remove the authenticated user's server-side token."""
-    session_id = request.cookies.get(_SESSION_COOKIE)
-    if session_id:
-        _tokens.pop(session_id, None)
+def _session_cipher() -> Fernet:
+    """Build a cookie cipher from the GitHub App client secret."""
+    key = base64.urlsafe_b64encode(hashlib.sha256(settings.github_client_secret.encode()).digest())
+    return Fernet(key)

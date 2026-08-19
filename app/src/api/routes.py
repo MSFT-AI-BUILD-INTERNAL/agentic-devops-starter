@@ -20,7 +20,6 @@ import src.api.sse_utils as sse_utils
 from src.api.auth import (
     _SESSION_COOKIE,
     _STATE_COOKIE,
-    clear_token,
     create_oauth_state,
     exchange_code,
     get_user_session_id,
@@ -107,14 +106,12 @@ async def github_callback(request: Request, code: str, state: str) -> RedirectRe
 @router.get("/auth/session")
 async def github_session(request: Request) -> dict[str, bool]:
     """Return whether the current browser has an authenticated GitHub session."""
-    get_user_token(request)
-    return {"authenticated": True}
+    return {"authenticated": bool(get_user_token(request))}
 
 
 @router.post("/auth/logout", status_code=204)
-async def github_logout(request: Request) -> Response:
+async def github_logout() -> Response:
     """End the current browser session and discard its GitHub token."""
-    clear_token(request)
     response = Response(status_code=204)
     response.delete_cookie(_SESSION_COOKIE)
     return response
