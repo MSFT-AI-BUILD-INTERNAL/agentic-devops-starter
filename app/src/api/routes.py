@@ -1,7 +1,6 @@
 """API route handlers for the AG-UI server."""
 
 import asyncio
-import hashlib
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -18,11 +17,10 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response, Streamin
 
 import src.api.sse_utils as sse_utils
 from src.api.auth import (
-    _OAUTH_NONCE_COOKIE,
     _SESSION_COOKIE,
-    create_oauth_nonce,
     create_oauth_state,
     exchange_code,
+    get_user_isolation_namespace,
     get_user_session_id,
     get_user_token,
     store_token,
@@ -77,8 +75,7 @@ async def github_login() -> RedirectResponse:
         or not settings.github_oauth_redirect_uri
     ):
         raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
-    nonce = create_oauth_nonce()
-    state = create_oauth_state(nonce)
+    state = create_oauth_state()
     query = urlencode(
         {
             "client_id": settings.github_client_id,
@@ -86,17 +83,13 @@ async def github_login() -> RedirectResponse:
             "state": state,
         }
     )
-    response = RedirectResponse(f"https://github.com/login/oauth/authorize?{query}")
-    response.set_cookie(
-        _OAUTH_NONCE_COOKIE, nonce, httponly=True, secure=True, samesite="lax", max_age=600
-    )
-    return response
+    return RedirectResponse(f"https://github.com/login/oauth/authorize?{query}")
 
 
 @router.get("/auth/callback")
 async def github_callback(request: Request, code: str, state: str) -> RedirectResponse:
     """Complete GitHub OAuth and establish an opaque browser session."""
-    if not verify_oauth_state(request.cookies.get(_OAUTH_NONCE_COOKIE, ""), state):
+    if not verify_oauth_state(state):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     session_id = store_token(await exchange_code(code))
     response = RedirectResponse("/")
@@ -108,7 +101,6 @@ async def github_callback(request: Request, code: str, state: str) -> RedirectRe
         samesite="lax",
         max_age=8 * 60 * 60,
     )
-    response.delete_cookie(_OAUTH_NONCE_COOKIE)
     return response
 
 
@@ -136,7 +128,7 @@ def _resolve_authenticated_isolation_session_id(request: Request, fallback: str)
     """Namespace a client-selected isolation ID by the authenticated browser session."""
     client_isolation_id = _resolve_isolation_session_id(request, fallback)
     session_id = get_user_session_id(request)
-    return hashlib.sha256(f"{session_id}:{client_isolation_id}".encode()).hexdigest()
+    return get_user_isolation_namespace(session_id, client_isolation_id)
 
 
 @router.get("/health")

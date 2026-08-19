@@ -17,10 +17,10 @@ from fastapi import HTTPException, Request
 from src.core.config import settings
 
 _SESSION_COOKIE = "github_oauth_session"
-_OAUTH_NONCE_COOKIE = "github_oauth_nonce"
 _SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
 _OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
 _FERNET_KEY_SALT = b"agentic-devops-starter/oauth-cookie-encryption/v1"
+_oauth_states: dict[str, float] = {}
 
 
 @dataclass(frozen=True)
@@ -30,17 +30,15 @@ class OAuthToken:
     access_token: str
 
 
-def create_oauth_nonce() -> str:
-    """Create an opaque nonce for the HttpOnly OAuth correlation cookie."""
-    return secrets.token_urlsafe(32)
-
-
-def create_oauth_state(nonce: str) -> str:
-    """Create an expiry-bound OAuth CSRF state token for a browser nonce."""
-    expires_at = int(time.time()) + _OAUTH_STATE_MAX_AGE_SECONDS
-    payload = f"{nonce}.{expires_at}".encode()
-    signature = _oauth_hmac(payload)
-    return f"{expires_at}.{signature}"
+def create_oauth_state() -> str:
+    """Create and retain a single-use OAuth CSRF state token."""
+    now = time.time()
+    for expired_state, expires_at in tuple(_oauth_states.items()):
+        if expires_at < now:
+            del _oauth_states[expired_state]
+    state = secrets.token_urlsafe(32)
+    _oauth_states[state] = now + _OAUTH_STATE_MAX_AGE_SECONDS
+    return state
 
 
 async def exchange_code(code: str) -> OAuthToken:
@@ -68,17 +66,9 @@ def store_token(token: OAuthToken) -> str:
     return _session_cipher(settings.github_client_secret).encrypt(token.access_token.encode()).decode()
 
 
-def verify_oauth_state(nonce: str, state: str) -> bool:
-    """Return whether a callback state token is valid for the browser nonce."""
-    try:
-        expires_at_text, _ = state.split(".", maxsplit=1)
-        expires_at = int(expires_at_text)
-    except (ValueError, AttributeError):
-        return False
-    if not nonce or expires_at < time.time():
-        return False
-    expected_state = f"{expires_at}.{_oauth_hmac(f'{nonce}.{expires_at}'.encode())}"
-    return hmac.compare_digest(expected_state, state)
+def verify_oauth_state(state: str) -> bool:
+    """Consume and validate a single-use OAuth CSRF state token."""
+    return _oauth_states.pop(state, 0) >= time.time()
 
 
 def get_user_token(request: Request) -> str:
@@ -97,6 +87,11 @@ def get_user_token(request: Request) -> str:
 def get_user_session_id(request: Request) -> str:
     """Return a stable, non-secret namespace for the authenticated user token."""
     return _oauth_hmac(get_user_token(request).encode())
+
+
+def get_user_isolation_namespace(session_id: str, client_isolation_id: str) -> str:
+    """Return an authenticated namespace for a client-selected isolation ID."""
+    return _oauth_hmac(f"{session_id}:{client_isolation_id}".encode())
 
 
 @lru_cache
@@ -119,5 +114,5 @@ def initialize_session_cipher() -> None:
 
 def _oauth_hmac(payload: bytes) -> str:
     """Return a URL-safe HMAC for an OAuth value without exposing the key."""
-    digest = hmac.new(settings.github_client_secret.encode(), payload, hashlib.sha256).digest()
+    digest = hmac.new(settings.github_client_secret.encode(), payload, hashlib.sha512).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
