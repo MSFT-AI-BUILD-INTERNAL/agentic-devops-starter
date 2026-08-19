@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import hmac
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -84,14 +85,18 @@ async def github_login() -> RedirectResponse:
         }
     )
     response = RedirectResponse(f"https://github.com/login/oauth/authorize?{query}")
-    response.set_cookie(_STATE_COOKIE, state, httponly=True, secure=True, samesite="lax", max_age=600)
+    state_digest = hashlib.sha256(state.encode()).hexdigest()
+    response.set_cookie(
+        _STATE_COOKIE, state_digest, httponly=True, secure=True, samesite="lax", max_age=600
+    )
     return response
 
 
 @router.get("/auth/callback")
 async def github_callback(request: Request, code: str, state: str) -> RedirectResponse:
     """Complete GitHub OAuth and establish an opaque browser session."""
-    if request.cookies.get(_STATE_COOKIE) != state:
+    expected_state_digest = hashlib.sha256(state.encode()).hexdigest()
+    if not hmac.compare_digest(request.cookies.get(_STATE_COOKIE, ""), expected_state_digest):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     session_id = store_token(await exchange_code(code))
     response = RedirectResponse("/")
