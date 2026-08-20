@@ -6,6 +6,14 @@ test('normal chat returns an assistant response for "Hello Copilot"', async ({ p
   test.setTimeout(150_000);
 
   if (process.env.PLAYWRIGHT_MOCK_CHAT === 'true') {
+    await page.route('**/api/auth/session', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ authenticated: true }),
+      });
+    });
+
     await page.route('**/api/', async (route) => {
       await route.fulfill({
         status: 200,
