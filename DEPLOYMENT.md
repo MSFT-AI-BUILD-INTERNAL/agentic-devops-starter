@@ -9,12 +9,13 @@ The workflow automates the following process:
 2. Pushes the image to Azure Container Registry (ACR)
 3. Deploys the container to Azure App Service
 4. Verifies the deployment health
+5. Runs Playwright E2E tests against the deployed URL
 
 ## Workflow Files
 
 ### `.github/workflows/deploy.yml`
 
-A two-job workflow:
+A three-job workflow:
 
 **Job 1: build-and-push**
 - Checks out code
@@ -33,6 +34,14 @@ A two-job workflow:
 - Verifies deployment health (5 retries, 10s intervals)
 - Outputs application URL and Azure Portal link
 - On failure: fetches App Service logs for debugging
+
+**Job 3: playwright-test**
+- Depends on `deploy` job
+- Sets up Node 20 and installs Playwright Chromium browser
+- Pre-checks health endpoint (6 retries, 10s intervals)
+- Runs `npm run test:e2e` against `PLAYWRIGHT_BASE_URL`
+- Uses `PLAYWRIGHT_GITHUB_TOKEN` and `PLAYWRIGHT_GITHUB_CLIENT_SECRET` for auth flows
+- Uploads test artifacts on failure
 
 ### `.github/workflows/ci.yml`
 
@@ -85,9 +94,9 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 ### Application Configuration (Optional)
 | Secret | Description |
 |--------|-------------|
-| `COPILOT_APP_CLIENT_ID` | GitHub App client ID for user OAuth |
-| `COPILOT_APP_CLIENT_SECRET` | GitHub App client secret for user OAuth |
-| `COPILOT_APP_REDIRECT_URI` | GitHub App Callback URL; defaults to `https://<app-service-name>.azurewebsites.net/auth/callback` |
+| `COPILOT_APP_CLIENT_ID` | GitHub App client ID for user OAuth; injected as `GITHUB_CLIENT_ID` |
+| `COPILOT_APP_CLIENT_SECRET` | GitHub App client secret. **Dual use**: sent to GitHub in the OAuth token exchange AND used as PBKDF2 passphrase (600k iterations, SHA-256) to derive the Fernet cookie-encryption key and the AES-CMAC session-namespace key. Injected as `GITHUB_CLIENT_SECRET` |
+| `COPILOT_APP_REDIRECT_URI` | GitHub App Callback URL; defaults to `https://<app-service-name>.azurewebsites.net/auth/callback`. Injected as `GITHUB_OAUTH_REDIRECT_URI`. Hardcoded in the workflow — not stored as a GitHub secret |
 | `AZURE_AI_PROJECT_ENDPOINT` | Azure AI Foundry endpoint used by BYOK chat routing |
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Azure AI Foundry model deployment name |
 | `FOUNDRY_AUTH_MODE` | Foundry auth mode: `auto`, `api_key`, or `azure_identity` |
@@ -97,6 +106,8 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 | `APP_CONFIG_LABEL` | Label filter for Azure App Configuration key-values (optional); injected as `COPILOT_API_APP_CONFIG_LABEL` |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables backend Azure Monitor telemetry and starts the local OpenTelemetry Collector for GitHub Copilot CLI telemetry |
 | `MCP_SERVER_URL` | URL of the remote MCP server (e.g. `https://<name>.azurecontainerapps.io`); injected as `MCP_SERVER_URL`. Omit to run with built-in tools only |
+| `PLAYWRIGHT_GITHUB_TOKEN` | GitHub PAT used by Playwright E2E global-setup (`e2e/global-setup.ts`) to forge a valid Fernet session cookie for smoke tests, bypassing the OAuth browser flow |
+| `PLAYWRIGHT_GITHUB_CLIENT_SECRET` | Same value as `COPILOT_APP_CLIENT_SECRET`; used by E2E global-setup to replicate the PBKDF2+Fernet cookie cipher in Node.js so the forged cookie is accepted by the backend |
 
 ## Workflow Triggers
 
@@ -158,6 +169,7 @@ Before running the workflow:
 │ Build Docker Image      │
 │ - Frontend (React/Vite) │
 │ - Backend (FastAPI/uv)  │
+│ - OTel Collector binary │
 │ - Combined via nginx    │
 └────────┬────────────────┘
          │
@@ -181,6 +193,14 @@ Before running the workflow:
 │ Verify Health           │
 │ - curl /health (×5)     │
 │ - On failure: show logs │
+└────────┬────────────────┘
+         │
+         v
+┌─────────────────────────┐
+│ Playwright E2E Tests    │
+│ - Health pre-check (×6) │
+│ - npm run test:e2e      │
+│ - Upload artifacts      │
 └─────────────────────────┘
 ```
 
@@ -204,7 +224,8 @@ Static infrastructure settings (e.g., `WEBSITES_PORT`, `CORS`) are managed by **
 | `WEBSITES_PORT` | Terraform | Static infrastructure config |
 | `CORS` | Terraform (`site_config.cors`) | Static infrastructure config |
 | `GITHUB_CLIENT_ID` | deploy.yml | GitHub App OAuth client ID (from `COPILOT_APP_CLIENT_ID`) |
-| `GITHUB_CLIENT_SECRET` | deploy.yml | GitHub App OAuth client secret (from `COPILOT_APP_CLIENT_SECRET`) |
+| `GITHUB_CLIENT_SECRET` | deploy.yml | GitHub App OAuth client secret (from `COPILOT_APP_CLIENT_SECRET`); also PBKDF2 passphrase for cookie encryption |
+| `GITHUB_OAUTH_REDIRECT_URI` | deploy.yml | Callback URL hardcoded to `https://app-agentic-devops.azurewebsites.net/auth/callback`; not a secret |
 | `AZURE_AI_PROJECT_ENDPOINT` | deploy.yml | Foundry BYOK endpoint from GitHub secret |
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | deploy.yml | Foundry BYOK model deployment from GitHub secret |
 | `FOUNDRY_AUTH_MODE` | deploy.yml | Foundry BYOK auth mode from GitHub secret |
@@ -235,6 +256,8 @@ If the workflow fails:
 - **HTTPS enforced**: `https_only = true` on App Service
 - **Security headers**: Configured in nginx (X-Content-Type-Options, X-Frame-Options, etc.)
 - **Container scanning**: Available in ACR Premium tier
+- **Session cookie**: `github_oauth_session` is `httponly; secure; samesite=lax; max_age=28800`. The GitHub user access token is Fernet-encrypted (PBKDF2-derived key from `GITHUB_CLIENT_SECRET`) and never exposed to JavaScript. Rotating `COPILOT_APP_CLIENT_SECRET` invalidates all existing sessions.
+- **CSRF**: OAuth state tokens are single-use, stored in process memory, and expire after 10 minutes. Multi-instance deployments would require an external state store.
 
 ## Monitoring
 
