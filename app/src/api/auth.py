@@ -11,12 +11,12 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import cmac, hashes
 from cryptography.hazmat.primitives.ciphers import algorithms
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Response
 
 from src.core.config import settings
 
-_SESSION_COOKIE = "github_oauth_session"
-_SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
+SESSION_COOKIE = "github_oauth_session"
+SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
 _OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
 _FERNET_KEY_SALT = b"agentic-devops-starter/oauth-cookie-encryption/v1"
 _OAUTH_CMAC_KEY_SALT = b"agentic-devops-starter/oauth-cmac-key/v1"
@@ -70,6 +70,18 @@ def store_token(token: OAuthToken) -> str:
     return _session_cipher(settings.github_client_secret).encrypt(token.access_token.encode()).decode()
 
 
+def set_session_cookie(response: Response, session_id: str) -> None:
+    """Attach the encrypted session cookie to *response* with canonical settings."""
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_id,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=SESSION_MAX_AGE_SECONDS,
+    )
+
+
 def verify_oauth_state(state: str) -> bool:
     """Consume and validate a single-use OAuth CSRF state token."""
     return _oauth_states.pop(state, 0) >= time.time()
@@ -77,12 +89,12 @@ def verify_oauth_state(state: str) -> bool:
 
 def get_user_token(request: Request) -> str:
     """Return the authenticated user's GitHub token or reject the request."""
-    session_id = request.cookies.get(_SESSION_COOKIE)
+    session_id = request.cookies.get(SESSION_COOKIE)
     if not session_id:
         raise HTTPException(status_code=401, detail="GitHub authentication required")
     try:
         return _session_cipher(settings.github_client_secret).decrypt(
-            session_id.encode(), ttl=_SESSION_MAX_AGE_SECONDS
+            session_id.encode(), ttl=SESSION_MAX_AGE_SECONDS
         ).decode()
     except (InvalidToken, UnicodeDecodeError):
         raise HTTPException(status_code=401, detail="GitHub authentication required") from None

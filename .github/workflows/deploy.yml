@@ -207,6 +207,8 @@ jobs:
         working-directory: ./app/frontend
         env:
           PLAYWRIGHT_BASE_URL: https://${{ env.APP_SERVICE_NAME }}.azurewebsites.net
+          PLAYWRIGHT_GITHUB_TOKEN: ${{ secrets.PLAYWRIGHT_GITHUB_TOKEN }}
+          PLAYWRIGHT_GITHUB_CLIENT_SECRET: ${{ secrets.COPILOT_APP_CLIENT_SECRET }}
         run: npm run test:e2e -- --reporter=line
 
       - name: Upload Playwright report (if failed)

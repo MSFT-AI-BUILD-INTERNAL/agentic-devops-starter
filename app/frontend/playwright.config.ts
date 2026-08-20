@@ -1,11 +1,14 @@
+import path from 'path';
 import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8080';
 const useLocalWebServer = !process.env.PLAYWRIGHT_BASE_URL;
+const hasRealToken = !!process.env.PLAYWRIGHT_GITHUB_TOKEN;
 
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.e2e.ts',
+  globalSetup: './e2e/global-setup.ts',
   timeout: 60_000,
   expect: {
     timeout: 10_000,
@@ -16,6 +19,10 @@ export default defineConfig({
   use: {
     baseURL,
     trace: 'on-first-retry',
+    // Use the pre-built session cookie only when a real GitHub token is available.
+    storageState: hasRealToken
+      ? path.join(__dirname, 'e2e/.auth/user.json')
+      : undefined,
   },
   projects: [
     {
