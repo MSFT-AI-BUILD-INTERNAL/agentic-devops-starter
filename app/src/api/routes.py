@@ -43,9 +43,8 @@ from src.core.logging_utils import setup_logging
 from src.runtime.isolation import normalize_isolation_session_id
 from src.runtime.jobs import create_job, get_job, run_fleet, run_infinite_session
 from src.runtime.state import (
+    AISessionPool,
     FoundryConfigurationError,
-    FoundrySessionPool,
-    SessionPool,
     get_foundry_session_pool,
     get_session_pool,
 )
@@ -189,7 +188,7 @@ async def foundry_byok_endpoint(request: Request) -> StreamingResponse:
 
 
 def _chat_streaming_response(
-    pool: SessionPool | FoundrySessionPool,
+    pool: AISessionPool,
     isolation_session_id: str,
     github_token: str | None,
     thread_id: str,
@@ -201,14 +200,9 @@ def _chat_streaming_response(
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
-            if isinstance(pool, SessionPool):
-                session = await pool.get_or_create(
-                    thread_id,
-                    github_token,
-                    isolation_session_id=isolation_session_id,
-                )
-            else:
-                session = await pool.get_or_create(thread_id, isolation_session_id=isolation_session_id)
+            session = await pool.get_or_create(
+                thread_id, github_token, isolation_session_id=isolation_session_id
+            )
         except RuntimeError as error:
             logger.exception("Chat session initialization failed", extra={"thread_id": thread_id})
             message = initialization_error_message(error, fallback_error_message)

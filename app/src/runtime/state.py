@@ -3,7 +3,7 @@
 import asyncio
 import os
 import time
-from typing import Any
+from typing import Any, Protocol
 
 from azure.core.credentials import AccessToken
 from azure.core.exceptions import ClientAuthenticationError
@@ -103,6 +103,31 @@ def _apply_tool_policy(session_kwargs: dict[str, Any]) -> dict[str, Any]:
     if excluded_tools is not None:
         session_kwargs["excluded_tools"] = excluded_tools
     return session_kwargs
+
+
+class AISessionPool(Protocol):
+    """Common interface for all AI provider session pools.
+
+    Concrete implementations (SessionPool, FoundrySessionPool) satisfy this
+    protocol structurally — no explicit inheritance required. Routes and
+    lifecycle helpers depend on this abstraction, not on the concrete classes.
+    """
+
+    async def get_or_create(
+        self,
+        thread_id: str,
+        github_token: str | None = None,
+        *,
+        isolation_session_id: str | None = None,
+    ) -> CopilotSession: ...
+
+    async def disconnect(
+        self, thread_id: str, isolation_session_id: str | None = None
+    ) -> None: ...
+
+    async def cleanup_idle(self) -> None: ...
+
+    async def shutdown(self) -> None: ...
 
 
 def set_client(client: CopilotClient) -> None:
@@ -316,9 +341,14 @@ class FoundrySessionPool:
         self._idle_timeout = idle_timeout
 
     async def get_or_create(
-        self, thread_id: str, isolation_session_id: str | None = None
+        self, thread_id: str, github_token: str | None = None, isolation_session_id: str | None = None
     ) -> CopilotSession:
-        """Return an active Foundry BYOK session for *thread_id*."""
+        """Return an active Foundry BYOK session for *thread_id*.
+
+        ``github_token`` is accepted for interface compatibility with
+        :class:`AISessionPool` but is unused; Foundry BYOK authenticates
+        via Azure credentials configured on the server.
+        """
         _validate_foundry_settings()
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
         pool_key = build_pool_key(isolated_id, thread_id)

@@ -19,6 +19,7 @@ from src.core.logging_utils import setup_logging
 from src.core.observability import configure_observability
 from src.runtime.skills import load_skills
 from src.runtime.state import (
+    AISessionPool,
     FoundrySessionPool,
     SessionPool,
     set_client,
@@ -60,7 +61,7 @@ def _build_copilot_subprocess_config() -> SubprocessConfig | None:
     return SubprocessConfig(telemetry=telemetry)
 
 
-async def _idle_cleanup_loop(pool: SessionPool | FoundrySessionPool) -> None:
+async def _idle_cleanup_loop(pool: AISessionPool) -> None:
     """Periodically disconnect idle sessions to free resources."""
     while True:
         await asyncio.sleep(30)
