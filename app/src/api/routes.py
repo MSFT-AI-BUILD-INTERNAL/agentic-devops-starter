@@ -17,12 +17,13 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response, Streamin
 
 import src.api.sse_utils as sse_utils
 from src.api.auth import (
-    _SESSION_COOKIE,
+    SESSION_COOKIE,
     create_oauth_state,
     exchange_code,
     get_user_isolation_namespace,
     get_user_session_id,
     get_user_token,
+    set_session_cookie,
     store_token,
     verify_oauth_state,
 )
@@ -93,14 +94,7 @@ async def github_callback(request: Request, code: str, state: str) -> RedirectRe
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     session_id = store_token(await exchange_code(code))
     response = RedirectResponse("/")
-    response.set_cookie(
-        _SESSION_COOKIE,
-        session_id,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-        max_age=8 * 60 * 60,
-    )
+    set_session_cookie(response, session_id)
     return response
 
 
@@ -115,7 +109,7 @@ async def github_session(request: Request) -> dict[str, bool]:
 async def github_logout() -> Response:
     """End the current browser session and discard its GitHub token."""
     response = Response(status_code=204)
-    response.delete_cookie(_SESSION_COOKIE)
+    response.delete_cookie(SESSION_COOKIE)
     return response
 
 

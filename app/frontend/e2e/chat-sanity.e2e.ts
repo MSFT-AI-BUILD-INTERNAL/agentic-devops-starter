@@ -5,7 +5,8 @@ const MIN_ASSISTANT_RESPONSE_LENGTH = 20;
 test('normal chat returns an assistant response for "Hello Copilot"', async ({ page }) => {
   test.setTimeout(150_000);
 
-  if (process.env.PLAYWRIGHT_MOCK_CHAT === 'true') {
+  if (!process.env.PLAYWRIGHT_GITHUB_TOKEN) {
+    // No real token: mock auth so the app doesn't redirect to GitHub OAuth.
     await page.route('**/api/auth/session', async (route) => {
       await route.fulfill({
         status: 200,
@@ -14,22 +15,26 @@ test('normal chat returns an assistant response for "Hello Copilot"', async ({ p
       });
     });
 
-    await page.route('**/api/', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/event-stream',
-        body: [
-          'data: {"type":"RUN_STARTED"}',
-          'data: {"type":"TEXT_MESSAGE_START"}',
-          'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"Hello! "}',
-          'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"How can I help you today?"}',
-          'data: {"type":"TEXT_MESSAGE_END"}',
-          'data: {"type":"RUN_FINISHED"}',
-          '',
-        ].join('\n'),
+    if (process.env.PLAYWRIGHT_MOCK_CHAT === 'true') {
+      await page.route('**/api/', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/event-stream',
+          body: [
+            'data: {"type":"RUN_STARTED"}',
+            'data: {"type":"TEXT_MESSAGE_START"}',
+            'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"Hello! "}',
+            'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"How can I help you today?"}',
+            'data: {"type":"TEXT_MESSAGE_END"}',
+            'data: {"type":"RUN_FINISHED"}',
+            '',
+          ].join('\n'),
+        });
       });
-    });
+    }
   }
+  // When PLAYWRIGHT_GITHUB_TOKEN is set, global-setup already placed a valid
+  // session cookie via storageState — no mocking needed.
 
   await page.goto('/');
 
