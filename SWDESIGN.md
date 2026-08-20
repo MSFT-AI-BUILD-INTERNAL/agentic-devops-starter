@@ -22,7 +22,8 @@
 8. [Fleet / Infinite Session 작업 설계](#8-fleet--infinite-session-작업-설계)
 9. [Agent Teams 설계](#9-agent-teams-설계)
 10. [Agent Skills 설계](#10-agent-skills-설계)
-11. [프론트엔드 상세 설계](#11-프론트엔드-상세-설계)
+11. [Tool Calling 및 원격 MCP 클라이언트](#105-tool-calling-및-원격-mcp-클라이언트)
+12. [프론트엔드 상세 설계](#11-프론트엔드-상세-설계)
 12. [프론트엔드 코드 레벨 매핑](#12-프론트엔드-코드-레벨-매핑)
 13. [데이터 모델 및 이벤트 스키마](#13-데이터-모델-및-이벤트-스키마)
 14. [배포/인프라 설계](#14-배포인프라-설계)
@@ -38,9 +39,10 @@ Agentic DevOps Starter는 브라우저 기반 채팅 UI에서 입력한 메시�
 | --- | --- | --- |
 | AI 런타임 | GitHub Copilot SDK의 `CopilotClient`, `CopilotSession` 사용. 일반 Copilot 세션과 Azure AI Foundry BYOK 세션을 분리 관리 | `app/agui_server.py`, `app/src/runtime/state.py` |
 | API | FastAPI + StreamingResponse 기반 SSE. `/`는 기본 Copilot, `/v1/byok/foundry`는 Foundry BYOK | `app/src/api/routes.py` |
+| 도구/MCP | `tools.py` 내장 도구와 선택적 원격 MCP 서버(`mcp_client.py`)를 통한 외부 도구 연동. `MCP_SERVER_URL` 환경변수로 활성화 | `app/src/runtime/tools.py`, `app/src/runtime/mcp_client.py` |
 | 프론트엔드 | React 18, TypeScript, Vite, Zustand | `app/frontend/src/*` |
 | 파일 저장 | Azure Blob Storage, `DefaultAzureCredential` | `app/src/storage/blob_storage.py`, `app/src/storage/file_validation.py` |
-| 배포 | nginx + FastAPI 단일 컨테이너를 Azure App Service에 배포 | `app/Dockerfile.appservice`, `infra/*` |
+| 배포 | nginx + FastAPI + OTel Collector 단일 컨테이너를 Azure App Service에 배포 | `app/Dockerfile.appservice`, `infra/*` |
 
 ## 2. 전체 아키텍처
 
@@ -151,7 +153,89 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
 
 ### 3.3 CORS
 
-`CORS_ORIGINS` 환경 변수가 비어 있으면 기본값은 `http://localhost:5173`, `http://127.0.0.1:5173`이다. 현재 Vite dev server는 `8080`을 사용하므로 실제 개발은 프록시 경유가 기본 흐름이다.
+`CORS_ORIGINS` 환경 변수가 비어 있으면 기본값은 `http://localhost:5173`, `http://127.0.0.1:5173`이다. 현재 Vite dev server는 `8080`을 사용하므로 실제 개발은 프록시 경유가 기본 흐름이다. `allow_credentials=True`는 쿠키 기반 인증이 작동하기 위해 필수이다.
+
+### 3.4 GitHub App OAuth 인증 플로우
+
+#### 3.4.1 인증 개요
+
+`app/src/api/auth.py`가 OAuth 인증 전체를 담당한다. FastAPI `SessionMiddleware`를 사용하지 않으며, 암호화된 쿠키와 인메모리 CSRF 상태 저장소만으로 구성된 경량 stateless 인증이다.
+
+`agui_server.py` lifespan에서 `initialize_session_cipher()`를 가장 먼저 호출해 Fernet 및 CMAC 파생 키를 LRU 캐시에 사전 적재한다.
+
+#### 3.4.2 암호화 메커니즘
+
+| 용도 | 알고리즘 | 파생 방법 | 비밀 |
+| --- | --- | --- | --- |
+| 세션 쿠키 암호화/복호화 | Fernet (AES-128-CBC + HMAC-SHA256) | PBKDF2-HMAC-SHA256, 600,000 iterations, 정적 salt | `GITHUB_CLIENT_SECRET` |
+| 사용자 네임스페이스 ID 생성 | AES-CMAC | PBKDF2-HMAC-SHA256, 600,000 iterations, 별도 정적 salt | `GITHUB_CLIENT_SECRET` |
+
+두 파생 함수 모두 `@lru_cache`로 캐시되어 프로세스당 KDF는 한 번만 실행된다. `GITHUB_CLIENT_SECRET`을 교체하면 기존 세션이 모두 무효화된다.
+
+#### 3.4.3 엔드-투-엔드 OAuth 플로우
+
+```
+[Browser]                    [FastAPI]                    [GitHub]
+
+App.tsx mount
+  GET /auth/session (with cookie) ------>
+                              cookie 없음/만료 → 401
+  <------ 401 ---------------
+  window.location(/auth/login)
+  GET /auth/login ----------->
+                              create_oauth_state()
+                              → stores {state: expiry} in _oauth_states (10 min)
+                              → builds authorize URL (client_id, redirect_uri, state)
+  <------ 307 redirect ------
+                                                           GitHub consent page
+                              (user approves GitHub App)
+                              GET /auth/callback?code=...&state=...
+  ------------------------------------------------>
+                              verify_oauth_state(state)   (pop from dict, check expiry)
+                              exchange_code(code) -------> POST /login/oauth/access_token
+                                                <--------- {"access_token": "ghu_..."}
+                              store_token(token) → Fernet-encrypt(ghu_...)
+                              set_session_cookie(response, ciphertext)
+                              → httponly; secure; samesite=lax; max_age=28800
+  <------ 307 redirect to / + Set-Cookie --------
+
+[Browser]                    [FastAPI]
+  POST /api/ (with cookie) -->
+                              get_user_token(request)
+                              → Fernet-decrypt(cookie, ttl=28800) → "ghu_..."
+                              get_user_session_id()
+                              → AES-CMAC("ghu_...") → opaque user namespace ID
+                              get_user_isolation_namespace(session_id, X-Isolation-Session-ID)
+                              → AES-CMAC("namespace:client_isolation") → session pool key
+                              SessionPool.get_or_create(thread_key, github_token=ghu_...)
+```
+
+#### 3.4.4 세션 쿠키 속성
+
+| 속성 | 값 | 설계 의도 |
+| --- | --- | --- |
+| 쿠키 이름 | `github_oauth_session` | 고정 상수 (`SESSION_COOKIE`) |
+| `httponly` | `True` | JavaScript에서 쿠키 접근 차단 |
+| `secure` | `True` | HTTPS 전송만 허용 |
+| `samesite` | `lax` | CSRF 1차 방어 |
+| `max_age` | `28800` (8시간) | Fernet TTL과 동일; 만료 시 자동 복호화 실패 → 401 |
+| 내용 | Fernet-encrypted GitHub user access token | 토큰 원문은 서버 RAM에만 존재 |
+
+#### 3.4.5 CSRF 보호
+
+`_oauth_states` dict에 단일 사용(pop) 방식으로 state 토큰을 저장한다. 각 state 토큰은 `secrets.token_urlsafe(32)`로 생성되며 10분 후 만료된다. `verify_oauth_state()`는 dict에서 pop해 검증하므로 재사용이 불가능하다.
+
+**한계**: `_oauth_states`는 인메모리 딕셔너리이므로 멀티 프로세스/멀티 인스턴스 배포에서 인스턴스 간 state 공유가 안 된다. 수평 확장 시 Redis 등 외부 상태 저장소가 필요하다.
+
+#### 3.4.6 인증 적용 범위
+
+| 엔드포인트 | 인증 |
+| --- | --- |
+| `POST /` | `get_user_token(request)` 직접 호출 → 쿠키 없으면 HTTP 401 |
+| `POST /v1/byok/foundry` | OAuth 미적용; `github_token=None`으로 FoundrySessionPool 사용 |
+| `/auth/*`, `/health`, `/v1/*` (채팅 제외) | 라우트 레벨 인증 없음 |
+
+인증은 FastAPI `Depends()`가 아닌 라우트 핸들러 내부 직접 함수 호출로 구현된다.
 
 ## 4. 백엔드 코드 레벨 매핑
 
@@ -161,10 +245,14 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
 | --- | --- | --- |
 | `app/agui_server.py` | `create_app()`, `_idle_cleanup_loop()` | FastAPI 앱 생성, CopilotClient lifecycle, 미들웨어, CORS, router 등록 |
 | `app/src/api/routes.py` | `agent_endpoint()`, `foundry_byok_endpoint()`, `upload_file()`, `teams_stream()` | HTTP 라우트와 SSE 응답 구성 |
+| `app/src/api/auth.py` | `github_login()`, `github_callback()`, `get_user_session_id()`, `store_token()` | GitHub App OAuth 2.0 플로우 (`/auth/*` 라우트), session cookie 발급 |
 | `app/src/runtime/state.py` | `SessionPool`, `FoundrySessionPool`, `get_client()`, `get_session_pool()`, `get_foundry_session_pool()` | CopilotClient singleton 및 thread별 CopilotSession 관리 |
 | `app/src/runtime/jobs.py` | `create_job()`, `run_fleet()`, `run_infinite_session()` | 메모리 기반 비동기 작업 관리 |
+| `app/src/runtime/tools.py` | 내장 도구 구현 | Copilot SDK에 등록되는 built-in 도구들. 파일 탐색, 코드 실행 등 |
+| `app/src/runtime/mcp_client.py` | `MCPClient`, `get_mcp_tools()` | `MCP_SERVER_URL`이 설정된 경우 원격 MCP 서버에서 도구 목록을 조회해 `/v1/mcp/tools`로 제공 |
+| `app/src/runtime/isolation.py` | `normalize_isolation_session_id()` | `X-Isolation-Session-ID` 헤더 기반 런타임 상태와 파일 접근 스코핑 |
 | `app/src/teams/orchestrator.py` | `run_teams()`, `_stream_agent()`, flow runner들 | 다중 역할 Copilot session 오케스트레이션 |
-| `app/src/teams/patterns.py` | `Pattern`, `AgentRole`, `PATTERNS` | Agent Team 패턴과 역할별 system prompt 정의 |
+| `app/src/teams/patterns.py` | `Pattern`, `AgentRole`, `PATTERNS` | Agent Team 패턴과 역할별 system prompt 정의 (YAML 기반) |
 | `app/src/runtime/skills.py` | `load_skills()`, `get_skill_directories()`, `get_disabled_skills()` | SKILL.md 디렉터리 디스커버리 및 SDK 전달용 경로 해석 |
 | `app/src/storage/blob_storage.py` | `BlobStorageService`, `get_blob_service()` | Azure Blob upload/download |
 | `app/src/storage/file_validation.py` | `validate_file_type()`, `validate_file_size()`, `generate_blob_name()` | 파일 확장자/MIME/크기/파일명 sanitization |
@@ -176,13 +264,19 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
 | GET | `/health` | `health_check()` | `{"status": "healthy"}` | 없음 |
 | POST | `/` | `agent_endpoint()` | `StreamingResponse(text/event-stream)` | `SessionPool`, `CopilotSession`, `_resolve_attachments()` |
 | POST | `/v1/byok/foundry` | `foundry_byok_endpoint()` | `StreamingResponse(text/event-stream)` | `FoundrySessionPool`, Foundry provider config, `_resolve_attachments()` |
+| GET | `/auth/login` | `github_login()` | `RedirectResponse` → GitHub OAuth | `settings.github_client_id`, `create_oauth_state()` |
+| GET | `/auth/callback` | `github_callback()` | `RedirectResponse` → `/` | `verify_oauth_state()`, `exchange_code()`, `store_token()` |
+| GET | `/auth/session` | `auth_session()` | `{"authenticated": bool, ...}` | `get_user_session_id()`, `get_user_token()` |
+| POST | `/auth/logout` | `auth_logout()` | `204 No Content` | `SESSION_COOKIE` 삭제 |
 | POST | `/v1/files/upload` | `upload_file()` | `UploadResult` 또는 error JSON | `file_validation`, `BlobStorageService` |
 | DELETE | `/v1/threads/{thread_id}` | `delete_thread()` | `{"status": "deleted"}` | `SessionPool.disconnect()`, `FoundrySessionPool.disconnect()` |
+| POST | `/v1/threads/{thread_id}/abort` | `abort_thread()` | `{"status": "aborted"}` | 진행 중인 채팅/팀 생성 취소 |
 | POST | `/v1/fleet` | `fleet_endpoint()` | 202 + `{"job_id": ...}` | `create_job()`, `run_fleet()` |
 | POST | `/v1/infinite-session` | `infinite_session_endpoint()` | 202 + `{"job_id": ...}` | `create_job()`, `run_infinite_session()` |
 | GET | `/v1/patterns` | `list_patterns()` | `list[PatternInfo]` | `PATTERNS` |
 | POST | `/v1/teams/stream` | `teams_stream()` | `StreamingResponse(text/event-stream)` | `run_teams()`, `_resolve_attachments()` |
 | GET | `/v1/jobs/{job_id}` | `job_status_endpoint()` | `JobStatusResponse` | `get_job()` |
+| GET | `/v1/mcp/tools` | `list_mcp_tools()` | `list[MCPToolResponse]` | `MCPClient`, `MCP_SERVER_URL` |
 
 ## 5. 일반 채팅 스트리밍 흐름
 
@@ -572,6 +666,42 @@ session = await client.create_session(
 
 전제: 위의 "자체 판단" 동작은 `github-copilot-sdk`의 `create_session(skill_directories=...)`가 progressive-disclosure 라우팅을 구현한다는 데 의존한다. 앱 코드는 경로 전달만 책임지고 라우팅은 SDK에 위임하므로, SDK가 SKILL.md 포맷을 지원하는 한 의도대로 동작한다.
 
+## 10.5. Tool Calling 및 원격 MCP 클라이언트
+
+### 10.5.1 개요
+
+백엔드는 Copilot SDK 세션에 등록되는 **내장 도구**(`tools.py`)와 선택적으로 연결되는 **원격 MCP 서버**(`mcp_client.py`) 두 가지 경로로 도구를 제공한다. 도구 정책은 `COPILOT_API_ALLOWED_TOOLS`(허용 목록)와 `COPILOT_API_EXCLUDED_TOOLS`(차단 목록) 환경 변수로 제어한다.
+
+| 컴포넌트 | 파일 | 역할 |
+| --- | --- | --- |
+| 내장 도구 | `app/src/runtime/tools.py` | 앱과 함께 배포되는 built-in 도구 구현 |
+| MCP 클라이언트 | `app/src/runtime/mcp_client.py` | `MCP_SERVER_URL`이 설정된 경우 원격 MCP 서버에 연결해 도구 목록 조회 |
+| 도구 목록 API | `GET /v1/mcp/tools` | 원격 MCP 서버에서 조회한 도구 목록을 `list[MCPToolResponse]`로 반환 |
+
+### 10.5.2 도구 정책
+
+| 환경 변수 | 타입 | 설명 |
+| --- | --- | --- |
+| `COPILOT_API_ALLOWED_TOOLS` | 쉼표 구분 문자열 | 설정 시 허용 목록 모드로 전환. 명시된 도구 이름만 허용 |
+| `COPILOT_API_EXCLUDED_TOOLS` | 쉼표 구분 문자열 | 차단 목록. `ALLOWED_TOOLS`가 없을 때 유효 |
+| `COPILOT_API_TOOL_TIMEOUT` | 초 단위 정수 | 개별 도구 호출 타임아웃 |
+| `COPILOT_API_TOOL_EXTERNAL_API_URL` | URL 문자열 | 외부 API 도구의 base URL |
+
+### 10.5.3 원격 MCP 서버 연동
+
+`MCP_SERVER_URL` 환경 변수에 원격 MCP 서버 URL을 설정하면 `mcp_client.py`가 해당 서버에서 도구 목록을 가져온다. MCP 서버가 없으면 내장 도구만 사용하고, `/v1/mcp/tools`는 빈 목록을 반환한다.
+
+```
+MCP_SERVER_URL 설정됨
+  -> MCPClient 초기화
+  -> GET /v1/mcp/tools 호출 시 MCP 서버 도구 목록 조회
+  -> list[MCPToolResponse] 반환
+
+MCP_SERVER_URL 미설정
+  -> /v1/mcp/tools → []
+  -> 내장 도구만 Copilot SDK 세션에 등록
+```
+
 ## 11. 프론트엔드 상세 설계
 
 ### 11.1 최상위 레이아웃
@@ -792,10 +922,11 @@ Stage 2: python:3.12-slim
 
 Final:
   copy frontend dist -> /usr/share/nginx/html
+  copy OTel Collector binary
   nginx listens :8080
   /api/ -> http://127.0.0.1:5100/
   /health -> http://127.0.0.1:5100/health
-  supervisor starts nginx and backend
+  supervisor starts nginx, backend (uvicorn :5100), otel-collector (:4318)
 ```
 
 ### 14.2 nginx 경로 설계
@@ -821,7 +952,10 @@ Final:
 ### 14.4 GitHub Actions
 
 - `ci.yml`: Python 3.12, uv sync, ruff, pytest 실행
-- `deploy.yml`: Azure OIDC 로그인, Docker build/push, App Service 배포, health check
+- `deploy.yml`: 3개 job으로 구성
+  - `build-and-push`: Azure OIDC 로그인, Docker Buildx build/push to ACR
+  - `deploy`: App Service 배포, secret 주입, health check (5회 재시도)
+  - `playwright-test`: 배포 후 E2E 테스트 실행 (`npm run test:e2e`), `PLAYWRIGHT_GITHUB_TOKEN`/`PLAYWRIGHT_GITHUB_CLIENT_SECRET` 필요
 - 이미지 tag는 commit SHA와 `latest`를 함께 사용한다.
 - 정적 인프라 설정은 Terraform, secret 기반 설정은 deploy workflow가 담당한다.
 
@@ -829,21 +963,42 @@ Final:
 
 ### 15.1 인증과 권한
 
+#### 사용자 인증 — GitHub App OAuth
+
+| 단계 | 대상 | 방식 | 코드/설정 |
+| --- | --- | --- | --- |
+| 세션 탐지 | 브라우저 → FastAPI | `GET /auth/session` + 쿠키 → 401 → `/auth/login` 리다이렉트 | `App.tsx` (mount 시 1회 probe) |
+| OAuth 시작 | FastAPI → GitHub | CSRF state 생성 후 GitHub authorization URL로 307 redirect | `GET /auth/login`, `create_oauth_state()` |
+| 콜백 처리 | GitHub → FastAPI | state 검증 → code 교환 → 토큰 암호화 → 쿠키 발급 | `GET /auth/callback`, `exchange_code()`, `store_token()` |
+| 요청별 인증 | 브라우저 → FastAPI | `github_oauth_session` 쿠키 복호화 → GitHub user token 획득 | `get_user_token(request)` |
+| 사용자 네임스페이스 | FastAPI 내부 | AES-CMAC(token) → 불투명 사용자 ID → 세션 풀 키 | `get_user_session_id()`, `get_user_isolation_namespace()` |
+| 로그아웃 | 브라우저 → FastAPI | 쿠키 삭제 (GitHub 서버 토큰 폐기 없음) | `POST /auth/logout` |
+
+쿠키 속성: `name=github_oauth_session; httponly; secure; samesite=lax; max_age=28800(8h)`.
+
+#### 인프라 / 서비스 인증
+
 | 대상 | 방식 | 코드/설정 |
 | --- | --- | --- |
-| GitHub Copilot SDK 로컬 인증 | GitHub CLI 인증 상태 사용 | `gh auth login`, `GITHUB_TOKEN` 미설정 가능 |
-| GitHub Copilot SDK 운영 인증 | App Service env `GITHUB_TOKEN` | `deploy.yml`에서 `COPILOT_GITHUB_TOKEN` 주입 |
+| GitHub Copilot SDK (로컬) | GitHub CLI 인증 상태 | `gh auth login` |
+| GitHub Copilot SDK (운영) | OAuth로 얻은 `ghu_...` 토큰을 CopilotSession에 전달 | `get_user_token()` → `SessionPool.get_or_create(github_token=...)` |
 | Azure AI Foundry BYOK API key | `FOUNDRY_AUTH_MODE=api_key` | `FOUNDRY_API_KEY` 또는 `AZURE_OPENAI_API_KEY` |
-| Azure AI Foundry BYOK Entra ID | `FOUNDRY_AUTH_MODE=azure_identity` 또는 `auto` + API key 없음 | `DefaultAzureCredential`, scope `https://cognitiveservices.azure.com/.default` |
-| Azure 배포 인증 | GitHub Actions OIDC | `azure/login@v2` |
+| Azure AI Foundry BYOK Entra ID | `FOUNDRY_AUTH_MODE=azure_identity` 또는 `auto` | `DefaultAzureCredential`, scope `https://cognitiveservices.azure.com/.default` |
+| Azure 배포 | GitHub Actions OIDC | `azure/login@v2` |
 | ACR pull | App Service managed identity | Terraform `AcrPull` role assignment |
 | Blob 접근 | `DefaultAzureCredential` | managed identity/Entra ID 기반 |
 
 Foundry BYOK 설정은 `AZURE_AI_PROJECT_ENDPOINT`, `AZURE_AI_MODEL_DEPLOYMENT_NAME`, `FOUNDRY_AUTH_MODE`, `FOUNDRY_API_KEY`, `FOUNDRY_WIRE_API`로 제어한다. `FOUNDRY_WIRE_API`는 SDK provider의 OpenAI-compatible wire protocol을 지정하며 현재 `responses`와 `completions`만 허용한다.
 
+`POST /v1/byok/foundry`는 OAuth를 적용하지 않는다 (`github_token=None`으로 FoundrySessionPool에 전달).
+
+#### Playwright E2E 인증 시뮬레이션
+
+E2E 테스트(`e2e/global-setup.ts`)는 OAuth 브라우저 플로우를 우회하기 위해 `PLAYWRIGHT_GITHUB_CLIENT_SECRET`(= `COPILOT_APP_CLIENT_SECRET`)으로 동일한 PBKDF2+Fernet 암호화를 Node.js에서 재현해 유효한 세션 쿠키를 직접 생성한다. `PLAYWRIGHT_GITHUB_TOKEN`(GitHub PAT)이 쿠키에 담길 토큰 값으로 사용된다.
+
 ### 15.2 권한 승인 정책
 
-중요: 현재 Copilot session 생성 시 `PermissionHandler.approve_all`이 사용된다. 단, `available_tools=[]`로 도구 목록은 비워져 있다. 향후 외부 도구 실행을 활성화한다면 approve-all 정책은 반드시 재검토해야 한다.
+중요: 현재 Copilot session 생성 시 `PermissionHandler.approve_all`이 사용된다. `tools.py` 내장 도구와 원격 MCP 도구가 등록된 경우 모든 실행 요청이 자동 승인된다. `COPILOT_API_ALLOWED_TOOLS` / `COPILOT_API_EXCLUDED_TOOLS`로 1차 필터링이 가능하지만, 런타임 승인 정책 자체는 approve-all이므로 프로덕션 배포에서는 허용 목록을 명시적으로 설정해야 한다.
 
 ### 15.3 업로드 방어
 
@@ -891,10 +1046,13 @@ configure_azure_monitor(connection_string=connection_string)
 | 현재 설계 | 제한/리스크 | 개선 후보 |
 | --- | --- | --- |
 | `_jobs` in-memory dict | 재시작/scale-out 시 작업 상태 유실 | Azure Queue/Service Bus + Table/Cosmos DB |
+| `_oauth_states` in-memory dict (CSRF) | 멀티 인스턴스 배포 시 인스턴스 간 state 공유 불가 → CSRF 검증 실패 가능 | Redis 또는 외부 KV 저장소 |
+| `POST /auth/logout` 토큰 미폐기 | 로그아웃 후에도 GitHub에서 해당 user token이 살아 있음 | GitHub token revocation API 호출 추가 |
+| OAuth 미적용 라우트 | `/v1/byok/foundry`, `/v1/files/upload`, `/v1/teams/stream` 등이 인증 없이 접근 가능 | 라우트별 `Depends(get_current_user)` 적용 |
 | `_teams_history` in-memory dict | 인스턴스 간 팀 대화 이력 공유 불가 | Redis 또는 Cosmos DB 기반 shared history |
 | 브라우저 memory 기반 chat store | 새로고침 시 메시지 유실 | localStorage persistence 또는 서버 저장 API |
 | 첨부 파일 전체 내용을 prompt에 삽입 | 큰 파일/바이너리의 토큰 비용과 응답 품질 문제 | 텍스트 추출, 요약, chunking, RAG pipeline |
-| `PermissionHandler.approve_all` | 향후 도구 활성화 시 과도한 권한 승인 가능 | 도구별 allow-list와 사용자 승인 flow |
+| `PermissionHandler.approve_all` | 내장 도구와 MCP 도구가 활성화된 경우 모든 도구 실행을 자동 승인함. `COPILOT_API_ALLOWED_TOOLS`/`COPILOT_API_EXCLUDED_TOOLS`로 1차 필터링하지만, 런타임 승인 정책은 여전히 approve-all | 도구별 allow-list와 사용자 승인 flow로 교체 |
 | Terraform local state 예시 | 팀 협업 시 state 충돌 가능 | Azure Storage remote backend 구성 |
 | Chat/Teams SSE parser 분리 | 중복 parsing 로직 유지보수 비용 | 공통 SSE parser utility로 통합 |
 
