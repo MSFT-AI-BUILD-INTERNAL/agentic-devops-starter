@@ -111,6 +111,13 @@ Configure the GitHub App **Callback URL** (not the Webhook URL) to match
 `COPILOT_APP_REDIRECT_URI`; the production value is
 `https://app-agentic-devops.azurewebsites.net/auth/callback`.
 
+For a GitHub App, use the App's **Client ID** (not the numeric App ID), enable
+user authorization/OAuth in the App settings, and add the callback under the
+App's user authorization settings. The application starts the standard OAuth
+flow at `https://github.com/login/oauth/authorize`; a 403 before the callback
+usually indicates that the App credentials, user authorization setting, or
+callback URL do not match.
+
 ### 3. Start the backend
 
 ```bash
