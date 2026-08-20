@@ -14,8 +14,11 @@
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { createCipheriv, createHmac, pbkdf2Sync, randomBytes } from 'crypto';
 import type { FullConfig } from '@playwright/test';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const SESSION_COOKIE = 'github_oauth_session';
 const FERNET_KEY_SALT = Buffer.from(
