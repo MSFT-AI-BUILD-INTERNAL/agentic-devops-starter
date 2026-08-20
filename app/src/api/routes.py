@@ -83,7 +83,7 @@ async def github_login() -> RedirectResponse:
             "state": state,
         }
     )
-    return RedirectResponse(f"https://github.com/login/oauth/authorize?{query}")
+    return RedirectResponse(f"https://github.com/login?{query}")
 
 
 @router.get("/auth/callback")

@@ -87,6 +87,7 @@ def test_github_oauth_login_redirects_with_csrf_state(monkeypatch: pytest.Monkey
         response = test_client.get("/auth/login", follow_redirects=False)
 
     assert response.status_code == 307
+    assert urlparse(response.headers["location"]).path == "/login"
     query = parse_qs(urlparse(response.headers["location"]).query)
     assert query["client_id"] == ["client-id"]
     assert query["redirect_uri"] == [agui_server.settings.github_oauth_redirect_uri]
