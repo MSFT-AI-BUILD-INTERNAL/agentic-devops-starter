@@ -21,7 +21,10 @@ export default defineConfig({
   reporter: process.env.CI ? [['html', { open: 'never' }], ['line']] : 'html',
   use: {
     baseURL,
-    trace: 'on-first-retry',
+    // Disable tracing when a real GitHub session cookie is loaded to avoid leaking
+    // it via trace artifacts (traces can capture request headers/cookies and are
+    // often uploaded on failure).
+    trace: hasRealToken ? 'off' : 'on-first-retry',
     // Use the pre-built session cookie only when a real GitHub token is available.
     storageState: hasRealToken
       ? path.join(__dirname, 'e2e/.auth/user.json')
