@@ -20,7 +20,7 @@ SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
 _OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
 _FERNET_KEY_SALT = b"agentic-devops-starter/oauth-cookie-encryption/v1"
 _OAUTH_CMAC_KEY_SALT = b"agentic-devops-starter/oauth-cmac-key/v1"
-_oauth_states: dict[str, float] = {}
+_oauth_states: dict[str, "OAuthStateEntry"] = {}
 
 
 @dataclass(frozen=True)
@@ -49,14 +49,25 @@ class DeviceTokenResult:
     status: str  # "ok" | "pending" | "expired" | "denied"
 
 
-def create_oauth_state() -> str:
+@dataclass(frozen=True)
+class OAuthStateEntry:
+    """Single-use OAuth state metadata."""
+
+    expires_at: float
+    context: str
+
+
+def create_oauth_state(state_context: str) -> str:
     """Create and retain a single-use OAuth CSRF state token."""
     now = time.time()
-    for expired_state, expires_at in tuple(_oauth_states.items()):
-        if expires_at < now:
+    for expired_state, metadata in tuple(_oauth_states.items()):
+        if metadata.expires_at < now:
             del _oauth_states[expired_state]
     state = secrets.token_urlsafe(32)
-    _oauth_states[state] = now + _OAUTH_STATE_MAX_AGE_SECONDS
+    _oauth_states[state] = OAuthStateEntry(
+        expires_at=now + _OAUTH_STATE_MAX_AGE_SECONDS,
+        context=state_context,
+    )
     return state
 
 
@@ -163,9 +174,19 @@ def set_session_cookie(response: Response, session_id: str) -> None:
     )
 
 
-def verify_oauth_state(state: str) -> bool:
+def verify_oauth_state(state: str, state_context: str) -> bool:
     """Consume and validate a single-use OAuth CSRF state token."""
-    return _oauth_states.pop(state, 0) >= time.time()
+    metadata = _oauth_states.pop(state, None)
+    if not metadata or metadata.expires_at < time.time():
+        return False
+    return secrets.compare_digest(metadata.context, state_context)
+
+
+def oauth_state_context(request: Request) -> str:
+    """Return a browser-bound context value for OAuth state correlation."""
+    client_host = request.client.host if request.client else ""
+    user_agent = request.headers.get("user-agent", "")
+    return _oauth_cmac(f"{client_host}:{user_agent}".encode())
 
 
 def get_user_token(request: Request) -> str:
