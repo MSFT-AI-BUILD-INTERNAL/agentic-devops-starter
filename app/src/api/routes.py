@@ -23,12 +23,16 @@ from src.api.auth import (
     get_user_isolation_namespace,
     get_user_session_id,
     get_user_token,
+    oauth_state_context,
+    poll_device_token,
+    request_device_code,
     set_session_cookie,
     store_token,
     verify_oauth_state,
 )
 from src.api.error_handler import log_and_respond
 from src.api.models import (
+    DeviceTokenRequest,
     FleetRequest,
     InfiniteSessionRequest,
     JobStatusResponse,
@@ -67,7 +71,7 @@ router = APIRouter()
 
 
 @router.get("/auth/login")
-async def github_login() -> RedirectResponse:
+async def github_login(request: Request) -> RedirectResponse:
     """Redirect the browser to GitHub's OAuth authorization page."""
     if (
         not settings.github_client_id
@@ -75,7 +79,7 @@ async def github_login() -> RedirectResponse:
         or not settings.github_oauth_redirect_uri
     ):
         raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
-    state = create_oauth_state()
+    state = create_oauth_state(oauth_state_context(request))
     query = urlencode(
         {
             "client_id": settings.github_client_id,
@@ -89,7 +93,7 @@ async def github_login() -> RedirectResponse:
 @router.get("/auth/callback")
 async def github_callback(request: Request, code: str, state: str) -> RedirectResponse:
     """Complete GitHub OAuth and establish an opaque browser session."""
-    if not verify_oauth_state(state):
+    if not verify_oauth_state(state, oauth_state_context(request)):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     session_id = store_token(await exchange_code(code))
     response = RedirectResponse("/")
@@ -110,6 +114,27 @@ async def github_logout() -> Response:
     response = Response(status_code=204)
     response.delete_cookie(SESSION_COOKIE)
     return response
+
+
+@router.get("/auth/device")
+async def github_device_code() -> dict:
+    """Start a GitHub Device Flow — returns user_code and verification_uri."""
+    result = await request_device_code()
+    return {
+        "user_code": result.user_code,
+        "verification_uri": result.verification_uri,
+        "device_code": result.device_code,
+        "expires_in": result.expires_in,
+        "interval": result.interval,
+    }
+
+
+@router.post("/auth/device/token")
+async def github_device_token(body: DeviceTokenRequest) -> JSONResponse:
+    """Poll once for a Device Flow token. Client should retry on status=pending."""
+    result = await poll_device_token(body.device_code)
+    payload = {"session_token": result.session_token} if result.status == "ok" else {"status": result.status}
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
 def _resolve_isolation_session_id(request: Request, fallback: str) -> str:

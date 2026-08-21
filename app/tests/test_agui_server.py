@@ -101,15 +101,28 @@ def test_github_oauth_callback_stores_token_in_secure_cookie(
     import agui_server
     from src.api import auth
 
-    state = auth.create_oauth_state()
+    monkeypatch.setattr(agui_server.settings, "github_client_id", "client-id")
+    monkeypatch.setattr(agui_server.settings, "github_client_secret", "client-secret")
+    monkeypatch.setattr(
+        agui_server.settings,
+        "github_oauth_redirect_uri",
+        "https://app-agentic-devops.azurewebsites.net/auth/callback",
+    )
     monkeypatch.setattr(
         "src.api.routes.exchange_code",
         AsyncMock(return_value=auth.OAuthToken(access_token="user-token")),
     )
 
     with TestClient(agui_server.create_app()) as test_client:
+        login = test_client.get(
+            "/auth/login",
+            headers={"user-agent": "same-browser"},
+            follow_redirects=False,
+        )
+        state = parse_qs(urlparse(login.headers["location"]).query)["state"][0]
         response = test_client.get(
             f"/auth/callback?code=authorization-code&state={state}",
+            headers={"user-agent": "same-browser"},
             follow_redirects=False,
         )
 
@@ -119,6 +132,41 @@ def test_github_oauth_callback_stores_token_in_secure_cookie(
     assert "user-token" not in cookie
     assert "HttpOnly" in cookie
     assert "Secure" in cookie
+
+
+def test_github_oauth_callback_rejects_mismatched_state_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OAuth callback should reject requests from a different browser context."""
+    import agui_server
+    from src.api import auth
+
+    monkeypatch.setattr(agui_server.settings, "github_client_id", "client-id")
+    monkeypatch.setattr(agui_server.settings, "github_client_secret", "client-secret")
+    monkeypatch.setattr(
+        agui_server.settings,
+        "github_oauth_redirect_uri",
+        "https://app-agentic-devops.azurewebsites.net/auth/callback",
+    )
+    monkeypatch.setattr(
+        "src.api.routes.exchange_code",
+        AsyncMock(return_value=auth.OAuthToken(access_token="user-token")),
+    )
+
+    with TestClient(agui_server.create_app()) as test_client:
+        login = test_client.get(
+            "/auth/login",
+            headers={"user-agent": "same-browser"},
+            follow_redirects=False,
+        )
+        state = parse_qs(urlparse(login.headers["location"]).query)["state"][0]
+        response = test_client.get(
+            f"/auth/callback?code=authorization-code&state={state}",
+            headers={"user-agent": "different-browser"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 400
 
 
 @pytest.mark.asyncio

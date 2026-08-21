@@ -2,47 +2,39 @@
 
 HTTP/SSE API for the Agentic DevOps Starter backend. All chat endpoints stream responses using the [AG-UI SSE protocol](#sse-event-types). The underlying AI provider (GitHub Copilot SDK or Azure AI Foundry) is encapsulated behind the `AISessionPool` interface and is transparent to callers.
 
+> **PowerShell note**: `curl` in PowerShell is an alias for `Invoke-WebRequest`. Use `curl.exe` instead to invoke the real curl binary (shipped with Windows 10/11).
+
 ---
 
 ## Base URL
 
 ```
-http://localhost:8000
+https://app-agentic-devops.azurewebsites.net
 ```
 
 ---
 
 ## Authentication
 
+인증 구조, 자동화 방법(세션 토큰 헤더 전달 / GitHub Device Flow) 상세 내용은 [API_Auth.md](API_Auth.md)를 참고하세요.
+
 | Endpoint | Auth required |
 |---|---|
-| `POST /` | GitHub OAuth session cookie (`_session`) |
-| `POST /v1/byok/foundry` | None — server-side Azure credentials only |
-| All other endpoints | None |
-
-### Obtaining a GitHub session cookie
-
-```bash
-# 1. Initiate OAuth — opens GitHub login in browser
-curl -c cookies.txt -L http://localhost:8000/auth/login
-
-# 2. Complete login in the browser; the callback sets the session cookie
-# 3. Verify the session
-curl -b cookies.txt http://localhost:8000/auth/session
-# → {"authenticated": true}
-```
+| `POST /` | GitHub 인증 토큰 (`Authorization: Bearer <session_token>`) |
+| `POST /v1/byok/foundry` | 없음 — 서버 측 Azure 자격증명만 사용 |
+| All other endpoints | 없음 |
 
 ---
 
 ## Chat Endpoints
 
-Both endpoints share the same request body and SSE response format. The only difference is the AI provider used on the server.
+두 엔드포인트는 동일한 요청 바디와 SSE 응답 형식을 공유합니다. 차이는 서버가 사용하는 AI 프로바이더뿐입니다.
 
 ### POST /
-GitHub Copilot SDK backend. Requires an authenticated GitHub session.
+GitHub Copilot SDK 백엔드. GitHub 인증 필요 (`Authorization` 헤더 또는 세션 쿠키).
 
 ### POST /v1/byok/foundry
-Azure AI Foundry BYOK backend. No client-side auth required; the server uses its configured Azure credentials.
+Azure AI Foundry BYOK 백엔드. 클라이언트 인증 불필요.
 
 #### Request body
 
@@ -59,20 +51,20 @@ Azure AI Foundry BYOK backend. No client-side auth required; the server uses its
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `messages` | `array` | Yes | Conversation history. Only the latest user message is forwarded to the SDK; prior turns are managed server-side per `thread_id`. |
-| `thread_id` | `string` | No | Identifies the conversation session. Omit to generate one automatically. Reuse the same value across turns to maintain history. |
-| `run_id` | `string` | No | Identifies this specific generation run. Echoed back in `RUN_STARTED` / `RUN_FINISHED` events. |
-| `attachments` | `array` | No | List of previously uploaded blob references to include as file context. |
+| `messages` | `array` | Yes | 대화 히스토리. 최신 사용자 메시지만 SDK로 전달되고, 이전 턴은 서버가 `thread_id` 기준으로 관리합니다. |
+| `thread_id` | `string` | No | 대화 세션 식별자. 생략 시 서버가 자동 생성. 멀티턴 대화에서는 동일한 값을 재사용하세요. |
+| `run_id` | `string` | No | 이번 생성 요청의 식별자. `RUN_STARTED` / `RUN_FINISHED` 이벤트에 그대로 반환됩니다. |
+| `attachments` | `array` | No | 파일 컨텍스트로 포함할 업로드된 blob 참조 목록. |
 
 #### Response
 
-`Content-Type: text/event-stream` — newline-delimited SSE. See [SSE Event Types](#sse-event-types).
+`Content-Type: text/event-stream` — 줄 단위 SSE 스트림. [SSE Event Types](#sse-event-types) 참고.
 
 ---
 
 ## SSE Event Types
 
-Each line in the stream is prefixed with `data: ` and contains a JSON object.
+스트림의 각 줄은 `data: ` 접두사와 JSON 객체로 구성됩니다.
 
 ```
 data: {"type": "RUN_STARTED", "thread_id": "...", "run_id": "..."}
@@ -90,64 +82,77 @@ data: {"type": "RUN_FINISHED", "thread_id": "...", "run_id": "..."}
 
 | Event type | Description |
 |---|---|
-| `RUN_STARTED` | Generation started. Contains `thread_id` and `run_id`. |
-| `TEXT_MESSAGE_START` | Assistant message begins. Contains `message_id`. |
-| `TEXT_MESSAGE_CONTENT` | Incremental text chunk. Contains `delta`. |
-| `TEXT_MESSAGE_END` | Assistant message complete. Contains `message_id`. |
-| `RUN_FINISHED` | Generation complete. Always emitted, even on error. |
-| `RUN_ERROR` | An error occurred. Contains `message`. |
+| `RUN_STARTED` | 생성 시작. `thread_id`, `run_id` 포함. |
+| `TEXT_MESSAGE_START` | 어시스턴트 메시지 시작. `message_id` 포함. |
+| `TEXT_MESSAGE_CONTENT` | 텍스트 청크. `delta` 포함. |
+| `TEXT_MESSAGE_END` | 어시스턴트 메시지 완료. `message_id` 포함. |
+| `RUN_FINISHED` | 생성 완료. 오류 발생 시에도 항상 전송됨. |
+| `RUN_ERROR` | 오류 발생. `message` 포함. |
 
 ---
 
 ## curl Examples
 
-### Single-turn (Foundry, no auth)
+### Single-turn (Foundry, 인증 불필요)
+
+```powershell
+# PowerShell
+curl.exe -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry `
+  -H "Content-Type: application/json" `
+  -d '{"messages": [{"role": "user", "content": "Hello, what can you do?"}], "thread_id": "test-thread-001", "run_id": "run-001"}'
+```
 
 ```bash
-curl -N -X POST http://localhost:8000/v1/byok/foundry \
+# Linux
+curl -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry \
   -H "Content-Type: application/json" \
-  -d '{
-    "messages": [{"role": "user", "content": "Hello, what can you do?"}],
-    "thread_id": "test-thread-001",
-    "run_id": "run-001"
-  }'
+  -d '{"messages": [{"role": "user", "content": "Hello, what can you do?"}], "thread_id": "test-thread-001", "run_id": "run-001"}'
 ```
 
 ### Multi-turn conversation
 
-Reuse the same `thread_id` across requests. The server maintains session history internally.
+같은 `thread_id`를 재사용하면 서버가 세션 히스토리를 유지합니다.
 
-```bash
-# Turn 1
-curl -N -X POST http://localhost:8000/v1/byok/foundry \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [{"role": "user", "content": "My name is Alice."}],
-    "thread_id": "test-thread-001",
-    "run_id": "run-001"
-  }'
+```powershell
+# PowerShell — Turn 1
+curl.exe -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry `
+  -H "Content-Type: application/json" `
+  -d '{"messages": [{"role": "user", "content": "My name is Alice."}], "thread_id": "test-thread-001", "run_id": "run-001"}'
 
-# Turn 2 — server already knows the name from turn 1
-curl -N -X POST http://localhost:8000/v1/byok/foundry \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [{"role": "user", "content": "What is my name?"}],
-    "thread_id": "test-thread-001",
-    "run_id": "run-002"
-  }'
+# PowerShell — Turn 2 (서버가 이름을 기억)
+curl.exe -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry `
+  -H "Content-Type: application/json" `
+  -d '{"messages": [{"role": "user", "content": "What is my name?"}], "thread_id": "test-thread-001", "run_id": "run-002"}'
 ```
 
-### Copilot endpoint (GitHub OAuth session)
+```bash
+# Linux — Turn 1
+curl -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "My name is Alice."}], "thread_id": "test-thread-001", "run_id": "run-001"}'
+
+# Linux — Turn 2 (서버가 이름을 기억)
+curl -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "What is my name?"}], "thread_id": "test-thread-001", "run_id": "run-002"}'
+```
+
+### Copilot endpoint (Device Flow 또는 세션 토큰)
+
+```powershell
+# PowerShell
+curl.exe -N -X POST https://app-agentic-devops.azurewebsites.net/ `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer <session_token>" `
+  -d '{"messages": [{"role": "user", "content": "Hello!"}], "thread_id": "test-thread-001", "run_id": "run-001"}'
+```
 
 ```bash
-curl -N -X POST http://localhost:8000/ \
+# Linux
+curl -N -X POST https://app-agentic-devops.azurewebsites.net/ \
   -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "thread_id": "test-thread-001",
-    "run_id": "run-001"
-  }'
+  -H "Authorization: Bearer $SESSION_TOKEN" \
+  -d '{"messages": [{"role": "user", "content": "Hello!"}], "thread_id": "test-thread-001", "run_id": "run-001"}'
 ```
 
 ---
@@ -155,116 +160,42 @@ curl -N -X POST http://localhost:8000/ \
 ## Thread Management
 
 ### DELETE /v1/threads/{thread_id}
-Disconnect and clean up a conversation session. The session state is preserved on disk and can be resumed on the next request.
+세션을 끊습니다. 세션 상태는 디스크에 보존되어 다음 요청에서 재개할 수 있습니다.
 
-```bash
-curl -X DELETE http://localhost:8000/v1/threads/test-thread-001
+```powershell
+# PowerShell
+curl.exe -X DELETE https://app-agentic-devops.azurewebsites.net/v1/threads/test-thread-001
 # → {"status": "deleted", "thread_id": "test-thread-001"}
 ```
 
+```bash
+# Linux
+curl -X DELETE https://app-agentic-devops.azurewebsites.net/v1/threads/test-thread-001
+```
+
 ### POST /v1/threads/{thread_id}/abort
-Abort an in-progress generation without disconnecting the session.
+세션을 끊지 않고 진행 중인 생성만 중단합니다.
 
-```bash
-curl -X POST http://localhost:8000/v1/threads/test-thread-001/abort
-# → {"status": "aborted", "thread_id": "test-thread-001"}
-# → {"status": "not_found", ...}  if no active generation
+```powershell
+# PowerShell
+curl.exe -X POST https://app-agentic-devops.azurewebsites.net/v1/threads/test-thread-001/abort
+# → {"status": "aborted", ...} or {"status": "not_found", ...}
 ```
 
----
-
-## Other Endpoints
-
-### GET /health
-Liveness check.
 ```bash
-curl http://localhost:8000/health
-# → {"status": "healthy"}
-```
-
-### POST /v1/fleet
-Run multiple prompts in parallel (max 20 concurrent). Returns a `job_id` immediately; poll `/v1/jobs/{job_id}` for results.
-
-```bash
-curl -X POST http://localhost:8000/v1/fleet \
-  -H "Content-Type: application/json" \
-  -d '{
-    "items": [
-      {"prompt": "Summarize DevOps best practices"},
-      {"prompt": "List common CI/CD tools"}
-    ]
-  }'
-# → {"job_id": "abc123"}
-```
-
-### POST /v1/infinite-session
-Run a chain of sessions where each output becomes the next input.
-
-```bash
-curl -X POST http://localhost:8000/v1/infinite-session \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "Describe a DevOps pipeline",
-    "iterations": 3
-  }'
-# → {"job_id": "abc123"}
-```
-
-### GET /v1/jobs/{job_id}
-Poll async job status.
-
-```bash
-curl http://localhost:8000/v1/jobs/abc123
-# → {"job_id": "abc123", "status": "completed", "results": [...]}
-```
-
-`status` values: `pending` → `running` → `completed` / `failed`
-
-### GET /v1/patterns
-List available multi-agent team patterns.
-
-```bash
-curl http://localhost:8000/v1/patterns
-```
-
-### POST /v1/teams/stream
-Execute a multi-agent pattern with SSE streaming. Uses the same SSE event format as the chat endpoints.
-
-```bash
-curl -N -X POST http://localhost:8000/v1/teams/stream \
-  -H "Content-Type: application/json" \
-  -d '{
-    "pattern_id": "<pattern-id>",
-    "prompt": "Review this pull request",
-    "thread_id": "teams-thread-001"
-  }'
-```
-
-### POST /v1/files/upload
-Upload a file to Azure Blob Storage for use as a chat attachment.
-
-```bash
-curl -X POST http://localhost:8000/v1/files/upload \
-  -F "file=@/path/to/document.pdf"
-# → {"blob_name": "...", "original_filename": "document.pdf", ...}
-```
-
-### GET /v1/mcp/tools
-List tools available on the configured remote MCP server. Returns `[]` when no MCP server is configured.
-
-```bash
-curl http://localhost:8000/v1/mcp/tools
+# Linux
+curl -X POST https://app-agentic-devops.azurewebsites.net/v1/threads/test-thread-001/abort
 ```
 
 ---
 
 ## Architecture Note
 
-Chat endpoints route through an `AISessionPool` interface ([`src/runtime/state.py`](../app/src/runtime/state.py)). The two concrete implementations are:
+Chat 엔드포인트는 [`src/runtime/state.py`](../app/src/runtime/state.py)의 `AISessionPool` 인터페이스를 통해 라우팅됩니다. 구체 구현체는 두 가지입니다:
 
 | Pool | Endpoint | Provider |
 |---|---|---|
 | `SessionPool` | `POST /` | GitHub Copilot SDK |
 | `FoundrySessionPool` | `POST /v1/byok/foundry` | Azure AI Foundry BYOK |
 
-Adding a new AI provider requires only implementing the four-method `AISessionPool` Protocol — no changes to routes or lifecycle management needed.
+새 AI 프로바이더 추가 시 `AISessionPool` Protocol의 4개 메서드만 구현하면 routes나 lifecycle 코드 수정이 필요 없습니다.
