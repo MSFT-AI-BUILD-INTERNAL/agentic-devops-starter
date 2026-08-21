@@ -23,6 +23,8 @@ from src.api.auth import (
     get_user_isolation_namespace,
     get_user_session_id,
     get_user_token,
+    poll_device_token,
+    request_device_code,
     set_session_cookie,
     store_token,
     verify_oauth_state,
@@ -110,6 +112,28 @@ async def github_logout() -> Response:
     response = Response(status_code=204)
     response.delete_cookie(SESSION_COOKIE)
     return response
+
+
+@router.get("/auth/device")
+async def github_device_code() -> dict:
+    """Start a GitHub Device Flow — returns user_code and verification_uri."""
+    result = await request_device_code()
+    return {
+        "user_code": result.user_code,
+        "verification_uri": result.verification_uri,
+        "device_code": result.device_code,
+        "expires_in": result.expires_in,
+        "interval": result.interval,
+    }
+
+
+@router.get("/auth/device/token")
+async def github_device_token(device_code: str) -> dict:
+    """Poll once for a Device Flow token. Client should retry on status=pending."""
+    result = await poll_device_token(device_code)
+    if result.status == "ok":
+        return {"session_token": result.session_token}
+    return {"status": result.status}
 
 
 def _resolve_isolation_session_id(request: Request, fallback: str) -> str:

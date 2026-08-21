@@ -30,6 +30,25 @@ class OAuthToken:
     access_token: str
 
 
+@dataclass(frozen=True)
+class DeviceCodeResponse:
+    """Device code data returned by GitHub's device authorization endpoint."""
+
+    device_code: str
+    user_code: str
+    verification_uri: str
+    expires_in: int
+    interval: int
+
+
+@dataclass(frozen=True)
+class DeviceTokenResult:
+    """Result of a single device token poll."""
+
+    session_token: str | None  # encrypted session token when status is "ok"
+    status: str  # "ok" | "pending" | "expired" | "denied"
+
+
 def create_oauth_state() -> str:
     """Create and retain a single-use OAuth CSRF state token."""
     now = time.time()
@@ -65,6 +84,68 @@ async def exchange_code(code: str) -> OAuthToken:
     return OAuthToken(access_token=token)
 
 
+async def request_device_code() -> DeviceCodeResponse:
+    """Request a device code from GitHub to begin the Device Authorization Flow."""
+    if not settings.github_client_id:
+        raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(
+            "https://github.com/login/device/code",
+            headers={"Accept": "application/json"},
+            json={"client_id": settings.github_client_id},
+        )
+    response.raise_for_status()
+    data = response.json()
+
+    if "error" in data:
+        raise HTTPException(status_code=503, detail=f"GitHub Device Flow error: {data['error']}")
+
+    return DeviceCodeResponse(
+        device_code=data["device_code"],
+        user_code=data["user_code"],
+        verification_uri=data["verification_uri"],
+        expires_in=data["expires_in"],
+        interval=data["interval"],
+    )
+
+
+async def poll_device_token(device_code: str) -> DeviceTokenResult:
+    """Poll GitHub once for a Device Flow token. Returns the result immediately."""
+    if not settings.github_client_id:
+        raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(
+            "https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            json={
+                "client_id": settings.github_client_id,
+                "device_code": device_code,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            },
+        )
+    response.raise_for_status()
+    data = response.json()
+
+    error = data.get("error")
+    if error in ("authorization_pending", "slow_down"):
+        return DeviceTokenResult(session_token=None, status="pending")
+    if error in ("expired_token", "device_flow_disabled"):
+        return DeviceTokenResult(session_token=None, status="expired")
+    if error == "access_denied":
+        return DeviceTokenResult(session_token=None, status="denied")
+    if error:
+        raise HTTPException(status_code=502, detail=f"GitHub token exchange error: {error}")
+
+    access_token = data.get("access_token")
+    if not isinstance(access_token, str) or not access_token:
+        raise HTTPException(status_code=502, detail="GitHub returned an empty access token")
+
+    session_token = store_token(OAuthToken(access_token=access_token))
+    return DeviceTokenResult(session_token=session_token, status="ok")
+
+
 def store_token(token: OAuthToken) -> str:
     """Encrypt a token for the opaque browser session cookie."""
     return _session_cipher(settings.github_client_secret).encrypt(token.access_token.encode()).decode()
@@ -89,12 +170,17 @@ def verify_oauth_state(state: str) -> bool:
 
 def get_user_token(request: Request) -> str:
     """Return the authenticated user's GitHub token or reject the request."""
-    session_id = request.cookies.get(SESSION_COOKIE)
-    if not session_id:
+    auth_header = request.headers.get("Authorization", "")
+    session_token = (
+        auth_header[len("Bearer "):]
+        if auth_header.startswith("Bearer ")
+        else request.cookies.get(SESSION_COOKIE)
+    )
+    if not session_token:
         raise HTTPException(status_code=401, detail="GitHub authentication required")
     try:
         return _session_cipher(settings.github_client_secret).decrypt(
-            session_id.encode(), ttl=SESSION_MAX_AGE_SECONDS
+            session_token.encode(), ttl=SESSION_MAX_AGE_SECONDS
         ).decode()
     except (InvalidToken, UnicodeDecodeError):
         raise HTTPException(status_code=401, detail="GitHub authentication required") from None
