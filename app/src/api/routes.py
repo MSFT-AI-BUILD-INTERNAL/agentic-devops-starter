@@ -116,16 +116,19 @@ async def github_logout() -> Response:
 
 
 @router.get("/auth/device")
-async def github_device_code() -> dict:
+async def github_device_code() -> JSONResponse:
     """Start a GitHub Device Flow — returns user_code and verification_uri."""
     result = await request_device_code()
-    return {
-        "user_code": result.user_code,
-        "verification_uri": result.verification_uri,
-        "device_code": result.device_code,
-        "expires_in": result.expires_in,
-        "interval": result.interval,
-    }
+    return JSONResponse(
+        {
+            "user_code": result.user_code,
+            "verification_uri": result.verification_uri,
+            "device_code": result.device_code,
+            "expires_in": result.expires_in,
+            "interval": result.interval,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/auth/device/token")
