@@ -99,3 +99,9 @@ class MCPToolResponse(BaseModel):
     name: str
     description: str
     input_schema: dict[str, Any]
+
+
+class DeviceTokenRequest(BaseModel):
+    """Request body for the Device Flow token poll endpoint."""
+
+    device_code: str

@@ -31,6 +31,7 @@ from src.api.auth import (
 )
 from src.api.error_handler import log_and_respond
 from src.api.models import (
+    DeviceTokenRequest,
     FleetRequest,
     InfiniteSessionRequest,
     JobStatusResponse,
@@ -127,13 +128,12 @@ async def github_device_code() -> dict:
     }
 
 
-@router.get("/auth/device/token")
-async def github_device_token(device_code: str) -> dict:
+@router.post("/auth/device/token")
+async def github_device_token(body: DeviceTokenRequest) -> JSONResponse:
     """Poll once for a Device Flow token. Client should retry on status=pending."""
-    result = await poll_device_token(device_code)
-    if result.status == "ok":
-        return {"session_token": result.session_token}
-    return {"status": result.status}
+    result = await poll_device_token(body.device_code)
+    payload = {"session_token": result.session_token} if result.status == "ok" else {"status": result.status}
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
 def _resolve_isolation_session_id(request: Request, fallback: str) -> str:

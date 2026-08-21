@@ -112,7 +112,7 @@ async def request_device_code() -> DeviceCodeResponse:
 
 async def poll_device_token(device_code: str) -> DeviceTokenResult:
     """Poll GitHub once for a Device Flow token. Returns the result immediately."""
-    if not settings.github_client_id:
+    if not settings.github_client_id or not settings.github_client_secret:
         raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
 
     async with httpx.AsyncClient(timeout=10.0) as client:
