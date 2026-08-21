@@ -23,6 +23,7 @@ from src.api.auth import (
     get_user_isolation_namespace,
     get_user_session_id,
     get_user_token,
+    oauth_state_context,
     poll_device_token,
     request_device_code,
     set_session_cookie,
@@ -70,7 +71,7 @@ router = APIRouter()
 
 
 @router.get("/auth/login")
-async def github_login() -> RedirectResponse:
+async def github_login(request: Request) -> RedirectResponse:
     """Redirect the browser to GitHub's OAuth authorization page."""
     if (
         not settings.github_client_id
@@ -78,7 +79,7 @@ async def github_login() -> RedirectResponse:
         or not settings.github_oauth_redirect_uri
     ):
         raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
-    state = create_oauth_state()
+    state = create_oauth_state(oauth_state_context(request))
     query = urlencode(
         {
             "client_id": settings.github_client_id,
@@ -92,7 +93,7 @@ async def github_login() -> RedirectResponse:
 @router.get("/auth/callback")
 async def github_callback(request: Request, code: str, state: str) -> RedirectResponse:
     """Complete GitHub OAuth and establish an opaque browser session."""
-    if not verify_oauth_state(state):
+    if not verify_oauth_state(state, oauth_state_context(request)):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     session_id = store_token(await exchange_code(code))
     response = RedirectResponse("/")
