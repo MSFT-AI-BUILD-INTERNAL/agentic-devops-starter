@@ -517,8 +517,8 @@ async def list_anthropic_models(request: Request) -> JSONResponse:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
     get_user_token(request)
 
-    from src.thirdparty.anthropic_models import AnthropicModelInfo, AnthropicModelListResponse
     from src.runtime.state import get_client
+    from src.thirdparty.anthropic_models import AnthropicModelInfo, AnthropicModelListResponse
 
     try:
         sdk_models = await get_client().list_models()
@@ -545,15 +545,15 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
 
+    from src.thirdparty.anthropic_adapter import (
+        extract_last_user_prompt,
+        validate_request,
+    )
     from src.thirdparty.anthropic_models import (
         AnthropicMessagesRequest,
         AnthropicMessagesResponse,
         AnthropicTextContentBlock,
         AnthropicUsage,
-    )
-    from src.thirdparty.anthropic_adapter import (
-        extract_last_user_prompt,
-        validate_request,
     )
     from src.thirdparty.anthropic_stream import (
         sse_content_block_delta,
@@ -663,7 +663,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                         output_tokens += len(text)
                         yield sse_content_block_delta(text, 0)
 
-            except Exception as exc:
+            except Exception:
                 logger.exception("Anthropic adapter stream error")
                 yield sse_content_block_stop(0)
                 yield sse_error("server_error", "An internal error occurred")
