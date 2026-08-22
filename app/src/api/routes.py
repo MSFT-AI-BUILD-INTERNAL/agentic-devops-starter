@@ -505,6 +505,264 @@ async def job_status_endpoint(job_id: str) -> JobStatusResponse:
     return job
 
 
+@router.get("/v1/models")
+async def list_anthropic_models(request: Request) -> JSONResponse:
+    """List models supported by the Anthropic Messages API adapter.
+
+    Requires the same session credential as /v1/messages. Returns a list
+    compatible with the Anthropic client's model-listing format so Claude Code
+    can confirm the adapter is reachable before sending real requests.
+    """
+    if not settings.anthropic_route_enabled:
+        raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
+    get_user_token(request)
+
+    from src.thirdparty.anthropic_models import AnthropicModelInfo, AnthropicModelListResponse
+    from src.runtime.state import get_client
+
+    try:
+        sdk_models = await get_client().list_models()
+    except Exception as exc:
+        logger.exception("Failed to list models from Copilot SDK")
+        raise HTTPException(status_code=502, detail="Could not retrieve model list from Copilot SDK") from exc
+
+    data = [AnthropicModelInfo(id=m.id) for m in sdk_models]
+    return JSONResponse(AnthropicModelListResponse(data=data).model_dump())
+
+
+@router.post("/v1/messages")
+async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | JSONResponse:
+    """Anthropic Messages API adapter backed by the Copilot SDK.
+
+    Accepts the Anthropic ``POST /v1/messages`` request format and converts it
+    to a Copilot SDK session request.  Streaming (SSE) and non-streaming JSON
+    responses are both supported.
+
+    Phase 1 limitations (return explicit 400 rather than silent loss):
+    - tools / tool_use / tool_result content blocks
+    - image and thinking content blocks
+    """
+    if not settings.anthropic_route_enabled:
+        raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
+
+    from src.thirdparty.anthropic_models import (
+        AnthropicMessagesRequest,
+        AnthropicMessagesResponse,
+        AnthropicTextContentBlock,
+        AnthropicUsage,
+    )
+    from src.thirdparty.anthropic_adapter import (
+        extract_last_user_prompt,
+        validate_request,
+    )
+    from src.thirdparty.anthropic_stream import (
+        sse_content_block_delta,
+        sse_content_block_start,
+        sse_content_block_stop,
+        sse_error,
+        sse_message_delta,
+        sse_message_start,
+        sse_message_stop,
+    )
+
+    github_token = get_user_token(request)
+
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+
+    try:
+        req = AnthropicMessagesRequest.model_validate(body)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        validate_request(req)
+        prompt = extract_last_user_prompt(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Use a stable thread key per user so the SDK session maintains history
+    # across interactive Claude Code turns.  Claude Code does not send
+    # X-Isolation-Session-ID, so we derive a user-scoped namespace from the
+    # authenticated session to prevent cross-user session reuse.
+    thread_id = "anthropic-v1"
+    isolation_session_id = _resolve_authenticated_isolation_session_id(request, thread_id)
+
+    message_id = f"msg_{uuid.uuid4().hex[:24]}"
+
+    if req.stream:
+
+        async def stream_generator() -> AsyncGenerator[str, None]:
+            try:
+                session = await get_session_pool().get_or_create(
+                    thread_id, github_token, isolation_session_id=isolation_session_id
+                )
+                await session.set_model(req.model)
+            except RuntimeError as exc:
+                yield sse_error("server_error", f"Session initialization failed: {exc}")
+                return
+
+            yield sse_message_start(message_id, req.model)
+            yield sse_content_block_start(0)
+
+            output_tokens = 0
+            idle_event = asyncio.Event()
+            send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
+            loop = asyncio.get_running_loop()
+
+            def on_event(event: Any) -> None:
+                from copilot.generated.session_events import (
+                    AssistantMessageDeltaData,
+                    SessionErrorData,
+                    SessionIdleData,
+                )
+
+                match event.data:
+                    case AssistantMessageDeltaData() as delta:
+                        loop.call_soon_threadsafe(
+                            send_queue.put_nowait,
+                            {"type": "delta", "content": delta.delta_content},
+                        )
+                    case SessionErrorData() as err:
+                        loop.call_soon_threadsafe(
+                            send_queue.put_nowait,
+                            {"type": "error", "content": err.message or "Unknown SDK error"},
+                        )
+                        loop.call_soon_threadsafe(idle_event.set)
+                    case SessionIdleData():
+                        loop.call_soon_threadsafe(idle_event.set)
+
+            unsubscribe = None
+            error_sent = False
+            try:
+                unsubscribe = session.on(on_event)
+                await session.send(prompt)
+
+                while not idle_event.is_set():
+                    try:
+                        msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
+                    except TimeoutError:
+                        continue
+                    if msg["type"] == "error":
+                        yield sse_content_block_stop(0)
+                        yield sse_error("server_error", msg["content"])
+                        error_sent = True
+                        break
+                    if msg["type"] == "delta":
+                        text = msg["content"]
+                        output_tokens += len(text)
+                        yield sse_content_block_delta(text, 0)
+
+                # Drain remaining deltas (idle fired before queue was empty)
+                while not send_queue.empty():
+                    msg = send_queue.get_nowait()
+                    if msg["type"] == "delta":
+                        text = msg["content"]
+                        output_tokens += len(text)
+                        yield sse_content_block_delta(text, 0)
+
+            except Exception as exc:
+                logger.exception("Anthropic adapter stream error")
+                yield sse_content_block_stop(0)
+                yield sse_error("server_error", "An internal error occurred")
+                await get_session_pool().disconnect(
+                    thread_id, isolation_session_id=isolation_session_id
+                )
+                error_sent = True
+            finally:
+                if unsubscribe:
+                    unsubscribe()
+
+            if not error_sent:
+                yield sse_content_block_stop(0)
+                yield sse_message_delta(output_tokens)
+                yield sse_message_stop()
+
+        return StreamingResponse(
+            stream_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # Non-streaming: buffer full response then return JSON
+    try:
+        session = await get_session_pool().get_or_create(
+            thread_id, github_token, isolation_session_id=isolation_session_id
+        )
+        await session.set_model(req.model)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"Session initialization failed: {exc}") from exc
+
+    collected: list[str] = []
+    idle_event = asyncio.Event()
+    send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def on_event_blocking(event: Any) -> None:
+        from copilot.generated.session_events import (
+            AssistantMessageDeltaData,
+            SessionErrorData,
+            SessionIdleData,
+        )
+
+        match event.data:
+            case AssistantMessageDeltaData() as delta:
+                loop.call_soon_threadsafe(
+                    send_queue.put_nowait,
+                    {"type": "delta", "content": delta.delta_content},
+                )
+            case SessionErrorData() as err:
+                loop.call_soon_threadsafe(
+                    send_queue.put_nowait,
+                    {"type": "error", "content": err.message or "Unknown SDK error"},
+                )
+                loop.call_soon_threadsafe(idle_event.set)
+            case SessionIdleData():
+                loop.call_soon_threadsafe(idle_event.set)
+
+    unsubscribe = session.on(on_event_blocking)
+    try:
+        await session.send(prompt)
+        while not idle_event.is_set():
+            try:
+                msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
+            except TimeoutError:
+                continue
+            if msg["type"] == "error":
+                raise HTTPException(status_code=502, detail=msg["content"])
+            if msg["type"] == "delta":
+                collected.append(msg["content"])
+
+        while not send_queue.empty():
+            msg = send_queue.get_nowait()
+            if msg["type"] == "delta":
+                collected.append(msg["content"])
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Anthropic adapter non-streaming error")
+        await get_session_pool().disconnect(thread_id, isolation_session_id=isolation_session_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred") from exc
+    finally:
+        unsubscribe()
+
+    full_text = "".join(collected)
+    response_obj = AnthropicMessagesResponse(
+        id=message_id,
+        model=req.model,
+        content=[AnthropicTextContentBlock(text=full_text)],
+        usage=AnthropicUsage(output_tokens=len(full_text)),
+    )
+    return JSONResponse(response_obj.model_dump())
+
+
 @router.get("/v1/mcp/tools")
 async def list_mcp_tools_endpoint() -> list[MCPToolResponse]:
     """List tools available on the configured remote MCP server.

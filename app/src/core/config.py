@@ -102,6 +102,13 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Anthropic Messages API compatibility layer.
+    # When enabled, the server exposes POST /v1/messages and GET /v1/models so
+    # Claude Code (ANTHROPIC_BASE_URL) can route requests to the Copilot SDK.
+    # Phase 1 supports text-only, streaming and non-streaming; tools/images/
+    # thinking return explicit 400 errors rather than silently dropping content.
+    anthropic_route_enabled: bool = True
+
     model_config = {
         "env_prefix": "COPILOT_API_",
         "env_file": ".env",
