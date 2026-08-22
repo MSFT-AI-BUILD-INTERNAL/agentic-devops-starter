@@ -530,7 +530,7 @@ async def list_anthropic_models(request: Request) -> JSONResponse:
     return JSONResponse(AnthropicModelListResponse(data=data).model_dump())
 
 
-@router.post("/v1/messages")
+@router.post("/v1/messages", response_model=None)
 async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | JSONResponse:
     """Anthropic Messages API adapter backed by the Copilot SDK.
 
@@ -592,18 +592,20 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
 
     message_id = f"msg_{uuid.uuid4().hex[:24]}"
 
+    # Acquire and configure the session before branching so that failures
+    # (unknown model, auth error, SDK init error) return a proper HTTP error
+    # instead of being swallowed inside the SSE stream.
+    try:
+        session = await get_session_pool().get_or_create(
+            thread_id, github_token, isolation_session_id=isolation_session_id
+        )
+        await session.set_model(req.model)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"Session initialization failed: {exc}") from exc
+
     if req.stream:
 
         async def stream_generator() -> AsyncGenerator[str, None]:
-            try:
-                session = await get_session_pool().get_or_create(
-                    thread_id, github_token, isolation_session_id=isolation_session_id
-                )
-                await session.set_model(req.model)
-            except RuntimeError as exc:
-                yield sse_error("server_error", f"Session initialization failed: {exc}")
-                return
-
             yield sse_message_start(message_id, req.model)
             yield sse_content_block_start(0)
 
@@ -691,14 +693,6 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         )
 
     # Non-streaming: buffer full response then return JSON
-    try:
-        session = await get_session_pool().get_or_create(
-            thread_id, github_token, isolation_session_id=isolation_session_id
-        )
-        await session.set_model(req.model)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=f"Session initialization failed: {exc}") from exc
-
     collected: list[str] = []
     idle_event = asyncio.Event()
     send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
