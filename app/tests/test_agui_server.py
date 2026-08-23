@@ -4,6 +4,7 @@ Tests the AG-UI server endpoints and configuration.
 Follows all constitution requirements including type safety and test coverage.
 """
 
+from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
 
@@ -319,47 +320,25 @@ def test_abort_thread_endpoint_uses_isolation_header(
     pool.abort.assert_awaited_once_with("thread-123", isolation_session_id="tenant-a")
 
 
-def test_anthropic_models_requires_thirdparty_api_key(
+def test_anthropic_models_allows_unauthenticated_callers(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Third-party model listing should reject unauthenticated callers."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_api_key", "")
+    """Third-party model listing should not require caller authentication."""
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+    sdk_client = MagicMock()
+    sdk_client.list_models = AsyncMock(return_value=[SimpleNamespace(id="gpt-4.1")])
+    monkeypatch.setattr("src.runtime.state.get_client", lambda: sdk_client)
 
     response = client.get("/v1/models")
 
-    assert response.status_code == 503
-    assert response.json() == {"detail": "THIRDPARTY_API_KEY is not configured"}
-
-
-def test_anthropic_models_rejects_wrong_thirdparty_api_key(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Third-party model listing should reject invalid caller API keys."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_api_key", "client-key")
-
-    response = client.get("/v1/models", headers={"x-api-key": "wrong-key"})
-
-    assert response.status_code == 401
-    assert response.json() == {"detail": "Third-party API authentication required"}
-
-
-def test_anthropic_models_rejects_missing_thirdparty_api_key(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Third-party model listing should reject callers without API credentials."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_api_key", "client-key")
-
-    response = client.get("/v1/models")
-
-    assert response.status_code == 401
-    assert response.json() == {"detail": "Third-party API authentication required"}
+    assert response.status_code == 200
+    assert response.json()["data"][0]["id"] == "gpt-4.1"
 
 
 def test_anthropic_messages_requires_thirdparty_pat(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Third-party messages should fail fast when the server PAT is missing."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_api_key", "client-key")
     monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "")
     pool = MagicMock()
     pool.get_or_create = AsyncMock()
@@ -367,7 +346,7 @@ def test_anthropic_messages_requires_thirdparty_pat(
 
     response = client.post(
         "/v1/messages",
-        headers={"x-api-key": "client-key", "X-Isolation-Session-ID": "tenant-a"},
+        headers={"X-Isolation-Session-ID": "tenant-a"},
         json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hello"}]},
     )
 
@@ -380,7 +359,6 @@ def test_anthropic_messages_requires_isolation_header(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Third-party messages should not fall back to a shared isolation namespace."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_api_key", "client-key")
     monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
     pool = MagicMock()
     pool.get_or_create = AsyncMock()
@@ -388,7 +366,6 @@ def test_anthropic_messages_requires_isolation_header(
 
     response = client.post(
         "/v1/messages",
-        headers={"x-api-key": "client-key"},
         json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hello"}]},
     )
 
@@ -401,7 +378,6 @@ def test_anthropic_messages_uses_required_isolation_header(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Third-party messages should pass the caller isolation namespace to the session pool."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_api_key", "client-key")
     monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
     pool = MagicMock()
     pool.get_or_create = AsyncMock(side_effect=RuntimeError("boom"))
@@ -409,7 +385,7 @@ def test_anthropic_messages_uses_required_isolation_header(
 
     response = client.post(
         "/v1/messages",
-        headers={"x-api-key": "client-key", "X-Isolation-Session-ID": "tenant-a"},
+        headers={"X-Isolation-Session-ID": "tenant-a"},
         json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hello"}]},
     )
 
