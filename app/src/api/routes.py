@@ -1,6 +1,7 @@
 """API route handlers for the AG-UI server."""
 
 import asyncio
+import hashlib
 import secrets
 import uuid
 from collections.abc import AsyncGenerator
@@ -180,9 +181,9 @@ def _require_thirdparty_request_auth(request: Request) -> None:
     else:
         provided_key = request.headers.get("x-api-key", "")
 
-    if not provided_key:
-        raise HTTPException(status_code=401, detail="Third-party API authentication required")
-    if not secrets.compare_digest(provided_key.encode(), expected_key.encode()):
+    provided_digest = hashlib.sha256(provided_key.encode()).digest()
+    expected_digest = hashlib.sha256(expected_key.encode()).digest()
+    if not secrets.compare_digest(provided_digest, expected_digest):
         raise HTTPException(status_code=401, detail="Third-party API authentication required")
 
 
