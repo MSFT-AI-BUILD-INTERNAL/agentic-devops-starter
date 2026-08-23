@@ -134,9 +134,18 @@ async def github_device_code() -> JSONResponse:
 
 @router.post("/auth/device/token")
 async def github_device_token(body: DeviceTokenRequest) -> JSONResponse:
-    """Poll once for a Device Flow token. Client should retry on status=pending."""
+    """Poll once for a Device Flow token.
+
+    Client should retry when status is ``pending``. When status is ``slow_down``,
+    add ``interval`` seconds to the current polling interval for subsequent attempts.
+    """
     result = await poll_device_token(body.device_code)
-    payload = {"session_token": result.session_token} if result.status == "ok" else {"status": result.status}
+    if result.status == "ok":
+        payload: dict[str, object] = {"session_token": result.session_token}
+    elif result.status == "slow_down":
+        payload = {"status": result.status, "interval": result.interval}
+    else:
+        payload = {"status": result.status}
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
@@ -244,6 +253,7 @@ def _chat_streaming_response(
         message_id = uuid.uuid4().hex[:12]
         message_started = False
         loop = asyncio.get_running_loop()
+        deadline = loop.time() + settings.session_timeout
         idle_event = asyncio.Event()
         send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
 
@@ -264,11 +274,18 @@ def _chat_streaming_response(
                     loop.call_soon_threadsafe(idle_event.set)
 
         unsubscribe = None
+        error_sent = False
         try:
             unsubscribe = session.on(on_event)
             await session.send(prompt)
 
             while not idle_event.is_set():
+                if loop.time() >= deadline:
+                    logger.warning("AG-UI session idle timeout", extra={"thread_id": thread_id})
+                    yield sse_format({"type": "RUN_ERROR", "message": "Session timed out"})
+                    error_sent = True
+                    await pool.disconnect(thread_id, isolation_session_id=isolation_session_id)
+                    break
                 try:
                     msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
                 except TimeoutError:
@@ -276,6 +293,8 @@ def _chat_streaming_response(
 
                 if msg["type"] == "error":
                     yield sse_format({"type": "RUN_ERROR", "message": msg["content"]})
+                    error_sent = True
+                    break
                 elif msg["type"] == "delta":
                     if not message_started:
                         yield sse_format({"type": "TEXT_MESSAGE_START", "message_id": message_id})
@@ -283,15 +302,16 @@ def _chat_streaming_response(
                     yield sse_format({"type": "TEXT_MESSAGE_CONTENT", "delta": msg["content"]})
 
             # Drain remaining queued events
-            while not send_queue.empty():
-                msg = send_queue.get_nowait()
-                if msg["type"] == "delta":
-                    if not message_started:
-                        yield sse_format({"type": "TEXT_MESSAGE_START", "message_id": message_id})
-                        message_started = True
-                    yield sse_format({"type": "TEXT_MESSAGE_CONTENT", "delta": msg["content"]})
+            if not error_sent:
+                while not send_queue.empty():
+                    msg = send_queue.get_nowait()
+                    if msg["type"] == "delta":
+                        if not message_started:
+                            yield sse_format({"type": "TEXT_MESSAGE_START", "message_id": message_id})
+                            message_started = True
+                        yield sse_format({"type": "TEXT_MESSAGE_CONTENT", "delta": msg["content"]})
 
-            if message_started:
+            if message_started and not error_sent:
                 yield sse_format({"type": "TEXT_MESSAGE_END", "message_id": message_id})
 
         except Exception:
@@ -531,6 +551,7 @@ async def list_anthropic_models(request: Request) -> JSONResponse:
 
 
 @router.post("/v1/messages", response_model=None)
+@router.post("/v1/messages/", response_model=None, include_in_schema=False)
 async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | JSONResponse:
     """Anthropic Messages API adapter backed by the Copilot SDK.
 
@@ -580,6 +601,11 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     try:
         validate_request(req)
         prompt = extract_last_user_prompt(req)
+        if req.system is not None:
+            raise ValueError(
+                "System prompts are not supported by this adapter. "
+                "Remove the 'system' field from the request."
+            )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -610,9 +636,11 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
             yield sse_content_block_start(0)
 
             output_tokens = 0
+            content_block_open = True
             idle_event = asyncio.Event()
             send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
             loop = asyncio.get_running_loop()
+            deadline = loop.time() + settings.session_timeout
 
             def on_event(event: Any) -> None:
                 from copilot.generated.session_events import (
@@ -643,12 +671,22 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                 await session.send(prompt)
 
                 while not idle_event.is_set():
+                    if loop.time() >= deadline:
+                        if content_block_open:
+                            yield sse_content_block_stop(0)
+                            content_block_open = False
+                        yield sse_error("server_error", "Session timed out")
+                        error_sent = True
+                        await get_session_pool().disconnect(thread_id, isolation_session_id=isolation_session_id)
+                        break
                     try:
                         msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
                     except TimeoutError:
                         continue
                     if msg["type"] == "error":
-                        yield sse_content_block_stop(0)
+                        if content_block_open:
+                            yield sse_content_block_stop(0)
+                            content_block_open = False
                         yield sse_error("server_error", msg["content"])
                         error_sent = True
                         break
@@ -658,16 +696,19 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                         yield sse_content_block_delta(text, 0)
 
                 # Drain remaining deltas (idle fired before queue was empty)
-                while not send_queue.empty():
-                    msg = send_queue.get_nowait()
-                    if msg["type"] == "delta":
-                        text = msg["content"]
-                        output_tokens += len(text)
-                        yield sse_content_block_delta(text, 0)
+                if not error_sent:
+                    while not send_queue.empty():
+                        msg = send_queue.get_nowait()
+                        if msg["type"] == "delta":
+                            text = msg["content"]
+                            output_tokens += len(text)
+                            yield sse_content_block_delta(text, 0)
 
             except Exception:
                 logger.exception("Anthropic adapter stream error")
-                yield sse_content_block_stop(0)
+                if content_block_open:
+                    yield sse_content_block_stop(0)
+                    content_block_open = False
                 yield sse_error("server_error", "An internal error occurred")
                 await get_session_pool().disconnect(
                     thread_id, isolation_session_id=isolation_session_id
@@ -678,7 +719,9 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                     unsubscribe()
 
             if not error_sent:
-                yield sse_content_block_stop(0)
+                if content_block_open:
+                    yield sse_content_block_stop(0)
+                    content_block_open = False
                 yield sse_message_delta(output_tokens)
                 yield sse_message_stop()
 
@@ -697,6 +740,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     idle_event = asyncio.Event()
     send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
     loop = asyncio.get_running_loop()
+    deadline = loop.time() + settings.session_timeout
 
     def on_event_blocking(event: Any) -> None:
         from copilot.generated.session_events import (
@@ -724,6 +768,11 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     try:
         await session.send(prompt)
         while not idle_event.is_set():
+            if loop.time() >= deadline:
+                await get_session_pool().disconnect(
+                    thread_id, isolation_session_id=isolation_session_id
+                )
+                raise HTTPException(status_code=504, detail="Session timed out")
             try:
                 msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
             except TimeoutError:
