@@ -137,7 +137,7 @@ async def github_device_token(body: DeviceTokenRequest) -> JSONResponse:
     """Poll once for a Device Flow token.
 
     Client should retry when status is ``pending``. When status is ``slow_down``,
-    wait ``interval`` seconds before the next poll attempt.
+    add ``interval`` seconds to the current polling interval for subsequent attempts.
     """
     result = await poll_device_token(body.device_code)
     if result.status == "ok":
