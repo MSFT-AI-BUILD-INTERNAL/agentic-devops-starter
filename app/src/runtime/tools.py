@@ -20,6 +20,11 @@ from src.core.logging_utils import correlation_id, new_correlation_id, setup_log
 
 logger = setup_logging(settings.log_level)
 
+# Fixed target for the fetch_github_zen demo tool. Not configurable: this
+# endpoint is public, requires no authentication, and always returns a short
+# zen text string, so there is no reason to point it elsewhere.
+_GITHUB_ZEN_URL = "https://api.github.com/zen"
+
 
 class ExternalDependencyUnavailableError(RuntimeError):
     """Raised when an external dependency cannot be reached."""
@@ -92,14 +97,14 @@ async def _transform_text(params: BaseModel, _invocation: ToolInvocation) -> dic
     return {"transformed_text": value}
 
 
-def _fetch_remote_text(url: str, timeout_seconds: float) -> str:
-    request = Request(
-        url=url,
-        headers={
-            "Accept": "text/plain",
-            "User-Agent": "agentic-devops-starter-tool/1.0",
-        },
-    )
+def _fetch_remote_text(url: str, timeout_seconds: float, authorization: str | None = None) -> str:
+    headers = {
+        "Accept": "text/plain",
+        "User-Agent": "agentic-devops-starter-tool/1.0",
+    }
+    if authorization:
+        headers["Authorization"] = authorization
+    request = Request(url=url, headers=headers)
     with urlopen(request, timeout=timeout_seconds) as response:
         raw = cast(bytes, response.read(2048))
         charset = response.headers.get_content_charset() or "utf-8"
@@ -109,11 +114,17 @@ def _fetch_remote_text(url: str, timeout_seconds: float) -> str:
 async def _fetch_github_zen(params: BaseModel, _invocation: ToolInvocation) -> dict[str, Any]:
     typed_params = FetchGitHubZenArgs.model_validate(params.model_dump())
     timeout_seconds = max(0.1, min(settings.tool_timeout, 15.0))
+    # Third-party API calls authenticate with a dedicated PAT (THIRDPARTY_GITHUB_PAT),
+    # independent of the GitHub Apps OAuth token used for Copilot SDK sessions.
+    authorization = None
+    if settings.thirdparty_github_pat:
+        authorization = "Bearer " + settings.thirdparty_github_pat
     try:
         text = await asyncio.to_thread(
             _fetch_remote_text,
-            settings.tool_external_api_url,
+            _GITHUB_ZEN_URL,
             timeout_seconds,
+            authorization,
         )
     except (TimeoutError, URLError, OSError) as exc:
         raise ExternalDependencyUnavailableError("dependency unavailable") from exc

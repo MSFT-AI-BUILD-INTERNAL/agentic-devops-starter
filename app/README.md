@@ -136,7 +136,7 @@ Auth is enforced by direct `get_user_token()` calls inside route handlers. Only 
 | `COPILOT_API_ISOLATION_SESSION_HEADER` | No | `X-Isolation-Session-ID` | Header for session/file isolation. When OAuth is active, combined with the per-user AES-CMAC namespace to form the final session pool key |
 | `COPILOT_API_SESSION_CONFIG_ROOT_DIR` | No | `.copilot-session-config` | Base directory for per-isolation Copilot session config |
 | `COPILOT_API_TOOL_TIMEOUT` | No | `10.0` | Default timeout (seconds) for each tool invocation |
-| `COPILOT_API_TOOL_EXTERNAL_API_URL` | No | `https://api.github.com/zen` | External API URL used by the example integration tool |
+| `THIRDPARTY_GITHUB_PAT` | No | unset | PAT sent as `Authorization` header when the `fetch_github_zen` demo tool calls the fixed `https://api.github.com/zen` endpoint. Independent of the GitHub Apps OAuth flow used for Copilot SDK sessions |
 | `COPILOT_API_EXCLUDED_TOOLS` | No | filesystem/shell/database tools | Comma-separated SDK built-in tools to disable. Unset applies a secure-by-default denylist (`bash`, `write_bash`, `read_bash`, `stop_bash`, `list_bash`, `view`, `create`, `edit`, `grep`, `glob`, `sql`). Ignored when `COPILOT_API_ALLOWED_TOOLS` is set |
 | `COPILOT_API_ALLOWED_TOOLS` | No | — | Comma-separated tool allowlist. When set, only listed tools are enabled and the denylist is ignored |
 | `MCP_SERVER_URL` | No | — | Remote MCP server URL (e.g. `https://<name>.azurecontainerapps.io`). Enables `/v1/mcp/tools` and registers MCP tools in Copilot sessions. Omit to run with built-in tools only |

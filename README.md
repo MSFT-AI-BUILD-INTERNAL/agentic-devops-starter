@@ -195,7 +195,6 @@ Auth is enforced by direct `get_user_token(request)` calls inside route handlers
 | `COPILOT_API_APP_CONFIG_LABEL` | No | unset | Label filter applied when fetching from Azure App Configuration |
 | `MCP_SERVER_URL` | No | unset | URL of the remote MCP server (e.g. `https://<name>.azurecontainerapps.io`); omit to run with built-in tools only |
 | `COPILOT_API_TOOL_TIMEOUT` | No | unset | Timeout in seconds for individual tool calls |
-| `COPILOT_API_TOOL_EXTERNAL_API_URL` | No | unset | Base URL for the external API tool |
 | `COPILOT_API_ALLOWED_TOOLS` | No | unset | Comma-separated allowlist of tool names; overrides the denylist when set |
 | `COPILOT_API_EXCLUDED_TOOLS` | No | unset | Comma-separated denylist of tool names to disable |
 | `VITE_AGUI_ENDPOINT` | No | `/api` | Frontend API base URL |
