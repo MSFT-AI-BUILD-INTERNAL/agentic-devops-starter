@@ -29,6 +29,17 @@ class AnthropicUsage(BaseModel):
     output_tokens: int = 0
 
 
+class AnthropicCountTokensRequest(BaseModel):
+    model: str
+    messages: list[AnthropicMessage]
+    system: str | list[dict[str, Any]] | None = None
+    tools: list[dict[str, Any]] | None = None
+
+
+class AnthropicCountTokensResponse(BaseModel):
+    input_tokens: int
+
+
 class AnthropicTextContentBlock(BaseModel):
     type: Literal["text"] = "text"
     text: str

@@ -9,8 +9,10 @@ from typing import Any
 from copilot import CopilotClient, SubprocessConfig
 from copilot.client import ModelInfo, TelemetryConfig
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from src.api.auth import initialize_session_cipher
 from src.api.routes import router
@@ -143,6 +145,24 @@ def create_app() -> FastAPI:
         description="AG-UI server for conversational AI agent powered by GitHub Copilot SDK",
         version="0.2.0",
     )
+
+    # Anthropic's SDK (used by Claude Code) expects error bodies shaped like
+    # {"error": {"type": "error", "message": "..."}}. FastAPI's default
+    # {"detail": "..."} shape is not recognized by that SDK, which then
+    # treats the (otherwise well-formed) 4xx/5xx response as a connection
+    # failure and retries. Only the Anthropic-compatible routes are
+    # affected; every other endpoint keeps the standard FastAPI error shape.
+    _ANTHROPIC_ERROR_PATHS = ("/v1/messages", "/v1/models")
+
+    @app.exception_handler(HTTPException)
+    async def anthropic_aware_http_exception_handler(request: Request, exc: HTTPException) -> Response:
+        if request.url.path.startswith(_ANTHROPIC_ERROR_PATHS):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"error": {"type": "error", "message": str(exc.detail)}},
+                headers=exc.headers,
+            )
+        return await http_exception_handler(request, exc)
 
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next: Any) -> Response:
