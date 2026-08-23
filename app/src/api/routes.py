@@ -180,6 +180,8 @@ def _require_thirdparty_request_auth(request: Request) -> None:
     else:
         provided_key = request.headers.get("x-api-key", "")
 
+    if not provided_key:
+        raise HTTPException(status_code=401, detail="Third-party API authentication required")
     if not secrets.compare_digest(provided_key.encode(), expected_key.encode()):
         raise HTTPException(status_code=401, detail="Third-party API authentication required")
 
