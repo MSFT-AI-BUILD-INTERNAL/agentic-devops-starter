@@ -355,13 +355,13 @@ def test_anthropic_messages_requires_thirdparty_pat(
     pool.get_or_create.assert_not_called()
 
 
-def test_anthropic_messages_requires_isolation_header(
+def test_anthropic_messages_falls_back_without_isolation_header(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Third-party messages should not fall back to a shared isolation namespace."""
+    """Third-party messages should fall back to a default isolation namespace."""
     monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
     pool = MagicMock()
-    pool.get_or_create = AsyncMock()
+    pool.get_or_create = AsyncMock(side_effect=RuntimeError("boom"))
     monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
 
     response = client.post(
@@ -369,12 +369,14 @@ def test_anthropic_messages_requires_isolation_header(
         json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hello"}]},
     )
 
-    assert response.status_code == 400
-    assert response.json() == {"detail": "X-Isolation-Session-ID header is required"}
-    pool.get_or_create.assert_not_called()
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Session initialization failed: boom"}
+    pool.get_or_create.assert_awaited_once_with(
+        "anthropic-v1", "server-token", isolation_session_id="session"
+    )
 
 
-def test_anthropic_messages_uses_required_isolation_header(
+def test_anthropic_messages_uses_isolation_header(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Third-party messages should pass the caller isolation namespace to the session pool."""
