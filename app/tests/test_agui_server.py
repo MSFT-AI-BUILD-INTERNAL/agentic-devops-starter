@@ -4,7 +4,7 @@ Tests the AG-UI server endpoints and configuration.
 Follows all constitution requirements including type safety and test coverage.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -20,7 +20,7 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     mock_client = MagicMock()
     mock_client.start = AsyncMock()
     mock_client.stop = AsyncMock()
-    monkeypatch.setattr("agui_server.CopilotClient", lambda: mock_client)
+    monkeypatch.setattr("agui_server.CopilotClient", lambda *args, **kwargs: mock_client)
     from agui_server import create_app
 
     return create_app()
@@ -68,7 +68,7 @@ def test_lifespan_starts_client_without_permanent_token(monkeypatch: pytest.Monk
         response = client.get("/health")
 
     assert response.status_code == 200
-    copilot_client.assert_called_once_with()
+    copilot_client.assert_called_once_with(on_list_models=ANY)
 
 
 def test_github_oauth_login_redirects_with_csrf_state(monkeypatch: pytest.MonkeyPatch) -> None:
