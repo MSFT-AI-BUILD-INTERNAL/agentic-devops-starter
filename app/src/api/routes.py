@@ -556,6 +556,37 @@ async def list_anthropic_models() -> JSONResponse:
     return JSONResponse(AnthropicModelListResponse(data=data).model_dump())
 
 
+@router.post("/v1/messages/count_tokens")
+async def anthropic_count_tokens_endpoint(request: Request) -> JSONResponse:
+    """Approximate the input token count for an Anthropic Messages request.
+
+    Claude Code calls this endpoint during normal session start/turn
+    handling. The adapter has no access to Anthropic's real tokenizer, so it
+    returns a best-effort character-based estimate rather than 404ing, which
+    would otherwise surface to callers as an unexplained connection failure.
+    """
+    if not settings.anthropic_route_enabled:
+        raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
+    from src.thirdparty.anthropic_adapter import estimate_input_tokens
+    from src.thirdparty.anthropic_models import (
+        AnthropicCountTokensRequest,
+        AnthropicCountTokensResponse,
+    )
+
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+
+    try:
+        req = AnthropicCountTokensRequest.model_validate(body)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    input_tokens = estimate_input_tokens(req)
+    return JSONResponse(AnthropicCountTokensResponse(input_tokens=input_tokens).model_dump())
+
+
 @router.post("/v1/messages", response_model=None)
 @router.post("/v1/messages/", response_model=None, include_in_schema=False)
 async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | JSONResponse:
@@ -576,6 +607,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
     from src.thirdparty.anthropic_adapter import (
         extract_last_user_prompt,
+        extract_system_prompt,
         validate_request,
     )
     from src.thirdparty.anthropic_models import (
@@ -609,13 +641,15 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     try:
         validate_request(req)
         prompt = extract_last_user_prompt(req)
-        if req.system is not None:
-            raise ValueError(
-                "System prompts are not supported by this adapter. "
-                "Remove the 'system' field from the request."
-            )
+        system_prompt = extract_system_prompt(req)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # The pooled Copilot SDK session does not expose a per-turn system-message
+    # override, so the caller-supplied system prompt is folded into the
+    # outgoing turn instead of being rejected outright.
+    if system_prompt:
+        prompt = f"{system_prompt}\n\n{prompt}"
 
     # Use a stable thread key so the SDK session maintains history across
     # interactive Claude Code turns. Isolation is scoped by the optional

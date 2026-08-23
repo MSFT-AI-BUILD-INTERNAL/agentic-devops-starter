@@ -351,7 +351,9 @@ def test_anthropic_messages_requires_thirdparty_pat(
     )
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "THIRDPARTY_GITHUB_PAT is not configured"}
+    assert response.json() == {
+        "error": {"type": "error", "message": "THIRDPARTY_GITHUB_PAT is not configured"}
+    }
     pool.get_or_create.assert_not_called()
 
 
@@ -370,7 +372,9 @@ def test_anthropic_messages_falls_back_without_isolation_header(
     )
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Session initialization failed: boom"}
+    assert response.json() == {
+        "error": {"type": "error", "message": "Session initialization failed: boom"}
+    }
     pool.get_or_create.assert_awaited_once_with(
         "anthropic-v1", "server-token", isolation_session_id="session"
     )
@@ -392,7 +396,69 @@ def test_anthropic_messages_uses_isolation_header(
     )
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Session initialization failed: boom"}
+    assert response.json() == {
+        "error": {"type": "error", "message": "Session initialization failed: boom"}
+    }
     pool.get_or_create.assert_awaited_once_with(
         "anthropic-v1", "server-token", isolation_session_id="tenant-a"
     )
+
+
+def test_anthropic_messages_accepts_system_prompt(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 'system' field must not be rejected with 400; it should reach session setup."""
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+    pool = MagicMock()
+    pool.get_or_create = AsyncMock(side_effect=RuntimeError("boom"))
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "gpt-4.1",
+            "system": "You are a helpful assistant.",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+
+    # Fails at session setup (mocked), not at request validation, proving the
+    # 'system' field itself is no longer rejected with a 400.
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": {"type": "error", "message": "Session initialization failed: boom"}
+    }
+
+
+def test_anthropic_count_tokens_endpoint(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """count_tokens should return an approximate input token count, not 404."""
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+
+    response = client.post(
+        "/v1/messages/count_tokens",
+        json={
+            "model": "claude-sonnet-4.6",
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["input_tokens"], int)
+    assert body["input_tokens"] >= 1
+
+
+def test_anthropic_messages_error_uses_anthropic_error_schema(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Errors on Anthropic-compatible routes use {"error": {...}}, not {"detail": ...}."""
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "")
+
+    response = client.post(
+        "/v1/messages",
+        json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hello"}]},
+    )
+
+    assert response.status_code == 503
+    assert "error" in response.json()
+    assert response.json()["error"]["type"] == "error"
