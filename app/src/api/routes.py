@@ -601,7 +601,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     try:
         validate_request(req)
         prompt = extract_last_user_prompt(req)
-        if req.system not in (None, "", []):
+        if req.system:
             raise ValueError(
                 "System prompts are not supported by this adapter. "
                 "Remove the 'system' field from the request."
