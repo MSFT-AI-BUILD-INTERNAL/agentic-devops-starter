@@ -1,6 +1,7 @@
 """API route handlers for the AG-UI server."""
 
 import asyncio
+import secrets
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -159,6 +160,38 @@ def _resolve_authenticated_isolation_session_id(request: Request, fallback: str)
     client_isolation_id = _resolve_isolation_session_id(request, fallback)
     session_id = get_user_session_id(request)
     return get_user_isolation_namespace(session_id, client_isolation_id)
+
+
+def _require_thirdparty_github_pat() -> str:
+    token = settings.thirdparty_github_pat.strip()
+    if not token:
+        raise HTTPException(status_code=503, detail="THIRDPARTY_GITHUB_PAT is not configured")
+    return token
+
+
+def _require_thirdparty_request_auth(request: Request) -> None:
+    expected_key = settings.thirdparty_api_key.strip()
+    if not expected_key:
+        raise HTTPException(status_code=503, detail="THIRDPARTY_API_KEY is not configured")
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        provided_key = auth_header[len("Bearer ") :]
+    else:
+        provided_key = request.headers.get("x-api-key", "")
+
+    if not secrets.compare_digest(provided_key, expected_key):
+        raise HTTPException(status_code=401, detail="Third-party API authentication required")
+
+
+def _resolve_required_isolation_session_id(request: Request) -> str:
+    raw = request.headers.get(settings.isolation_session_header)
+    if not raw or not raw.strip():
+        raise HTTPException(
+            status_code=400,
+            detail=f"{settings.isolation_session_header} header is required",
+        )
+    return normalize_isolation_session_id(raw, "session")
 
 
 @router.get("/health")
@@ -526,17 +559,18 @@ async def job_status_endpoint(job_id: str) -> JobStatusResponse:
 
 
 @router.get("/v1/models")
-async def list_anthropic_models() -> JSONResponse:
+async def list_anthropic_models(request: Request) -> JSONResponse:
     """List models supported by the Anthropic Messages API adapter.
 
-    No authentication is required: this endpoint is called by third-party
-    clients (e.g. Claude Code) that do not hold a GitHub Apps OAuth session
-    cookie. Returns a list compatible with the Anthropic client's
-    model-listing format so Claude Code can confirm the adapter is reachable
-    before sending real requests.
+    Requires third-party API key authentication because callers do not hold a
+    GitHub Apps OAuth session cookie. Returns a list compatible with the
+    Anthropic client's model-listing format so Claude Code can confirm the
+    adapter is reachable before sending real requests.
     """
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
+    _require_thirdparty_request_auth(request)
+    _require_thirdparty_github_pat()
 
     from src.runtime.state import get_client
     from src.thirdparty.anthropic_models import AnthropicModelInfo, AnthropicModelListResponse
@@ -560,11 +594,10 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     to a Copilot SDK session request.  Streaming (SSE) and non-streaming JSON
     responses are both supported.
 
-    No authentication is required from the caller: this endpoint is intended
-    for third-party clients (e.g. Claude Code) that do not hold a GitHub Apps
-    OAuth session cookie. Since there is no per-user OAuth token available,
-    the Copilot SDK session is authenticated with ``THIRDPARTY_GITHUB_PAT``
-    instead.
+    Requires third-party API key authentication because callers do not hold a
+    GitHub Apps OAuth session cookie. Since there is no per-user OAuth token
+    available, the Copilot SDK session is authenticated with
+    ``THIRDPARTY_GITHUB_PAT`` instead.
 
     Phase 1 limitations (return explicit 400 rather than silent loss):
     - tools / tool_use / tool_result content blocks
@@ -572,6 +605,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     """
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
+    _require_thirdparty_request_auth(request)
 
     from src.thirdparty.anthropic_adapter import (
         extract_last_user_prompt,
@@ -593,7 +627,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         sse_message_stop,
     )
 
-    github_token = settings.thirdparty_github_pat or None
+    github_token = _require_thirdparty_github_pat()
 
     try:
         body = await request.json()
@@ -617,12 +651,10 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Use a stable thread key so the SDK session maintains history across
-    # interactive Claude Code turns. There is no authenticated caller identity
-    # here (third-party clients are unauthenticated), so isolation is scoped
-    # only by the client-supplied X-Isolation-Session-ID header, falling back
-    # to a shared default namespace when absent.
+    # interactive Claude Code turns. Isolation is scoped by the required
+    # client-supplied X-Isolation-Session-ID header.
     thread_id = "anthropic-v1"
-    isolation_session_id = _resolve_isolation_session_id(request, thread_id)
+    isolation_session_id = _resolve_required_isolation_session_id(request)
 
     message_id = f"msg_{uuid.uuid4().hex[:24]}"
 

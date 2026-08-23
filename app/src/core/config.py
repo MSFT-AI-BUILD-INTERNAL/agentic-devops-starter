@@ -40,6 +40,10 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("THIRDPARTY_GITHUB_PAT", "COPILOT_API_THIRDPARTY_GITHUB_PAT"),
     )
+    thirdparty_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("THIRDPARTY_API_KEY", "COPILOT_API_THIRDPARTY_API_KEY"),
+    )
 
     azure_storage_blob_endpoint: str = ""
     azure_storage_container_name: str = "uploads"
