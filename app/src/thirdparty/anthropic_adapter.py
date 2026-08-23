@@ -68,8 +68,4 @@ def extract_system_prompt(request: AnthropicMessagesRequest) -> str | None:
         return None
     if isinstance(request.system, str):
         return request.system or None
-    parts: list[str] = []
-    for block in request.system:
-        if block.get("type") == "text":
-            parts.append(block.get("text", ""))
-    return "\n".join(parts) or None
+    return _extract_text(request.system) or None

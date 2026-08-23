@@ -270,6 +270,7 @@ def _chat_streaming_response(
                     loop.call_soon_threadsafe(idle_event.set)
 
         unsubscribe = None
+        error_sent = False
         try:
             unsubscribe = session.on(on_event)
             await session.send(prompt)
@@ -278,6 +279,7 @@ def _chat_streaming_response(
                 if loop.time() >= deadline:
                     logger.warning("AG-UI session idle timeout", extra={"thread_id": thread_id})
                     yield sse_format({"type": "RUN_ERROR", "message": "Session timed out"})
+                    error_sent = True
                     await pool.disconnect(thread_id, isolation_session_id=isolation_session_id)
                     break
                 try:
@@ -287,6 +289,8 @@ def _chat_streaming_response(
 
                 if msg["type"] == "error":
                     yield sse_format({"type": "RUN_ERROR", "message": msg["content"]})
+                    error_sent = True
+                    break
                 elif msg["type"] == "delta":
                     if not message_started:
                         yield sse_format({"type": "TEXT_MESSAGE_START", "message_id": message_id})
@@ -294,15 +298,16 @@ def _chat_streaming_response(
                     yield sse_format({"type": "TEXT_MESSAGE_CONTENT", "delta": msg["content"]})
 
             # Drain remaining queued events
-            while not send_queue.empty():
-                msg = send_queue.get_nowait()
-                if msg["type"] == "delta":
-                    if not message_started:
-                        yield sse_format({"type": "TEXT_MESSAGE_START", "message_id": message_id})
-                        message_started = True
-                    yield sse_format({"type": "TEXT_MESSAGE_CONTENT", "delta": msg["content"]})
+            if not error_sent:
+                while not send_queue.empty():
+                    msg = send_queue.get_nowait()
+                    if msg["type"] == "delta":
+                        if not message_started:
+                            yield sse_format({"type": "TEXT_MESSAGE_START", "message_id": message_id})
+                            message_started = True
+                        yield sse_format({"type": "TEXT_MESSAGE_CONTENT", "delta": msg["content"]})
 
-            if message_started:
+            if message_started and not error_sent:
                 yield sse_format({"type": "TEXT_MESSAGE_END", "message_id": message_id})
 
         except Exception:
@@ -681,12 +686,13 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                         yield sse_content_block_delta(text, 0)
 
                 # Drain remaining deltas (idle fired before queue was empty)
-                while not send_queue.empty():
-                    msg = send_queue.get_nowait()
-                    if msg["type"] == "delta":
-                        text = msg["content"]
-                        output_tokens += len(text)
-                        yield sse_content_block_delta(text, 0)
+                if not error_sent:
+                    while not send_queue.empty():
+                        msg = send_queue.get_nowait()
+                        if msg["type"] == "delta":
+                            text = msg["content"]
+                            output_tokens += len(text)
+                            yield sse_content_block_delta(text, 0)
 
             except Exception:
                 logger.exception("Anthropic adapter stream error")
@@ -749,6 +755,9 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         await session.send(prompt)
         while not idle_event.is_set():
             if loop.time() >= deadline:
+                await get_session_pool().disconnect(
+                    thread_id, isolation_session_id=isolation_session_id
+                )
                 raise HTTPException(status_code=504, detail="Session timed out")
             try:
                 msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
