@@ -20,7 +20,7 @@ def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     mock_client = MagicMock()
     mock_client.start = AsyncMock()
     mock_client.stop = AsyncMock()
-    monkeypatch.setattr("agui_server.CopilotClient", lambda: mock_client)
+    monkeypatch.setattr("agui_server.CopilotClient", lambda *args, **kwargs: mock_client)
     from agui_server import create_app
 
     return create_app()

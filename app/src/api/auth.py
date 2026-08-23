@@ -199,10 +199,7 @@ def get_user_token(request: Request) -> str:
     if auth_header.startswith("Bearer "):
         session_token = auth_header[len("Bearer "):]
     else:
-        session_token = (
-            request.headers.get("x-api-key")
-            or request.cookies.get(SESSION_COOKIE)
-        )
+        session_token = request.cookies.get(SESSION_COOKIE)
     if not session_token:
         raise HTTPException(status_code=401, detail="GitHub authentication required")
     try:

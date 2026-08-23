@@ -81,12 +81,19 @@ def create_app() -> FastAPI:
 
         subprocess_config = _build_copilot_subprocess_config()
 
-        # github-copilot-sdk 1.0.0b3: ModelBilling.from_dict raises ValueError when
-        # the Copilot API omits the `multiplier` field. Use the SDK's on_list_models
-        # hook to strip the billing sub-object before deserialization so the rest of
-        # ModelInfo.from_dict proceeds normally. client is captured by reference and
-        # will be bound by the time list_models() is first called.
+        # TODO(github-copilot-sdk >1.0.0b3): ModelBilling.from_dict raises ValueError
+        # when the Copilot API omits the `multiplier` field. Use the SDK's
+        # on_list_models hook to strip the billing sub-object before deserialization
+        # so the rest of ModelInfo.from_dict proceeds normally. This relies on the
+        # private `client._client` RPC attribute; remove this workaround once the SDK
+        # exposes a public hook/method for the raw model payload or tolerates a
+        # missing `multiplier`. client is pre-bound to None and reassigned below,
+        # before start() can trigger this callback.
+        client: CopilotClient | None = None
+
         async def _on_list_models() -> list[ModelInfo]:
+            if client is None:
+                raise RuntimeError("CopilotClient not connected")
             rpc = client._client  # noqa: SLF001
             if rpc is None:
                 raise RuntimeError("CopilotClient not connected")
