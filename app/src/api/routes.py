@@ -162,10 +162,14 @@ def _resolve_authenticated_isolation_session_id(request: Request, fallback: str)
     return get_user_isolation_namespace(session_id, client_isolation_id)
 
 
-def _require_thirdparty_github_pat() -> str:
-    token = settings.thirdparty_github_pat.strip()
-    if not token:
+def _ensure_thirdparty_github_pat_configured() -> None:
+    if not settings.thirdparty_github_pat.strip():
         raise HTTPException(status_code=503, detail="THIRDPARTY_GITHUB_PAT is not configured")
+
+
+def _require_thirdparty_github_pat() -> str:
+    _ensure_thirdparty_github_pat_configured()
+    token = settings.thirdparty_github_pat.strip()
     return token
 
 
@@ -570,7 +574,7 @@ async def list_anthropic_models(request: Request) -> JSONResponse:
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
     _require_thirdparty_request_auth(request)
-    _require_thirdparty_github_pat()
+    _ensure_thirdparty_github_pat_configured()
 
     from src.runtime.state import get_client
     from src.thirdparty.anthropic_models import AnthropicModelInfo, AnthropicModelListResponse
