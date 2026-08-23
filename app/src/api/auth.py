@@ -198,8 +198,6 @@ def get_user_token(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         session_token = auth_header[len("Bearer "):]
-    elif auth_header:
-        session_token = auth_header
     else:
         session_token = request.cookies.get(SESSION_COOKIE)
     if not session_token:

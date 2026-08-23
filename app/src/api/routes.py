@@ -134,7 +134,11 @@ async def github_device_code() -> JSONResponse:
 
 @router.post("/auth/device/token")
 async def github_device_token(body: DeviceTokenRequest) -> JSONResponse:
-    """Poll once for a Device Flow token. Client should retry on status=pending."""
+    """Poll once for a Device Flow token.
+
+    Client should retry when status is ``pending``. When status is ``slow_down``,
+    wait ``interval`` seconds before the next poll attempt.
+    """
     result = await poll_device_token(body.device_code)
     if result.status == "ok":
         payload: dict[str, object] = {"session_token": result.session_token}
