@@ -605,7 +605,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         system_prompt = extract_system_prompt(req)
         if system_prompt:
             raise ValueError(
-                "System prompts are not supported by this adapter (Phase 1). "
+                "System prompts are not supported by this adapter. "
                 "Remove the 'system' field from the request."
             )
     except ValueError as exc:
@@ -638,6 +638,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
             yield sse_content_block_start(0)
 
             output_tokens = 0
+            content_block_open = True
             idle_event = asyncio.Event()
             send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
             loop = asyncio.get_running_loop()
@@ -673,7 +674,9 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
 
                 while not idle_event.is_set():
                     if loop.time() >= deadline:
-                        yield sse_content_block_stop(0)
+                        if content_block_open:
+                            yield sse_content_block_stop(0)
+                            content_block_open = False
                         yield sse_error("server_error", "Session timed out")
                         error_sent = True
                         await get_session_pool().disconnect(thread_id, isolation_session_id=isolation_session_id)
@@ -683,7 +686,9 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                     except TimeoutError:
                         continue
                     if msg["type"] == "error":
-                        yield sse_content_block_stop(0)
+                        if content_block_open:
+                            yield sse_content_block_stop(0)
+                            content_block_open = False
                         yield sse_error("server_error", msg["content"])
                         error_sent = True
                         break
@@ -703,7 +708,9 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
 
             except Exception:
                 logger.exception("Anthropic adapter stream error")
-                yield sse_content_block_stop(0)
+                if content_block_open:
+                    yield sse_content_block_stop(0)
+                    content_block_open = False
                 yield sse_error("server_error", "An internal error occurred")
                 await get_session_pool().disconnect(
                     thread_id, isolation_session_id=isolation_session_id
@@ -714,7 +721,9 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                     unsubscribe()
 
             if not error_sent:
-                yield sse_content_block_stop(0)
+                if content_block_open:
+                    yield sse_content_block_stop(0)
+                    content_block_open = False
                 yield sse_message_delta(output_tokens)
                 yield sse_message_stop()
 
