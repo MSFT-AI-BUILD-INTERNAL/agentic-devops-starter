@@ -526,16 +526,17 @@ async def job_status_endpoint(job_id: str) -> JobStatusResponse:
 
 
 @router.get("/v1/models")
-async def list_anthropic_models(request: Request) -> JSONResponse:
+async def list_anthropic_models() -> JSONResponse:
     """List models supported by the Anthropic Messages API adapter.
 
-    Requires the same session credential as /v1/messages. Returns a list
-    compatible with the Anthropic client's model-listing format so Claude Code
-    can confirm the adapter is reachable before sending real requests.
+    No authentication is required: this endpoint is called by third-party
+    clients (e.g. Claude Code) that do not hold a GitHub Apps OAuth session
+    cookie. Returns a list compatible with the Anthropic client's
+    model-listing format so Claude Code can confirm the adapter is reachable
+    before sending real requests.
     """
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
-    get_user_token(request)
 
     from src.runtime.state import get_client
     from src.thirdparty.anthropic_models import AnthropicModelInfo, AnthropicModelListResponse
@@ -558,6 +559,12 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     Accepts the Anthropic ``POST /v1/messages`` request format and converts it
     to a Copilot SDK session request.  Streaming (SSE) and non-streaming JSON
     responses are both supported.
+
+    No authentication is required from the caller: this endpoint is intended
+    for third-party clients (e.g. Claude Code) that do not hold a GitHub Apps
+    OAuth session cookie. Since there is no per-user OAuth token available,
+    the Copilot SDK session is authenticated with ``THIRDPARTY_GITHUB_PAT``
+    instead.
 
     Phase 1 limitations (return explicit 400 rather than silent loss):
     - tools / tool_use / tool_result content blocks
@@ -586,7 +593,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         sse_message_stop,
     )
 
-    github_token = get_user_token(request)
+    github_token = settings.thirdparty_github_pat or None
 
     try:
         body = await request.json()
@@ -609,12 +616,13 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Use a stable thread key per user so the SDK session maintains history
-    # across interactive Claude Code turns.  Claude Code does not send
-    # X-Isolation-Session-ID, so we derive a user-scoped namespace from the
-    # authenticated session to prevent cross-user session reuse.
+    # Use a stable thread key so the SDK session maintains history across
+    # interactive Claude Code turns. There is no authenticated caller identity
+    # here (third-party clients are unauthenticated), so isolation is scoped
+    # only by the client-supplied X-Isolation-Session-ID header, falling back
+    # to a shared default namespace when absent.
     thread_id = "anthropic-v1"
-    isolation_session_id = _resolve_authenticated_isolation_session_id(request, thread_id)
+    isolation_session_id = _resolve_isolation_session_id(request, thread_id)
 
     message_id = f"msg_{uuid.uuid4().hex[:24]}"
 

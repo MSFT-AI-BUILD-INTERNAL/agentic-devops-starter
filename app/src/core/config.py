@@ -32,8 +32,10 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("COPILOT_APP_REDIRECT_URI", "GITHUB_OAUTH_REDIRECT_URI"),
     )
-    # Third-party API 호출용 PAT (GitHub Apps OAuth와 무관한 서버 전용 자격증명).
-    # 설정 시 GitHub zen 데모 툴 호출에 Authorization 헤더로 첨부된다.
+    # Third-party API 클라이언트(예: Claude Code)가 Anthropic 호환 엔드포인트
+    # (/v1/models, /v1/messages)를 호출할 때는 GitHub Apps OAuth 세션 쿠키가
+    # 없다. 이 경우 Copilot SDK 세션 인증에 사용할 PAT(GitHub Apps OAuth와 무관한
+    # 서버 전용 자격증명).
     thirdparty_github_pat: str = Field(
         default="",
         validation_alias=AliasChoices("THIRDPARTY_GITHUB_PAT", "COPILOT_API_THIRDPARTY_GITHUB_PAT"),

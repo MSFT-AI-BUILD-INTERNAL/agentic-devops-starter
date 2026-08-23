@@ -685,7 +685,7 @@ session = await client.create_session(
 | `COPILOT_API_ALLOWED_TOOLS` | 쉼표 구분 문자열 | 설정 시 허용 목록 모드로 전환. 명시된 도구 이름만 허용 |
 | `COPILOT_API_EXCLUDED_TOOLS` | 쉼표 구분 문자열 | 차단 목록. `ALLOWED_TOOLS`가 없을 때 유효 |
 | `COPILOT_API_TOOL_TIMEOUT` | 초 단위 정수 | 개별 도구 호출 타임아웃 |
-| `THIRDPARTY_GITHUB_PAT` | PAT 문자열 | `fetch_github_zen` 데모 도구가 고정된 `https://api.github.com/zen`을 호출할 때 `Authorization` 헤더로 첨부되는 PAT. Copilot SDK 세션용 GitHub Apps OAuth와 무관 |
+| `THIRDPARTY_GITHUB_PAT` | PAT 문자열 | `GET /v1/models` / `POST /v1/messages` (서드파티 클라이언트용 Anthropic 호환 엔드포인트)는 인증을 요구하지 않으므로, 대신 Copilot SDK 세션 인증에 사용되는 PAT |
 
 ### 10.5.3 원격 MCP 서버 연동
 
