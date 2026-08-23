@@ -152,6 +152,8 @@ by frontend/proxy layers.
 |--------|------|:---:|-------------|
 | `POST` | `/` | ✓ | Chat SSE stream (GitHub Copilot) |
 | `POST` | `/v1/byok/foundry` | — | Chat SSE stream (Azure AI Foundry BYOK); bypasses OAuth |
+| `GET` | `/v1/models` | — | List Copilot models via the Anthropic-compatible adapter |
+| `POST` | `/v1/messages` | — | Anthropic-compatible Messages API adapter backed by Copilot SDK |
 | `GET` | `/auth/login` | — | Start GitHub App OAuth sign-in; redirects to GitHub |
 | `GET` | `/auth/callback` | — | GitHub App OAuth callback; sets encrypted session cookie |
 | `GET` | `/auth/session` | — | Returns `{"authenticated": true}` or HTTP 401; used as session probe |
@@ -168,7 +170,7 @@ by frontend/proxy layers.
 | `GET` | `/v1/mcp/tools` | — | List tools available from the remote MCP server |
 | `GET` | `/docs` | — | FastAPI OpenAPI UI |
 
-Auth is enforced by direct `get_user_token(request)` calls inside route handlers, not via FastAPI `Depends`. Only `POST /` reads and validates the `github_oauth_session` cookie; all other routes are currently unauthenticated at the route level.
+Auth is enforced by direct checks inside route handlers, not via FastAPI `Depends`. `POST /` reads and validates the `github_oauth_session` cookie; `/v1/models` and `/v1/messages` are unauthenticated at the route level and are intended to be isolated by network controls; all other routes are currently unauthenticated at the route level.
 
 ## Environment Variables
 
@@ -197,6 +199,7 @@ Auth is enforced by direct `get_user_token(request)` calls inside route handlers
 | `COPILOT_API_TOOL_TIMEOUT` | No | unset | Timeout in seconds for individual tool calls |
 | `COPILOT_API_ALLOWED_TOOLS` | No | unset | Comma-separated allowlist of tool names; overrides the denylist when set |
 | `COPILOT_API_EXCLUDED_TOOLS` | No | unset | Comma-separated denylist of tool names to disable |
+| `THIRDPARTY_GITHUB_PAT` | Third-party API | unset | PAT used to authenticate the Copilot SDK session for `POST /v1/messages` |
 | `VITE_AGUI_ENDPOINT` | No | `/api` | Frontend API base URL |
 
 ## Development Commands
