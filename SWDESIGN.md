@@ -686,7 +686,7 @@ session = await client.create_session(
 | `COPILOT_API_EXCLUDED_TOOLS` | 쉼표 구분 문자열 | 차단 목록. `ALLOWED_TOOLS`가 없을 때 유효 |
 | `COPILOT_API_TOOL_TIMEOUT` | 초 단위 정수 | 개별 도구 호출 타임아웃 |
 | `THIRDPARTY_API_KEY` | 공유 API 키 문자열 | `GET /v1/models` / `POST /v1/messages` 호출자가 제공해야 하는 인증 키 |
-| `THIRDPARTY_GITHUB_PAT` | PAT 문자열 | `GET /v1/models` / `POST /v1/messages` (서드파티 클라이언트용 Anthropic 호환 엔드포인트)의 서버 측 Copilot SDK 세션 인증에 사용되는 PAT |
+| `THIRDPARTY_GITHUB_PAT` | PAT 문자열 | `POST /v1/messages` (서드파티 클라이언트용 Anthropic 호환 엔드포인트)의 서버 측 Copilot SDK 세션 인증에 사용되는 PAT |
 
 ### 10.5.3 원격 MCP 서버 연동
 

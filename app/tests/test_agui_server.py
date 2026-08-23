@@ -331,6 +331,18 @@ def test_anthropic_models_requires_thirdparty_api_key(
     assert response.json() == {"detail": "THIRDPARTY_API_KEY is not configured"}
 
 
+def test_anthropic_models_rejects_wrong_thirdparty_api_key(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Third-party model listing should reject invalid caller API keys."""
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_api_key", "client-key")
+
+    response = client.get("/v1/models", headers={"x-api-key": "wrong-key"})
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Third-party API authentication required"}
+
+
 def test_anthropic_messages_requires_thirdparty_pat(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

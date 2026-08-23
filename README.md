@@ -200,7 +200,7 @@ Auth is enforced by direct checks inside route handlers, not via FastAPI `Depend
 | `COPILOT_API_ALLOWED_TOOLS` | No | unset | Comma-separated allowlist of tool names; overrides the denylist when set |
 | `COPILOT_API_EXCLUDED_TOOLS` | No | unset | Comma-separated denylist of tool names to disable |
 | `THIRDPARTY_API_KEY` | Third-party API | unset | Shared API key required from `GET /v1/models` / `POST /v1/messages` callers via `Authorization` bearer token or `x-api-key` |
-| `THIRDPARTY_GITHUB_PAT` | Third-party API | unset | PAT used to authenticate the Copilot SDK session for `GET /v1/models` / `POST /v1/messages` |
+| `THIRDPARTY_GITHUB_PAT` | Third-party API | unset | PAT used to authenticate the Copilot SDK session for `POST /v1/messages` |
 | `VITE_AGUI_ENDPOINT` | No | `/api` | Frontend API base URL |
 
 ## Development Commands

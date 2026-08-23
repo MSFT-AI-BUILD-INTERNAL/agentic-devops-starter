@@ -570,7 +570,6 @@ async def list_anthropic_models(request: Request) -> JSONResponse:
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
     _require_thirdparty_request_auth(request)
-    _require_thirdparty_github_pat()
 
     from src.runtime.state import get_client
     from src.thirdparty.anthropic_models import AnthropicModelInfo, AnthropicModelListResponse
