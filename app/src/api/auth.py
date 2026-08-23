@@ -46,7 +46,8 @@ class DeviceTokenResult:
     """Result of a single device token poll."""
 
     session_token: str | None  # encrypted session token when status is "ok"
-    status: str  # "ok" | "pending" | "expired" | "denied"
+    status: str  # "ok" | "pending" | "slow_down" | "expired" | "denied"
+    interval: int | None = None  # seconds to add to polling interval on slow_down
 
 
 @dataclass(frozen=True)
@@ -140,8 +141,11 @@ async def poll_device_token(device_code: str) -> DeviceTokenResult:
     data = response.json()
 
     error = data.get("error")
-    if error in ("authorization_pending", "slow_down"):
+    if error == "authorization_pending":
         return DeviceTokenResult(session_token=None, status="pending")
+    if error == "slow_down":
+        # RFC 8628 §3.5: client must add 5 seconds to its polling interval
+        return DeviceTokenResult(session_token=None, status="slow_down", interval=5)
     if error in ("expired_token", "device_flow_disabled"):
         return DeviceTokenResult(session_token=None, status="expired")
     if error == "access_denied":

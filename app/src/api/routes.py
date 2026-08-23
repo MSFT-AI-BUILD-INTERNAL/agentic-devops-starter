@@ -136,7 +136,12 @@ async def github_device_code() -> JSONResponse:
 async def github_device_token(body: DeviceTokenRequest) -> JSONResponse:
     """Poll once for a Device Flow token. Client should retry on status=pending."""
     result = await poll_device_token(body.device_code)
-    payload = {"session_token": result.session_token} if result.status == "ok" else {"status": result.status}
+    if result.status == "ok":
+        payload: dict[str, object] = {"session_token": result.session_token}
+    elif result.status == "slow_down":
+        payload = {"status": result.status, "interval": result.interval}
+    else:
+        payload = {"status": result.status}
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
@@ -244,6 +249,7 @@ def _chat_streaming_response(
         message_id = uuid.uuid4().hex[:12]
         message_started = False
         loop = asyncio.get_running_loop()
+        deadline = loop.time() + settings.session_timeout
         idle_event = asyncio.Event()
         send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
 
@@ -269,6 +275,11 @@ def _chat_streaming_response(
             await session.send(prompt)
 
             while not idle_event.is_set():
+                if loop.time() >= deadline:
+                    logger.warning("AG-UI session idle timeout", extra={"thread_id": thread_id})
+                    yield sse_format({"type": "RUN_ERROR", "message": "Session timed out"})
+                    await pool.disconnect(thread_id, isolation_session_id=isolation_session_id)
+                    break
                 try:
                     msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
                 except TimeoutError:
@@ -548,6 +559,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
 
     from src.thirdparty.anthropic_adapter import (
         extract_last_user_prompt,
+        extract_system_prompt,
         validate_request,
     )
     from src.thirdparty.anthropic_models import (
@@ -581,6 +593,9 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     try:
         validate_request(req)
         prompt = extract_last_user_prompt(req)
+        system_prompt = extract_system_prompt(req)
+        if system_prompt:
+            prompt = f"[System: {system_prompt}]\n\n{prompt}"
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -614,6 +629,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
             idle_event = asyncio.Event()
             send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
             loop = asyncio.get_running_loop()
+            deadline = loop.time() + settings.session_timeout
 
             def on_event(event: Any) -> None:
                 from copilot.generated.session_events import (
@@ -644,6 +660,12 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                 await session.send(prompt)
 
                 while not idle_event.is_set():
+                    if loop.time() >= deadline:
+                        yield sse_content_block_stop(0)
+                        yield sse_error("server_error", "Session timed out")
+                        error_sent = True
+                        await get_session_pool().disconnect(thread_id, isolation_session_id=isolation_session_id)
+                        break
                     try:
                         msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
                     except TimeoutError:
@@ -698,6 +720,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     idle_event = asyncio.Event()
     send_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
     loop = asyncio.get_running_loop()
+    deadline = loop.time() + settings.session_timeout
 
     def on_event_blocking(event: Any) -> None:
         from copilot.generated.session_events import (
@@ -725,6 +748,8 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     try:
         await session.send(prompt)
         while not idle_event.is_set():
+            if loop.time() >= deadline:
+                raise HTTPException(status_code=504, detail="Session timed out")
             try:
                 msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
             except TimeoutError:
