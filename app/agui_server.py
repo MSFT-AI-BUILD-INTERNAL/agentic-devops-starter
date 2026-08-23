@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from copilot import CopilotClient, SubprocessConfig
-from copilot.client import TelemetryConfig
+from copilot.client import ModelInfo, TelemetryConfig
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -80,6 +80,22 @@ def create_app() -> FastAPI:
         load_tools()
 
         subprocess_config = _build_copilot_subprocess_config()
+
+        # github-copilot-sdk 1.0.0b3: ModelBilling.from_dict raises ValueError when
+        # the Copilot API omits the `multiplier` field. Use the SDK's on_list_models
+        # hook to strip the billing sub-object before deserialization so the rest of
+        # ModelInfo.from_dict proceeds normally. client is captured by reference and
+        # will be bound by the time list_models() is first called.
+        async def _on_list_models() -> list[ModelInfo]:
+            rpc = client._client  # noqa: SLF001
+            if rpc is None:
+                raise RuntimeError("CopilotClient not connected")
+            response = await rpc.request("models.list", {})
+            return [
+                ModelInfo.from_dict({k: v for k, v in m.items() if k != "billing"})
+                for m in response.get("models", [])
+            ]
+
         if subprocess_config is not None:
             logger.info(
                 "Copilot CLI OTEL telemetry enabled",
@@ -88,10 +104,10 @@ def create_app() -> FastAPI:
                     "capture_content": subprocess_config.telemetry.get("capture_content") if subprocess_config.telemetry else None,
                 },
             )
-            client = CopilotClient(subprocess_config)
+            client = CopilotClient(subprocess_config, on_list_models=_on_list_models)
         else:
             logger.info("Copilot CLI OTEL telemetry disabled (no endpoint configured)")
-            client = CopilotClient()
+            client = CopilotClient(on_list_models=_on_list_models)
         await client.start()
         set_client(client)
         logger.info("CopilotClient started (GitHub Copilot SDK)")
