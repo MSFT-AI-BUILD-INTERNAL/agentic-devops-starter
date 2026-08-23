@@ -85,7 +85,8 @@ jobs:
               FOUNDRY_WIRE_API="${{ secrets.FOUNDRY_WIRE_API }}" \
               COPILOT_API_APP_CONFIG_ENDPOINT="${{ secrets.APP_CONFIG_ENDPOINT }}" \
               COPILOT_API_APP_CONFIG_LABEL="${{ secrets.APP_CONFIG_LABEL }}" \
-              MCP_SERVER_URL="${{ secrets.MCP_SERVER_URL }}"
+              MCP_SERVER_URL="${{ secrets.MCP_SERVER_URL }}" \
+              THIRDPARTY_GITHUB_PAT="${{ secrets.THIRDPARTY_GITHUB_PAT }}"
 
           if [ -n "${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" ]; then
             az webapp config appsettings set \
