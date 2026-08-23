@@ -32,10 +32,8 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("COPILOT_APP_REDIRECT_URI", "GITHUB_OAUTH_REDIRECT_URI"),
     )
-    # 공개 테스트용 엔드포인트 (외부 API 연동 예시)
-    tool_external_api_url: str = "https://api.github.com/zen"
     # Third-party API 호출용 PAT (GitHub Apps OAuth와 무관한 서버 전용 자격증명).
-    # 설정 시 tool_external_api_url 호출에 Authorization 헤더로 첨부된다.
+    # 설정 시 GitHub zen 데모 툴 호출에 Authorization 헤더로 첨부된다.
     thirdparty_github_pat: str = Field(
         default="",
         validation_alias=AliasChoices("THIRDPARTY_GITHUB_PAT", "COPILOT_API_THIRDPARTY_GITHUB_PAT"),
