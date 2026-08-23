@@ -604,7 +604,10 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         prompt = extract_last_user_prompt(req)
         system_prompt = extract_system_prompt(req)
         if system_prompt:
-            prompt = f"[System: {system_prompt}]\n\n{prompt}"
+            raise ValueError(
+                "System prompts are not supported by this adapter (Phase 1). "
+                "Remove the 'system' field from the request."
+            )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
