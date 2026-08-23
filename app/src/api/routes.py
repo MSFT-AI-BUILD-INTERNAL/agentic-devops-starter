@@ -168,15 +168,6 @@ def _require_thirdparty_github_pat() -> str:
     return token
 
 
-def _resolve_required_isolation_session_id(request: Request) -> str:
-    raw = request.headers.get(settings.isolation_session_header)
-    if not raw or not raw.strip():
-        raise HTTPException(
-            status_code=400,
-            detail=f"{settings.isolation_session_header} header is required",
-        )
-    return normalize_isolation_session_id(raw, "session")
-
 
 @router.get("/health")
 async def health_check() -> dict[str, str]:
@@ -627,10 +618,11 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Use a stable thread key so the SDK session maintains history across
-    # interactive Claude Code turns. Isolation is scoped by the required
-    # client-supplied X-Isolation-Session-ID header.
+    # interactive Claude Code turns. Isolation is scoped by the optional
+    # client-supplied X-Isolation-Session-ID header, falling back to a
+    # shared default namespace when the caller omits it.
     thread_id = "anthropic-v1"
-    isolation_session_id = _resolve_required_isolation_session_id(request)
+    isolation_session_id = _resolve_isolation_session_id(request, "session")
 
     message_id = f"msg_{uuid.uuid4().hex[:24]}"
 
