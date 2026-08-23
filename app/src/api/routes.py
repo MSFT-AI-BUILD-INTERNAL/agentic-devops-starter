@@ -543,7 +543,7 @@ async def job_status_endpoint(job_id: str) -> JobStatusResponse:
 
 
 @router.get("/v1/models")
-async def list_anthropic_models(request: Request) -> JSONResponse:
+async def list_anthropic_models() -> JSONResponse:
     """List models supported by the Anthropic Messages API adapter.
 
     Returns a list compatible with the Anthropic client's model-listing format
