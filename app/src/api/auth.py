@@ -192,11 +192,12 @@ def oauth_state_context(request: Request) -> str:
 def get_user_token(request: Request) -> str:
     """Return the authenticated user's GitHub token or reject the request."""
     auth_header = request.headers.get("Authorization", "")
-    session_token = (
-        auth_header[len("Bearer "):]
-        if auth_header.startswith("Bearer ")
-        else request.cookies.get(SESSION_COOKIE)
-    )
+    if auth_header.startswith("Bearer "):
+        session_token = auth_header[len("Bearer "):]
+    elif auth_header:
+        session_token = auth_header
+    else:
+        session_token = request.cookies.get(SESSION_COOKIE)
     if not session_token:
         raise HTTPException(status_code=401, detail="GitHub authentication required")
     try:

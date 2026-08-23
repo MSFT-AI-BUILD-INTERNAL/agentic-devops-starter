@@ -531,6 +531,7 @@ async def list_anthropic_models(request: Request) -> JSONResponse:
 
 
 @router.post("/v1/messages", response_model=None)
+@router.post("/v1/messages/", response_model=None, include_in_schema=False)
 async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | JSONResponse:
     """Anthropic Messages API adapter backed by the Copilot SDK.
 
