@@ -124,6 +124,10 @@ class AISessionPool(Protocol):
         system_message: str | None = None,
     ) -> CopilotSession: ...
 
+    def get_turn_lock(
+        self, thread_id: str, isolation_session_id: str | None = None
+    ) -> asyncio.Lock: ...
+
     async def disconnect(
         self, thread_id: str, isolation_session_id: str | None = None
     ) -> None: ...
@@ -162,6 +166,31 @@ class SessionPool:
         self._pool_lock = asyncio.Lock()
         self._idle_timeout = idle_timeout
         self._system_messages: dict[str, str | None] = {}
+        # Separate from `_locks` (which only guards this pool's own
+        # get_or_create/disconnect bookkeeping): callers use this lock to
+        # serialize an entire request turn (session acquisition through the
+        # final send()/response), so that two overlapping requests for the
+        # same thread_id/isolation_session_id never concurrently use, or
+        # disconnect out from under, the same underlying SDK session.
+        self._turn_locks: dict[str, asyncio.Lock] = {}
+
+    def get_turn_lock(
+        self, thread_id: str, isolation_session_id: str | None = None
+    ) -> asyncio.Lock:
+        """Return the lock serializing an entire request turn for this key.
+
+        Must be a distinct lock from the internal pool-mutation lock: a
+        caller can legitimately call `disconnect()` (which acquires the
+        internal lock) while still holding this turn lock, and reusing the
+        same lock object for both purposes would deadlock.
+        """
+        isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
+        pool_key = build_pool_key(isolated_id, thread_id)
+        lock = self._turn_locks.get(pool_key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._turn_locks[pool_key] = lock
+        return lock
 
     async def get_or_create(
         self,
@@ -285,7 +314,16 @@ class SessionPool:
                 self._active_sessions.pop(pool_key, None)
 
     async def disconnect(self, thread_id: str, isolation_session_id: str | None = None) -> None:
-        """Disconnect a session (preserves state on disk for later resume)."""
+        """Disconnect a session (preserves state on disk for later resume).
+
+        The in-memory pool entry is always evicted, even if the underlying
+        SDK ``session.disconnect()`` RPC itself fails (e.g. because the CLI
+        subprocess already lost/expired the session server-side). Otherwise
+        a caller using this method to evict a known-broken cached session
+        (see the Anthropic adapter's stale-session recovery) would itself
+        raise, leaving the stale entry in place for every subsequent
+        request.
+        """
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
         pool_key = build_pool_key(isolated_id, thread_id)
         async with self._pool_lock:
@@ -297,7 +335,14 @@ class SessionPool:
             self._last_active.pop(pool_key, None)
             self._system_messages.pop(pool_key, None)
             if session is not None:
-                await session.disconnect()
+                try:
+                    await session.disconnect()
+                except Exception:
+                    logger.warning(
+                        "Ignoring error while disconnecting an already-evicted session",
+                        exc_info=True,
+                        extra={"pool_key": pool_key},
+                    )
 
     async def abort(self, thread_id: str, isolation_session_id: str | None = None) -> bool:
         """Abort active requests for a thread."""
@@ -373,6 +418,23 @@ class FoundrySessionPool:
         self._locks: dict[str, asyncio.Lock] = {}
         self._pool_lock = asyncio.Lock()
         self._idle_timeout = idle_timeout
+        self._turn_locks: dict[str, asyncio.Lock] = {}
+
+    def get_turn_lock(
+        self, thread_id: str, isolation_session_id: str | None = None
+    ) -> asyncio.Lock:
+        """Return the lock serializing an entire request turn for this key.
+
+        See `SessionPool.get_turn_lock` for why this must be a separate lock
+        from the internal pool-mutation lock.
+        """
+        isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
+        pool_key = build_pool_key(isolated_id, thread_id)
+        lock = self._turn_locks.get(pool_key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._turn_locks[pool_key] = lock
+        return lock
 
     async def get_or_create(
         self,
@@ -443,7 +505,12 @@ class FoundrySessionPool:
             return session
 
     async def disconnect(self, thread_id: str, isolation_session_id: str | None = None) -> None:
-        """Disconnect a Foundry BYOK session."""
+        """Disconnect a Foundry BYOK session.
+
+        The in-memory pool entry is always evicted even if the underlying
+        SDK ``session.disconnect()`` RPC itself fails (e.g. because the CLI
+        subprocess already lost/expired the session server-side).
+        """
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
         pool_key = build_pool_key(isolated_id, thread_id)
         async with self._pool_lock:
@@ -455,7 +522,14 @@ class FoundrySessionPool:
             self._last_active.pop(pool_key, None)
             self._token_expires_on.pop(pool_key, None)
             if session is not None:
-                await session.disconnect()
+                try:
+                    await session.disconnect()
+                except Exception:
+                    logger.warning(
+                        "Ignoring error while disconnecting an already-evicted session",
+                        exc_info=True,
+                        extra={"pool_key": pool_key},
+                    )
 
     async def cleanup_idle(self) -> None:
         """Disconnect sessions that have been idle longer than the timeout."""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Generator
 from typing import Any, cast
 
@@ -34,6 +35,11 @@ class _FailingAbortSession(_FakeSession):
     async def abort(self) -> None:
         self.abort_count += 1
         raise RuntimeError("abort failed")
+
+
+class _FailingDisconnectSession(_FakeSession):
+    async def disconnect(self) -> None:
+        raise RuntimeError("disconnect failed: session already gone server-side")
 
 
 class _FakeClient:
@@ -368,6 +374,67 @@ async def test_session_pool_omits_empty_tool_allowlist(
         assert "available_tools" not in client.create_kwargs
     finally:
         await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_disconnect_evicts_cache_even_if_sdk_disconnect_fails() -> None:
+    """disconnect() must still evict the in-memory session even when the underlying
+    SDK disconnect RPC fails (e.g. because the server already lost the session)."""
+
+    class _FailingDisconnectClient(_FakeClient):
+        async def create_session(self, **kwargs: Any) -> _FailingDisconnectSession:
+            self.create_kwargs = kwargs
+            return _FailingDisconnectSession()
+
+    client = _FailingDisconnectClient()
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    first_session = await pool.get_or_create("flaky-thread")
+
+    # Should not raise even though the fake session's disconnect() always fails.
+    await pool.disconnect("flaky-thread")
+
+    second_session = await pool.get_or_create("flaky-thread")
+    assert second_session is not first_session
+
+
+@pytest.mark.asyncio
+async def test_session_pool_turn_lock_is_stable_per_key_and_independent_of_pool_lock() -> None:
+    """get_turn_lock() must return the same lock object for the same
+    thread/isolation key (so callers actually serialize on it), a
+    different lock for a different key, and must not be the same lock
+    object used internally for pool bookkeeping (or disconnect() called
+    while a turn lock is held would deadlock)."""
+    pool = SessionPool()
+
+    lock_a = pool.get_turn_lock("thread-a")
+    lock_a_again = pool.get_turn_lock("thread-a")
+    lock_b = pool.get_turn_lock("thread-b")
+
+    assert lock_a is lock_a_again
+    assert lock_a is not lock_b
+
+    async with lock_a:
+        # Must not deadlock: disconnect() only touches the pool's internal
+        # bookkeeping lock, never the turn lock returned above.
+        await asyncio.wait_for(pool.disconnect("thread-a"), timeout=1.0)
+
+
+@pytest.mark.asyncio
+async def test_foundry_session_pool_turn_lock_is_stable_per_key() -> None:
+    """FoundrySessionPool must expose the same turn-lock guarantees as SessionPool."""
+    pool = FoundrySessionPool()
+
+    lock_a = pool.get_turn_lock("thread-a")
+    lock_a_again = pool.get_turn_lock("thread-a")
+    lock_b = pool.get_turn_lock("thread-b")
+
+    assert lock_a is lock_a_again
+    assert lock_a is not lock_b
+
+    async with lock_a:
+        await asyncio.wait_for(pool.disconnect("thread-a"), timeout=1.0)
 
 
 @pytest.mark.asyncio

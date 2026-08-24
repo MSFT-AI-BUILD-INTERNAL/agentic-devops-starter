@@ -757,47 +757,72 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
 
     # Acquire and configure the session before branching so that failures
     # (unknown model, auth error, SDK init error) return a proper HTTP error
-    # instead of being swallowed inside the SSE stream.
+    # instead of being swallowed inside the SSE stream. Everything through
+    # the final response happens while holding the per-thread/isolation
+    # turn lock acquired below, so two overlapping requests for the same key
+    # can never concurrently use (or disconnect out from under) the same
+    # underlying SDK session -- see SessionPool.get_turn_lock().
     pool = get_session_pool()
-    try:
-        if system_prompt:
-            session = await pool.get_or_create(
-                thread_id,
-                github_token,
-                isolation_session_id=isolation_session_id,
-                extra_tools=bridge_tools,
-                system_message=system_prompt,
-            )
-        else:
-            session = await pool.get_or_create(
-                thread_id,
-                github_token,
-                isolation_session_id=isolation_session_id,
-                extra_tools=bridge_tools,
-            )
-        await session.set_model(req.model)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=f"Session initialization failed: {exc}") from exc
+    turn_lock = pool.get_turn_lock(thread_id, isolation_session_id=isolation_session_id)
+    await turn_lock.acquire()
+    lock_active = True
 
-    # A request carrying tool_result blocks is a continuation of a prior
-    # tool_use turn: resolve the matching pending bridged tool call(s) so the
-    # still-awaiting Tool handler(s) can return, instead of sending a new
-    # prompt. Fail fast (before starting either response type) if none of
-    # the supplied tool_result blocks matched a pending call for this
-    # isolation scope/thread.
-    send_new_prompt = True
-    if tool_result_blocks:
-        send_new_prompt = False
-        resolved_any = False
-        registry = _get_anthropic_tool_bridge_registry()
-        for tool_result_block in tool_result_blocks:
-            if await resolve_pending_tool_call(registry, bridge_registry_key, tool_result_block):
-                resolved_any = True
-        if not resolved_any:
+    def _release_turn_lock() -> None:
+        nonlocal lock_active
+        if lock_active:
+            lock_active = False
+            turn_lock.release()
+
+    try:
+        try:
+            if system_prompt:
+                session = await pool.get_or_create(
+                    thread_id,
+                    github_token,
+                    isolation_session_id=isolation_session_id,
+                    extra_tools=bridge_tools,
+                    system_message=system_prompt,
+                )
+            else:
+                session = await pool.get_or_create(
+                    thread_id,
+                    github_token,
+                    isolation_session_id=isolation_session_id,
+                    extra_tools=bridge_tools,
+                )
+            await session.set_model(req.model)
+        except RuntimeError as exc:
             raise HTTPException(
-                status_code=400,
-                detail="No matching pending tool call(s) found for the supplied tool_result block(s).",
-            )
+                status_code=503, detail=f"Session initialization failed: {exc}"
+            ) from exc
+
+        # A request carrying tool_result blocks is a continuation of a prior
+        # tool_use turn: resolve the matching pending bridged tool call(s) so
+        # the still-awaiting Tool handler(s) can return, instead of sending a
+        # new prompt. Fail fast (before starting either response type) if
+        # none of the supplied tool_result blocks matched a pending call for
+        # this isolation scope/thread.
+        send_new_prompt = True
+        if tool_result_blocks:
+            send_new_prompt = False
+            resolved_any = False
+            registry = _get_anthropic_tool_bridge_registry()
+            for tool_result_block in tool_result_blocks:
+                if await resolve_pending_tool_call(
+                    registry, bridge_registry_key, tool_result_block
+                ):
+                    resolved_any = True
+            if not resolved_any:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No matching pending tool call(s) found for the "
+                        "supplied tool_result block(s)."
+                    ),
+                )
+    except Exception:
+        _release_turn_lock()
+        raise
 
     if req.stream:
 
@@ -927,6 +952,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
             finally:
                 if unsubscribe:
                     unsubscribe()
+                _release_turn_lock()
 
             if not error_sent:
                 if content_block_open:
@@ -998,8 +1024,9 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
             case SessionIdleData():
                 loop.call_soon_threadsafe(idle_event.set)
 
-    unsubscribe = session.on(on_event_blocking)
+    unsubscribe = None
     try:
+        unsubscribe = session.on(on_event_blocking)
         if send_new_prompt:
             await session.send(prompt)
         while not idle_event.is_set() and not tool_use_event.is_set():
@@ -1050,7 +1077,9 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         await pool.disconnect(thread_id, isolation_session_id=isolation_session_id)
         raise HTTPException(status_code=500, detail="An internal error occurred") from exc
     finally:
-        unsubscribe()
+        if unsubscribe is not None:
+            unsubscribe()
+        _release_turn_lock()
 
     full_text = "".join(collected)
     content_blocks: list[Any] = []
