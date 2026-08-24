@@ -4,7 +4,9 @@ Tests the AG-UI server endpoints and configuration.
 Follows all constitution requirements including type safety and test coverage.
 """
 
+import json
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
 
@@ -376,7 +378,7 @@ def test_anthropic_messages_falls_back_without_isolation_header(
         "error": {"type": "error", "message": "Session initialization failed: boom"}
     }
     pool.get_or_create.assert_awaited_once_with(
-        "anthropic-v1", "server-token", isolation_session_id="session"
+        "anthropic-v1", "server-token", isolation_session_id="session", extra_tools=[]
     )
 
 
@@ -400,7 +402,7 @@ def test_anthropic_messages_uses_isolation_header(
         "error": {"type": "error", "message": "Session initialization failed: boom"}
     }
     pool.get_or_create.assert_awaited_once_with(
-        "anthropic-v1", "server-token", isolation_session_id="tenant-a"
+        "anthropic-v1", "server-token", isolation_session_id="tenant-a", extra_tools=[]
     )
 
 
@@ -462,3 +464,317 @@ def test_anthropic_messages_error_uses_anthropic_error_schema(
     assert response.status_code == 503
     assert "error" in response.json()
     assert response.json()["error"]["type"] == "error"
+
+
+def _parse_sse_events(payload: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for line in payload.splitlines():
+        if line.startswith("data: "):
+            events.append(json.loads(line[6:]))
+    return events
+
+
+@pytest.mark.parametrize("block_type", ["image", "document", "thinking"])
+def test_anthropic_messages_rejects_unsupported_non_tool_blocks(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, block_type: str
+) -> None:
+    """Image/document/thinking content blocks remain unsupported by the bridge."""
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "gpt-4.1",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": block_type, "id": "block-1"}],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "error"
+    assert "Unsupported content block type" in response.json()["error"]["message"]
+
+
+def test_anthropic_messages_accepts_tools_field(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Native 'tools' declarations are now handled by the tool-use bridge, not rejected."""
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+    pool = MagicMock()
+    pool.get_or_create = AsyncMock(side_effect=RuntimeError("boom"))
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "gpt-4.1",
+            "messages": [{"role": "user", "content": "hello"}],
+            "tools": [{"name": "get_weather", "description": "Get weather", "input_schema": {"type": "object"}}],
+        },
+    )
+
+    # Fails at session setup (mocked), not at request validation, proving the
+    # 'tools' field itself is no longer rejected with a 400.
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": {"type": "error", "message": "Session initialization failed: boom"}
+    }
+
+
+def test_anthropic_messages_tool_result_without_pending_call_is_rejected(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tool_result with no matching pending bridged tool call returns 400, not a hang."""
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+    session = MagicMock()
+    session.set_model = AsyncMock()
+    pool = MagicMock()
+    pool.get_or_create = AsyncMock(return_value=session)
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "gpt-4.1",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "unknown-call", "content": "42"}
+                    ],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "error"
+    assert "No matching pending tool call" in response.json()["error"]["message"]
+
+def test_anthropic_messages_tool_result_resolves_and_continues_without_new_prompt(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tool_result continuation resolves the pending call and skips sending a new prompt."""
+    from copilot.generated.session_events import SessionIdleData
+
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+
+    resolve_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr("src.thirdparty.anthropic_tool_bridge.resolve_pending_tool_call", resolve_mock)
+
+    class _ImmediatelyIdleSession:
+        def __init__(self) -> None:
+            self.set_model = AsyncMock()
+            self.send = AsyncMock()
+
+        def on(self, callback: Any) -> Any:
+            callback(SimpleNamespace(data=SessionIdleData()))
+            return lambda: None
+
+    session = _ImmediatelyIdleSession()
+    pool = MagicMock()
+    pool.get_or_create = AsyncMock(return_value=session)
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "gpt-4.1",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "call-1", "content": "42 degrees"}
+                    ],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["content"] == [{"type": "text", "text": ""}]
+    session.send.assert_not_awaited()
+    resolve_mock.assert_awaited_once()
+
+
+def test_anthropic_messages_stream_emits_tool_use_and_stops(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bridged ExternalToolRequestedData event should surface as a native tool_use block."""
+    from copilot.generated.session_events import ExternalToolRequestedData
+
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+
+    class _ToolUseSession:
+        def __init__(self) -> None:
+            self.set_model = AsyncMock()
+            self._callback: Any = None
+
+        def on(self, callback: Any) -> Any:
+            self._callback = callback
+            return lambda: None
+
+        async def send(self, _prompt: str) -> None:
+            self._callback(
+                SimpleNamespace(
+                    data=ExternalToolRequestedData(
+                        request_id="req-1",
+                        session_id="sess-1",
+                        tool_call_id="call-1",
+                        tool_name="get_weather",
+                        arguments={"city": "Seattle"},
+                    )
+                )
+            )
+
+    session = _ToolUseSession()
+    pool = MagicMock()
+    pool.get_or_create = AsyncMock(return_value=session)
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "gpt-4.1",
+            "stream": True,
+            "messages": [{"role": "user", "content": "what's the weather?"}],
+            "tools": [
+                {
+                    "name": "get_weather",
+                    "description": "Get weather",
+                    "input_schema": {"type": "object"},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    tool_use_start = next(
+        e
+        for e in events
+        if e["type"] == "content_block_start" and e["content_block"]["type"] == "tool_use"
+    )
+    assert tool_use_start["content_block"]["id"] == "call-1"
+    assert tool_use_start["content_block"]["name"] == "get_weather"
+    delta_event = next(
+        e for e in events if e["type"] == "content_block_delta" and e["delta"]["type"] == "input_json_delta"
+    )
+    assert json.loads(delta_event["delta"]["partial_json"]) == {"city": "Seattle"}
+    message_delta_event = next(e for e in events if e["type"] == "message_delta")
+    assert message_delta_event["delta"]["stop_reason"] == "tool_use"
+    assert events[-1]["type"] == "message_stop"
+
+
+def test_anthropic_messages_stream_timeout_disconnects_in_same_isolation_namespace(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Streaming timeout should cleanup the same isolated session namespace."""
+    class _NeverIdleSession:
+        def __init__(self) -> None:
+            self._callback: Any = None
+            self.set_model = AsyncMock()
+            self.unsubscribed = False
+
+        def on(self, callback: Any) -> Any:
+            self._callback = callback
+
+            def _unsubscribe() -> None:
+                self.unsubscribed = True
+
+            return _unsubscribe
+
+        async def send(self, _prompt: str) -> None:
+            return
+
+    session = _NeverIdleSession()
+    pool = MagicMock()
+    pool.get_or_create = AsyncMock(return_value=session)
+    pool.disconnect = AsyncMock()
+
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+    monkeypatch.setattr("src.api.routes.settings.session_timeout", 0.0)
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
+
+    response = client.post(
+        "/v1/messages",
+        headers={"X-Isolation-Session-ID": "tenant-a"},
+        json={
+            "model": "gpt-4.1",
+            "stream": True,
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    assert [event["type"] for event in events] == [
+        "message_start",
+        "content_block_start",
+        "content_block_stop",
+        "error",
+    ]
+    pool.disconnect.assert_awaited_once_with("anthropic-v1", isolation_session_id="tenant-a")
+    assert session.unsubscribed is True
+
+
+def test_anthropic_messages_stream_stays_text_only_and_closes_cleanly(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Streaming bridge should emit text-only Anthropic SSE framing for normal responses."""
+    from copilot.generated.session_events import AssistantMessageDeltaData, SessionIdleData
+
+    class _DeltaThenIdleSession:
+        def __init__(self) -> None:
+            self._callback: Any = None
+            self.set_model = AsyncMock()
+
+        def on(self, callback: Any) -> Any:
+            self._callback = callback
+            return lambda: None
+
+        async def send(self, _prompt: str) -> None:
+            if self._callback is None:
+                return
+            self._callback(SimpleNamespace(data=AssistantMessageDeltaData(delta_content="Hello", message_id="m1")))
+            self._callback(SimpleNamespace(data=AssistantMessageDeltaData(delta_content=" world", message_id="m1")))
+            self._callback(SimpleNamespace(data=SessionIdleData()))
+
+    session = _DeltaThenIdleSession()
+    pool = MagicMock()
+    pool.get_or_create = AsyncMock(return_value=session)
+    pool.disconnect = AsyncMock()
+
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
+
+    response = client.post(
+        "/v1/messages",
+        headers={"X-Isolation-Session-ID": "tenant-b"},
+        json={
+            "model": "gpt-4.1",
+            "stream": True,
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    assert [event["type"] for event in events] == [
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop",
+    ]
+    assert events[1]["content_block"]["type"] == "text"
+    assert events[2]["delta"]["type"] == "text_delta"
+    assert events[5]["usage"]["output_tokens"] == len("Hello world")
+    assert all("tool_use" not in json.dumps(event) for event in events)
+    pool.disconnect.assert_not_awaited()
