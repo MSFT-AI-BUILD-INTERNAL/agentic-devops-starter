@@ -369,14 +369,16 @@ class FoundrySessionPool:
         isolation_session_id: str | None = None,
         *,
         extra_tools: list[Tool] | None = None,
+        system_message: str | None = None,
     ) -> CopilotSession:
         """Return an active Foundry BYOK session for *thread_id*.
 
         ``github_token`` is accepted for interface compatibility with
         :class:`AISessionPool` but is unused; Foundry BYOK authenticates
         via Azure credentials configured on the server. ``extra_tools`` is
-        only registered when this call actually creates the session (see
-        :meth:`SessionPool.get_or_create`).
+        only registered when this call actually creates the session. When
+        provided, ``system_message`` is appended to the Foundry system
+        context for interface compatibility with :class:`AISessionPool`.
         """
         _validate_foundry_settings()
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
@@ -403,7 +405,14 @@ class FoundrySessionPool:
             session_kwargs: dict[str, Any] = {
                 "session_id": sdk_session_id,
                 "on_permission_request": PermissionHandler.approve_all,
-                "system_message": {"mode": "replace", "content": _FOUNDRY_SYSTEM_MESSAGE},
+                "system_message": {
+                    "mode": "replace",
+                    "content": (
+                        f"{_FOUNDRY_SYSTEM_MESSAGE}\n\n{system_message}"
+                        if system_message
+                        else _FOUNDRY_SYSTEM_MESSAGE
+                    ),
+                },
                 "streaming": True,
                 "skill_directories": get_skill_directories(),
                 "disabled_skills": get_disabled_skills(),
