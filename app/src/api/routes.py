@@ -773,6 +773,14 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
             lock_active = False
             turn_lock.release()
 
+    # A request carrying tool_result blocks continues a prior tool_use turn
+    # on the *same* underlying SDK session. It must never be evicted based
+    # on a system-message mismatch (e.g. the client omitting `system` on the
+    # follow-up, or resending a slightly different value): doing so would
+    # disconnect the session out from under the still-in-flight bridged
+    # tool call, cancelling it before it can be resolved below.
+    is_tool_result_continuation = bool(tool_result_blocks)
+
     try:
         try:
             if system_prompt:
@@ -782,6 +790,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                     isolation_session_id=isolation_session_id,
                     extra_tools=bridge_tools,
                     system_message=system_prompt,
+                    reconcile_system_message=not is_tool_result_continuation,
                 )
             else:
                 session = await pool.get_or_create(
@@ -789,6 +798,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                     github_token,
                     isolation_session_id=isolation_session_id,
                     extra_tools=bridge_tools,
+                    reconcile_system_message=not is_tool_result_continuation,
                 )
             await session.set_model(req.model)
         except RuntimeError as exc:

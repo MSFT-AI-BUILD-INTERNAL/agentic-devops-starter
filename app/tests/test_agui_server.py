@@ -384,7 +384,11 @@ def test_anthropic_messages_falls_back_without_isolation_header(
         "error": {"type": "error", "message": "Session initialization failed: boom"}
     }
     pool.get_or_create.assert_awaited_once_with(
-        "anthropic-v1", "server-token", isolation_session_id="session", extra_tools=[]
+        "anthropic-v1",
+        "server-token",
+        isolation_session_id="session",
+        extra_tools=[],
+        reconcile_system_message=True,
     )
 
 
@@ -409,7 +413,11 @@ def test_anthropic_messages_uses_isolation_header(
         "error": {"type": "error", "message": "Session initialization failed: boom"}
     }
     pool.get_or_create.assert_awaited_once_with(
-        "anthropic-v1", "server-token", isolation_session_id="tenant-a", extra_tools=[]
+        "anthropic-v1",
+        "server-token",
+        isolation_session_id="tenant-a",
+        extra_tools=[],
+        reconcile_system_message=True,
     )
 
 
@@ -444,6 +452,7 @@ def test_anthropic_messages_accepts_system_prompt(
         isolation_session_id="session",
         extra_tools=[],
         system_message="You are a helpful assistant.",
+        reconcile_system_message=True,
     )
 
 
@@ -693,6 +702,46 @@ def test_anthropic_messages_tool_result_resolves_and_continues_without_new_promp
     assert response.json()["content"] == [{"type": "text", "text": ""}]
     session.send.assert_not_awaited()
     resolve_mock.assert_awaited_once()
+    # The continuation must never evict/recreate the session based on a
+    # system-message mismatch (e.g. `system` omitted on this follow-up
+    # request): doing so would disconnect the still-in-flight bridged tool
+    # call before resolve_pending_tool_call() runs, causing a spurious
+    # "No matching pending tool call(s)" 400 on this very request.
+    pool.get_or_create.assert_awaited_once_with(
+        "anthropic-v1",
+        "server-token",
+        isolation_session_id="session",
+        extra_tools=[],
+        reconcile_system_message=False,
+    )
+
+
+def test_anthropic_messages_tool_result_continuation_preserves_session_despite_system_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real SessionPool must not evict the cached session for a tool_result
+    continuation even when its (missing/different) system_message doesn't
+    match what the session was created with."""
+    import src.runtime.state as state_module
+
+    pool = state_module.SessionPool()
+    fake_session = AsyncMock()
+    pool._sessions["session:anthropic-v1"] = fake_session
+    pool._system_messages["session:anthropic-v1"] = "original system prompt"
+
+    async def _run() -> None:
+        # No system_message this turn (client omitted `system`), but the
+        # continuation flag must keep the original session alive.
+        result = await pool.get_or_create(
+            "anthropic-v1",
+            "server-token",
+            isolation_session_id="session",
+            reconcile_system_message=False,
+        )
+        assert result is fake_session
+
+    asyncio.run(_run())
+    fake_session.disconnect.assert_not_awaited()
 
 
 def test_anthropic_messages_serializes_overlapping_requests_same_key(
