@@ -389,6 +389,7 @@ def test_anthropic_messages_falls_back_without_isolation_header(
         isolation_session_id="session",
         extra_tools=[],
         reconcile_system_message=True,
+        minimal_agent_loop=True,
     )
 
 
@@ -418,6 +419,7 @@ def test_anthropic_messages_uses_isolation_header(
         isolation_session_id="tenant-a",
         extra_tools=[],
         reconcile_system_message=True,
+        minimal_agent_loop=True,
     )
 
 
@@ -453,6 +455,7 @@ def test_anthropic_messages_accepts_system_prompt(
         extra_tools=[],
         system_message="You are a helpful assistant.",
         reconcile_system_message=True,
+        minimal_agent_loop=True,
     )
 
 
@@ -657,6 +660,70 @@ def test_anthropic_messages_tool_result_without_pending_call_is_rejected(
     assert response.json()["error"]["type"] == "error"
     assert "No matching pending tool call" in response.json()["error"]["message"]
 
+
+def test_anthropic_messages_new_prompt_ignores_stale_tool_result_earlier_in_history(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plain follow-up prompt must not 400 just because an *earlier*,
+    already-resolved tool_result block from a prior turn still appears
+    deeper in the resent conversation history. Anthropic-style clients
+    resend the full message history on every request, so only the final
+    message can legitimately continue the most recent tool_use turn; a
+    stale tool_result anywhere earlier must be ignored, not treated as
+    requiring resolution.
+    """
+    from copilot.generated.session_events import SessionIdleData
+
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+
+    class _ImmediatelyIdleSession:
+        def __init__(self) -> None:
+            self.set_model = AsyncMock()
+            self.send = AsyncMock()
+
+        def on(self, callback: Any) -> Any:
+            callback(SimpleNamespace(data=SessionIdleData()))
+            return lambda: None
+
+    session = _ImmediatelyIdleSession()
+    pool = MagicMock()
+    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
+    pool.get_or_create = AsyncMock(return_value=session)
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "gpt-4.1",
+            "messages": [
+                {"role": "user", "content": "What's the weather in Seoul?"},
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Let me check that for you."}],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "already-resolved-call",
+                            "content": "18C",
+                        }
+                    ],
+                },
+                {"role": "assistant", "content": "It's 18C in Seoul."},
+                # Newest turn: a plain follow-up question, no tool involved.
+                {"role": "user", "content": "Thanks! What about tomorrow?"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    session.send.assert_awaited_once()
+    assert session.send.await_args is not None
+    assert "Thanks! What about tomorrow?" in session.send.await_args.args[0]
+
+
 def test_anthropic_messages_tool_result_resolves_and_continues_without_new_prompt(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -713,6 +780,7 @@ def test_anthropic_messages_tool_result_resolves_and_continues_without_new_promp
         isolation_session_id="session",
         extra_tools=[],
         reconcile_system_message=False,
+        minimal_agent_loop=True,
     )
 
 

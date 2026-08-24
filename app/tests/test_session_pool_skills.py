@@ -358,6 +358,76 @@ async def test_session_pool_registers_code_based_tools(
 
 
 @pytest.mark.asyncio
+async def test_session_pool_minimal_agent_loop_omits_builtin_tools_and_skills(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """minimal_agent_loop=True must strip built-in tools/skills and disable
+    repo/user config discovery, keeping only caller-supplied extra_tools --
+    this is what makes the third-party Anthropic adapter behave close to a
+    pure model proxy instead of running the SDK's own autonomous tool/skill
+    loop."""
+    client = _FakeClient()
+    monkeypatch.delenv("COPILOT_API_ALLOWED_TOOLS", raising=False)
+    skill_directories = load_skills()
+    assert skill_directories, "test fixture expects at least one skill directory"
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        bridge_tool = _FakeTool("client_declared_tool")
+        await pool.get_or_create(
+            "thread-minimal-agent-loop",
+            extra_tools=cast(Any, [bridge_tool]),
+            minimal_agent_loop=True,
+        )
+
+        assert client.create_kwargs is not None
+        tool_names = [tool.name for tool in client.create_kwargs["tools"]]
+        assert tool_names == ["client_declared_tool"]
+        assert client.create_kwargs["skill_directories"] == []
+        assert client.create_kwargs["enable_config_discovery"] is False
+        assert client.create_kwargs["mcp_servers"] == {}
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_foundry_session_pool_minimal_agent_loop_omits_builtin_tools_and_skills(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FoundrySessionPool must honor minimal_agent_loop identically to SessionPool."""
+    client = _FakeClient()
+    monkeypatch.delenv("COPILOT_API_ALLOWED_TOOLS", raising=False)
+    monkeypatch.setattr(
+        state_module.settings,
+        "azure_ai_project_endpoint",
+        "https://example.openai.azure.com",
+    )
+    monkeypatch.setattr(state_module.settings, "azure_ai_model_deployment_name", "gpt-5.2-codex")
+    monkeypatch.setattr(state_module.settings, "foundry_api_key", "test-key")
+    monkeypatch.setattr(state_module.settings, "foundry_auth_mode", "api_key")
+    monkeypatch.setattr(state_module.settings, "foundry_wire_api", "responses")
+    skill_directories = load_skills()
+    assert skill_directories, "test fixture expects at least one skill directory"
+    set_client(cast(Any, client))
+
+    pool = FoundrySessionPool()
+    bridge_tool = _FakeTool("client_declared_tool")
+    await pool.get_or_create(
+        "thread-minimal-agent-loop",
+        extra_tools=cast(Any, [bridge_tool]),
+        minimal_agent_loop=True,
+    )
+
+    assert client.create_kwargs is not None
+    tool_names = [tool.name for tool in client.create_kwargs["tools"]]
+    assert tool_names == ["client_declared_tool"]
+    assert client.create_kwargs["skill_directories"] == []
+    assert client.create_kwargs["enable_config_discovery"] is False
+    assert client.create_kwargs["mcp_servers"] == {}
+
+
+@pytest.mark.asyncio
 async def test_session_pool_omits_empty_tool_allowlist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
