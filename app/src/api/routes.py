@@ -547,7 +547,7 @@ async def list_anthropic_models() -> JSONResponse:
         logger.warning("Failed to list Copilot models: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    data = [AnthropicModelInfo(id=str(model.get("id", ""))) for model in models]
+    data = [AnthropicModelInfo(id=str(model.get("id", ""))) for model in models if isinstance(model, dict)]
     return JSONResponse(AnthropicModelListResponse(data=data).model_dump())
 
 
