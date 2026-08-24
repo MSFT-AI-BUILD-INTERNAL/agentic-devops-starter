@@ -112,6 +112,19 @@ class Settings(BaseSettings):
     # Claude Code (ANTHROPIC_BASE_URL) can route requests to GitHub Copilot API.
     anthropic_route_enabled: bool = True
 
+    # When non-empty, requests to the Anthropic-compatible thirdparty endpoints
+    # (/v1/messages, /v1/messages/count_tokens, /v1/models) must carry this
+    # exact value as the Bearer token in the Authorization header.
+    # Claude Code forwards ANTHROPIC_AUTH_TOKEN as "Authorization: Bearer <value>".
+    # Leave empty to disable the check (open access).
+    anthropic_allowed_token: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "ANTHROPIC_ALLOWED_TOKEN",
+            "COPILOT_API_ANTHROPIC_ALLOWED_TOKEN",
+        ),
+    )
+
     model_config = {
         "env_prefix": "COPILOT_API_",
         "env_file": ".env",
