@@ -121,6 +121,7 @@ class AISessionPool(Protocol):
         *,
         isolation_session_id: str | None = None,
         extra_tools: list[Tool] | None = None,
+        system_message: str | None = None,
     ) -> CopilotSession: ...
 
     async def disconnect(
@@ -160,6 +161,7 @@ class SessionPool:
         self._locks: dict[str, asyncio.Lock] = {}
         self._pool_lock = asyncio.Lock()
         self._idle_timeout = idle_timeout
+        self._system_messages: dict[str, str | None] = {}
 
     async def get_or_create(
         self,
@@ -168,6 +170,7 @@ class SessionPool:
         isolation_session_id: str | None = None,
         *,
         extra_tools: list[Tool] | None = None,
+        system_message: str | None = None,
     ) -> CopilotSession:
         """Return an active session for *thread_id*, resuming or creating as needed.
 
@@ -190,15 +193,31 @@ class SessionPool:
         async with lock:
             session = self._sessions.get(pool_key)
             if session is not None:
-                self._last_active[pool_key] = time.monotonic()
-                return session
+                if system_message == self._system_messages.get(pool_key):
+                    self._last_active[pool_key] = time.monotonic()
+                    return session
+                # The caller supplied a different system prompt than the one
+                # this session was created/resumed with. Reconfiguring the
+                # system message on an existing SDK session isn't supported,
+                # so disconnect it and fall through to recreate/resume below
+                # with the new prompt rather than silently keeping the old one.
+                await session.disconnect()
+                self._sessions.pop(pool_key, None)
+                self._last_active.pop(pool_key, None)
 
             client = get_client()
             skill_directories = get_skill_directories()
             disabled_skills = get_disabled_skills()
             session_kwargs: dict[str, Any] = {
                 "on_permission_request": PermissionHandler.approve_all,
-                "system_message": {"mode": "replace", "content": _SYSTEM_MESSAGE},
+                "system_message": {
+                    "mode": "replace",
+                    "content": (
+                        f"{_SYSTEM_MESSAGE}\n\n{system_message}"
+                        if system_message
+                        else _SYSTEM_MESSAGE
+                    ),
+                },
                 "streaming": True,
                 "skill_directories": skill_directories,
                 "disabled_skills": disabled_skills,
@@ -220,6 +239,7 @@ class SessionPool:
                 )
 
             self._sessions[pool_key] = session
+            self._system_messages[pool_key] = system_message
             self._last_active[pool_key] = time.monotonic()
             return session
 
@@ -275,6 +295,7 @@ class SessionPool:
         async with lock:
             session = self._sessions.pop(pool_key, None)
             self._last_active.pop(pool_key, None)
+            self._system_messages.pop(pool_key, None)
             if session is not None:
                 await session.disconnect()
 
@@ -360,14 +381,16 @@ class FoundrySessionPool:
         isolation_session_id: str | None = None,
         *,
         extra_tools: list[Tool] | None = None,
+        system_message: str | None = None,
     ) -> CopilotSession:
         """Return an active Foundry BYOK session for *thread_id*.
 
         ``github_token`` is accepted for interface compatibility with
         :class:`AISessionPool` but is unused; Foundry BYOK authenticates
         via Azure credentials configured on the server. ``extra_tools`` is
-        only registered when this call actually creates the session (see
-        :meth:`SessionPool.get_or_create`).
+        only registered when this call actually creates the session. When
+        provided, ``system_message`` is appended to the Foundry system
+        context for interface compatibility with :class:`AISessionPool`.
         """
         _validate_foundry_settings()
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
@@ -394,7 +417,14 @@ class FoundrySessionPool:
             session_kwargs: dict[str, Any] = {
                 "session_id": sdk_session_id,
                 "on_permission_request": PermissionHandler.approve_all,
-                "system_message": {"mode": "replace", "content": _FOUNDRY_SYSTEM_MESSAGE},
+                "system_message": {
+                    "mode": "replace",
+                    "content": (
+                        f"{_FOUNDRY_SYSTEM_MESSAGE}\n\n{system_message}"
+                        if system_message
+                        else _FOUNDRY_SYSTEM_MESSAGE
+                    ),
+                },
                 "streaming": True,
                 "skill_directories": get_skill_directories(),
                 "disabled_skills": get_disabled_skills(),

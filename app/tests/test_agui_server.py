@@ -430,6 +430,88 @@ def test_anthropic_messages_accepts_system_prompt(
     assert response.json() == {
         "error": {"type": "error", "message": "Session initialization failed: boom"}
     }
+    pool.get_or_create.assert_awaited_once_with(
+        "anthropic-v1",
+        "server-token",
+        isolation_session_id="session",
+        extra_tools=[],
+        system_message="You are a helpful assistant.",
+    )
+
+
+def test_anthropic_messages_normalizes_inline_system_prompt(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A system role inside messages must be normalized before provider setup."""
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+    pool = MagicMock()
+    pool.get_or_create = AsyncMock(side_effect=RuntimeError("boom"))
+    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-5",
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "hello"},
+            ],
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": {"type": "error", "message": "Session initialization failed: boom"}
+    }
+
+
+def test_anthropic_adapter_combines_top_level_and_inline_system_prompts() -> None:
+    """System prompts from both supported input locations retain their order."""
+    from src.thirdparty.anthropic_adapter import (
+        extract_system_prompt,
+        remove_system_messages,
+    )
+    from src.thirdparty.anthropic_models import AnthropicMessagesRequest
+
+    request = AnthropicMessagesRequest.model_validate(
+        {
+            "model": "claude-sonnet-5",
+            "system": "top-level",
+            "messages": [
+                {"role": "system", "content": "inline one"},
+                {"role": "user", "content": "hello"},
+                {"role": "system", "content": [{"type": "text", "text": "inline two"}]},
+            ],
+        }
+    )
+
+    assert extract_system_prompt(request) == "top-level\n\ninline one\n\ninline two"
+    assert [message.role for message in remove_system_messages(request)] == ["user"]
+
+
+def test_anthropic_messages_rejects_malformed_text_block(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Malformed text content must return a client error instead of an internal error."""
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-5",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": {"invalid": True}}],
+                },
+                {"role": "user", "content": "hello"},
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "error"
+    assert "string 'text' field" in response.json()["error"]["message"]
 
 
 def test_anthropic_count_tokens_endpoint(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

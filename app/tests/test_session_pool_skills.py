@@ -139,11 +139,15 @@ async def test_foundry_session_pool_uses_isolated_byok_provider(
 
     pool = FoundrySessionPool()
     try:
-        await pool.get_or_create("shared-thread")
+        await pool.get_or_create("shared-thread", system_message="Use concise answers.")
 
         assert client.create_kwargs is not None
         assert client.create_kwargs["session_id"].startswith("foundry-shared-thread-")
         assert client.create_kwargs["model"] == "gpt-5.2-codex"
+        assert client.create_kwargs["system_message"] == {
+            "mode": "replace",
+            "content": f"{state_module._FOUNDRY_SYSTEM_MESSAGE}\n\nUse concise answers.",
+        }
         assert client.create_kwargs["provider"] == {
             "type": "openai",
             "base_url": "https://example.openai.azure.com/openai/v1/",
