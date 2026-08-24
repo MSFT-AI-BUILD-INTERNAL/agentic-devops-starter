@@ -123,6 +123,7 @@ class AISessionPool(Protocol):
         extra_tools: list[Tool] | None = None,
         system_message: str | None = None,
         reconcile_system_message: bool = True,
+        minimal_agent_loop: bool = False,
     ) -> CopilotSession: ...
 
     def get_turn_lock(
@@ -202,6 +203,7 @@ class SessionPool:
         extra_tools: list[Tool] | None = None,
         system_message: str | None = None,
         reconcile_system_message: bool = True,
+        minimal_agent_loop: bool = False,
     ) -> CopilotSession:
         """Return an active session for *thread_id*, resuming or creating as needed.
 
@@ -222,6 +224,19 @@ class SessionPool:
         the session in that case would disconnect the still-in-flight SDK
         tool call, cancelling it out from under the caller before it can be
         resolved.
+
+        ``minimal_agent_loop=True`` configures the underlying SDK session to
+        behave as close to a stateless model proxy as the SDK allows: no
+        built-in code-based tools (:func:`get_registered_tools`) or Agent
+        Skills are registered, and repo/user-level config discovery (custom
+        agents, instructions, MCP servers picked up from disk) is disabled.
+        Only ``extra_tools`` explicitly passed by the caller (e.g. tools the
+        Anthropic client itself declared, via the tool-use bridge) remain
+        available. This is intended for third-party API adapters where the
+        caller drives its own tool loop and does not expect the Copilot
+        CLI's autonomous skills/tool exploration to run on its behalf; only
+        applied when this call actually creates/resumes the session (same
+        best-effort caveat as ``extra_tools`` above).
         """
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
         pool_key = build_pool_key(isolated_id, thread_id)
@@ -250,8 +265,14 @@ class SessionPool:
                 self._last_active.pop(pool_key, None)
 
             client = get_client()
-            skill_directories = get_skill_directories()
-            disabled_skills = get_disabled_skills()
+            if minimal_agent_loop:
+                skill_directories: list[str] = []
+                disabled_skills = get_disabled_skills()
+                registered_tools: list[Tool] = []
+            else:
+                skill_directories = get_skill_directories()
+                disabled_skills = get_disabled_skills()
+                registered_tools = get_registered_tools()
             session_kwargs: dict[str, Any] = {
                 "on_permission_request": PermissionHandler.approve_all,
                 "system_message": {
@@ -265,10 +286,13 @@ class SessionPool:
                 "streaming": True,
                 "skill_directories": skill_directories,
                 "disabled_skills": disabled_skills,
-                "tools": [*get_registered_tools(), *(extra_tools or [])],
+                "tools": [*registered_tools, *(extra_tools or [])],
                 "github_token": github_token,
                 "config_dir": build_config_dir(settings.session_config_root_dir, isolated_id),
             }
+            if minimal_agent_loop:
+                session_kwargs["enable_config_discovery"] = False
+                session_kwargs["mcp_servers"] = {}
             _apply_tool_policy(session_kwargs)
             try:
                 session = await client.resume_session(
@@ -460,6 +484,7 @@ class FoundrySessionPool:
         extra_tools: list[Tool] | None = None,
         system_message: str | None = None,
         reconcile_system_message: bool = True,
+        minimal_agent_loop: bool = False,
     ) -> CopilotSession:
         """Return an active Foundry BYOK session for *thread_id*.
 
@@ -472,7 +497,11 @@ class FoundrySessionPool:
         ``reconcile_system_message`` is accepted for interface compatibility
         with :class:`AISessionPool` but is unused here: this pool never
         evicts a cached session on a system-message mismatch (only on token
-        expiry), so there is nothing to opt out of.
+        expiry), so there is nothing to opt out of. ``minimal_agent_loop``
+        mirrors :meth:`SessionPool.get_or_create`: when True, built-in
+        registered tools and Agent Skills are omitted and repo/user config
+        discovery is disabled, so only explicitly-supplied ``extra_tools``
+        remain available.
         """
         _validate_foundry_settings()
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
@@ -496,6 +525,12 @@ class FoundrySessionPool:
 
             client = get_client()
             provider, token_expires_on = _build_foundry_provider()
+            if minimal_agent_loop:
+                skill_directories: list[str] = []
+                registered_tools: list[Tool] = []
+            else:
+                skill_directories = get_skill_directories()
+                registered_tools = get_registered_tools()
             session_kwargs: dict[str, Any] = {
                 "session_id": sdk_session_id,
                 "on_permission_request": PermissionHandler.approve_all,
@@ -508,13 +543,16 @@ class FoundrySessionPool:
                     ),
                 },
                 "streaming": True,
-                "skill_directories": get_skill_directories(),
+                "skill_directories": skill_directories,
                 "disabled_skills": get_disabled_skills(),
-                "tools": [*get_registered_tools(), *(extra_tools or [])],
+                "tools": [*registered_tools, *(extra_tools or [])],
                 "model": settings.azure_ai_model_deployment_name,
                 "provider": provider,
                 "config_dir": build_config_dir(settings.session_config_root_dir, isolated_id),
             }
+            if minimal_agent_loop:
+                session_kwargs["enable_config_discovery"] = False
+                session_kwargs["mcp_servers"] = {}
             _apply_tool_policy(session_kwargs)
             session = await client.create_session(**session_kwargs)
 

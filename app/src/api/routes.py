@@ -635,6 +635,14 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     ``tool_result`` block(s), which resumes the same underlying Copilot SDK
     session/turn rather than starting a new one.
 
+    Minimal agent loop: sessions for this route are created with
+    ``minimal_agent_loop=True`` (see ``SessionPool.get_or_create``), so the
+    Copilot CLI does not autonomously run its own built-in code-based tools,
+    Agent Skills, or repo/user-level config discovery. Only the tools an
+    Anthropic client explicitly declares (via the bridge above) are
+    available, keeping this route as close to a pure model proxy as the SDK
+    allows.
+
     Remaining Phase 1 limitation (returns explicit 400 rather than silent
     loss): image, document, and thinking content blocks.
     """
@@ -791,6 +799,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                     extra_tools=bridge_tools,
                     system_message=system_prompt,
                     reconcile_system_message=not is_tool_result_continuation,
+                    minimal_agent_loop=True,
                 )
             else:
                 session = await pool.get_or_create(
@@ -799,6 +808,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                     isolation_session_id=isolation_session_id,
                     extra_tools=bridge_tools,
                     reconcile_system_message=not is_tool_result_continuation,
+                    minimal_agent_loop=True,
                 )
             await session.set_model(req.model)
         except RuntimeError as exc:

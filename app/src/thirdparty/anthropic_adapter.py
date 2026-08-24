@@ -203,22 +203,31 @@ def parse_tool_definitions(request: AnthropicMessagesRequest) -> list[AnthropicT
 
 
 def extract_tool_result_blocks(request: AnthropicMessagesRequest) -> list[AnthropicToolResultBlock]:
-    """Return every ``tool_result`` content block across all request messages.
+    """Return ``tool_result`` content blocks from the most recent message only.
 
-    Claude Code sends tool results as a new user message following a
-    ``tool_use`` turn. Results are collected across *all* messages (not just
-    the last one) so batched/parallel tool calls resolved out of order are
-    still found.
+    Anthropic-style clients resend the *entire* conversation history on every
+    request, so ``tool_result`` blocks from turns that were already resolved
+    (and released from the pending-call registry) keep reappearing in later
+    requests. Only the final message can legitimately reply to the most
+    recent ``tool_use`` turn -- mirroring how ``_extract_prompt_text`` in
+    routes.py scopes the outgoing prompt to the last user message -- so
+    scanning the rest of the history would otherwise misclassify a later,
+    unrelated turn as a stale/failed tool-result continuation and reject it
+    with a spurious 400 even though none of its blocks were ever pending.
+    Batched/parallel tool calls are still supported, since all blocks within
+    that single last message are collected.
     """
+    if not request.messages:
+        return []
+    last_message = request.messages[-1]
+    if not isinstance(last_message.content, list):
+        return []
     blocks: list[AnthropicToolResultBlock] = []
-    for msg in request.messages:
-        if not isinstance(msg.content, list):
+    for raw_block in last_message.content:
+        if not isinstance(raw_block, dict) or raw_block.get("type") != "tool_result":
             continue
-        for raw_block in msg.content:
-            if not isinstance(raw_block, dict) or raw_block.get("type") != "tool_result":
-                continue
-            try:
-                blocks.append(AnthropicToolResultBlock.model_validate(raw_block))
-            except Exception as exc:
-                raise ValueError(f"Invalid tool_result block: {exc}") from exc
+        try:
+            blocks.append(AnthropicToolResultBlock.model_validate(raw_block))
+        except Exception as exc:
+            raise ValueError(f"Invalid tool_result block: {exc}") from exc
     return blocks
