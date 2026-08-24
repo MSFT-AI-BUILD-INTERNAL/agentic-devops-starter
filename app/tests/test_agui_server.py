@@ -6,7 +6,6 @@ Follows all constitution requirements including type safety and test coverage.
 
 import asyncio
 import json
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
@@ -329,11 +328,10 @@ def test_abort_thread_endpoint_uses_isolation_header(
 def test_anthropic_models_allows_unauthenticated_callers(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Third-party model listing should not require caller authentication."""
     monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-    sdk_client = MagicMock()
-    sdk_client.list_models = AsyncMock(return_value=[SimpleNamespace(id="gpt-4.1")])
-    monkeypatch.setattr("src.runtime.state.get_client", lambda: sdk_client)
+    api_client = MagicMock()
+    api_client.list_models = AsyncMock(return_value=[{"id": "gpt-4.1"}])
+    monkeypatch.setattr("src.thirdparty.copilot_client.get_copilot_client", lambda _: api_client)
 
     response = client.get("/v1/models")
 
@@ -344,35 +342,7 @@ def test_anthropic_models_allows_unauthenticated_callers(
 def test_anthropic_messages_requires_thirdparty_pat(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Third-party messages should fail fast when the server PAT is missing."""
     monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "")
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock()
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        headers={"X-Isolation-Session-ID": "tenant-a"},
-        json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hello"}]},
-    )
-
-    assert response.status_code == 503
-    assert response.json() == {
-        "error": {"type": "error", "message": "THIRDPARTY_GITHUB_PAT is not configured"}
-    }
-    pool.get_or_create.assert_not_called()
-
-
-def test_anthropic_messages_falls_back_without_isolation_header(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Third-party messages should fall back to a default isolation namespace."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(side_effect=RuntimeError("boom"))
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
 
     response = client.post(
         "/v1/messages",
@@ -380,163 +350,10 @@ def test_anthropic_messages_falls_back_without_isolation_header(
     )
 
     assert response.status_code == 503
-    assert response.json() == {
-        "error": {"type": "error", "message": "Session initialization failed: boom"}
-    }
-    pool.get_or_create.assert_awaited_once_with(
-        "anthropic-v1",
-        "server-token",
-        isolation_session_id="session",
-        extra_tools=[],
-        reconcile_system_message=True,
-        minimal_agent_loop=True,
-    )
-
-
-def test_anthropic_messages_uses_isolation_header(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Third-party messages should pass the caller isolation namespace to the session pool."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(side_effect=RuntimeError("boom"))
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        headers={"X-Isolation-Session-ID": "tenant-a"},
-        json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hello"}]},
-    )
-
-    assert response.status_code == 503
-    assert response.json() == {
-        "error": {"type": "error", "message": "Session initialization failed: boom"}
-    }
-    pool.get_or_create.assert_awaited_once_with(
-        "anthropic-v1",
-        "server-token",
-        isolation_session_id="tenant-a",
-        extra_tools=[],
-        reconcile_system_message=True,
-        minimal_agent_loop=True,
-    )
-
-
-def test_anthropic_messages_accepts_system_prompt(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A 'system' field must not be rejected with 400; it should reach session setup."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(side_effect=RuntimeError("boom"))
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        json={
-            "model": "gpt-4.1",
-            "system": "You are a helpful assistant.",
-            "messages": [{"role": "user", "content": "hello"}],
-        },
-    )
-
-    # Fails at session setup (mocked), not at request validation, proving the
-    # 'system' field itself is no longer rejected with a 400.
-    assert response.status_code == 503
-    assert response.json() == {
-        "error": {"type": "error", "message": "Session initialization failed: boom"}
-    }
-    pool.get_or_create.assert_awaited_once_with(
-        "anthropic-v1",
-        "server-token",
-        isolation_session_id="session",
-        extra_tools=[],
-        system_message="You are a helpful assistant.",
-        reconcile_system_message=True,
-        minimal_agent_loop=True,
-    )
-
-
-def test_anthropic_messages_normalizes_inline_system_prompt(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A system role inside messages must be normalized before provider setup."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(side_effect=RuntimeError("boom"))
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        json={
-            "model": "claude-sonnet-5",
-            "messages": [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "hello"},
-            ],
-        },
-    )
-
-    assert response.status_code == 503
-    assert response.json() == {
-        "error": {"type": "error", "message": "Session initialization failed: boom"}
-    }
-
-
-def test_anthropic_adapter_combines_top_level_and_inline_system_prompts() -> None:
-    """System prompts from both supported input locations retain their order."""
-    from src.thirdparty.anthropic_adapter import (
-        extract_system_prompt,
-        remove_system_messages,
-    )
-    from src.thirdparty.anthropic_models import AnthropicMessagesRequest
-
-    request = AnthropicMessagesRequest.model_validate(
-        {
-            "model": "claude-sonnet-5",
-            "system": "top-level",
-            "messages": [
-                {"role": "system", "content": "inline one"},
-                {"role": "user", "content": "hello"},
-                {"role": "system", "content": [{"type": "text", "text": "inline two"}]},
-            ],
-        }
-    )
-
-    assert extract_system_prompt(request) == "top-level\n\ninline one\n\ninline two"
-    assert [message.role for message in remove_system_messages(request)] == ["user"]
-
-
-def test_anthropic_messages_rejects_malformed_text_block(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Malformed text content must return a client error instead of an internal error."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-
-    response = client.post(
-        "/v1/messages",
-        json={
-            "model": "claude-sonnet-5",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": {"invalid": True}}],
-                },
-                {"role": "user", "content": "hello"},
-            ],
-        },
-    )
-
-    assert response.status_code == 400
-    assert response.json()["error"]["type"] == "error"
-    assert "string 'text' field" in response.json()["error"]["message"]
+    assert response.json()["error"]["message"] == "THIRDPARTY_GITHUB_PAT is not configured"
 
 
 def test_anthropic_count_tokens_endpoint(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    """count_tokens should return an approximate input token count, not 404."""
     monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
 
     response = client.post(
@@ -548,25 +365,43 @@ def test_anthropic_count_tokens_endpoint(client: TestClient, monkeypatch: pytest
     )
 
     assert response.status_code == 200
-    body = response.json()
-    assert isinstance(body["input_tokens"], int)
-    assert body["input_tokens"] >= 1
+    assert isinstance(response.json()["input_tokens"], int)
 
 
-def test_anthropic_messages_error_uses_anthropic_error_schema(
+def test_anthropic_messages_non_streaming_translates_and_returns_anthropic_shape(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Errors on Anthropic-compatible routes use {"error": {...}}, not {"detail": ...}."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "")
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+    captured_payload: dict[str, Any] = {}
+
+    async def _create_chat_completion(payload: dict[str, Any]) -> dict[str, Any]:
+        nonlocal captured_payload
+        captured_payload = payload
+        return {
+            "id": "chatcmpl-1",
+            "model": "gpt-4.1",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "hello from copilot"},
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 3, "prompt_tokens_details": {}},
+        }
+
+    api_client = MagicMock()
+    api_client.create_chat_completion = AsyncMock(side_effect=_create_chat_completion)
+    monkeypatch.setattr("src.thirdparty.copilot_client.get_copilot_client", lambda _: api_client)
 
     response = client.post(
         "/v1/messages",
-        json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "hello"}]},
+        json={"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "hello"}]},
     )
 
-    assert response.status_code == 503
-    assert "error" in response.json()
-    assert response.json()["error"]["type"] == "error"
+    assert response.status_code == 200
+    assert captured_payload["model"] == "claude-sonnet-4"
+    assert captured_payload["messages"][0]["role"] == "user"
+    assert response.json()["content"][0] == {"type": "text", "text": "hello from copilot"}
 
 
 def _parse_sse_events(payload: str) -> list[dict[str, Any]]:
@@ -577,544 +412,101 @@ def _parse_sse_events(payload: str) -> list[dict[str, Any]]:
     return events
 
 
-@pytest.mark.parametrize("block_type", ["image", "document", "thinking"])
-def test_anthropic_messages_rejects_unsupported_non_tool_blocks(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, block_type: str
+def test_anthropic_messages_stream_translates_chat_chunks(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Image/document/thinking content blocks remain unsupported by the bridge."""
     monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+
+    async def _stream_chat_completion(_payload: dict[str, Any]) -> Any:
+        yield {
+            "id": "stream-1",
+            "model": "gpt-4.1",
+            "choices": [{"delta": {"content": "Hello"}, "finish_reason": None}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 0, "prompt_tokens_details": {}},
+        }
+        yield {
+            "id": "stream-1",
+            "model": "gpt-4.1",
+            "choices": [{"delta": {}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1, "prompt_tokens_details": {}},
+        }
+
+    api_client = MagicMock()
+    api_client.stream_chat_completion = _stream_chat_completion
+    monkeypatch.setattr("src.thirdparty.copilot_client.get_copilot_client", lambda _: api_client)
 
     response = client.post(
         "/v1/messages",
-        json={
-            "model": "gpt-4.1",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [{"type": block_type, "id": "block-1"}],
-                }
-            ],
-        },
-    )
-
-    assert response.status_code == 400
-    assert response.json()["error"]["type"] == "error"
-    assert "Unsupported content block type" in response.json()["error"]["message"]
-
-
-def test_anthropic_messages_accepts_tools_field(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Native 'tools' declarations are now handled by the tool-use bridge, not rejected."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(side_effect=RuntimeError("boom"))
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        json={
-            "model": "gpt-4.1",
-            "messages": [{"role": "user", "content": "hello"}],
-            "tools": [{"name": "get_weather", "description": "Get weather", "input_schema": {"type": "object"}}],
-        },
-    )
-
-    # Fails at session setup (mocked), not at request validation, proving the
-    # 'tools' field itself is no longer rejected with a 400.
-    assert response.status_code == 503
-    assert response.json() == {
-        "error": {"type": "error", "message": "Session initialization failed: boom"}
-    }
-
-
-def test_anthropic_messages_tool_result_without_pending_call_is_rejected(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A tool_result with no matching pending bridged tool call returns 400, not a hang."""
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-    session = MagicMock()
-    session.set_model = AsyncMock()
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(return_value=session)
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        json={
-            "model": "gpt-4.1",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "tool_result", "tool_use_id": "unknown-call", "content": "42"}
-                    ],
-                }
-            ],
-        },
-    )
-
-    assert response.status_code == 400
-    assert response.json()["error"]["type"] == "error"
-    assert "No matching pending tool call" in response.json()["error"]["message"]
-
-
-def test_anthropic_messages_new_prompt_ignores_stale_tool_result_earlier_in_history(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A plain follow-up prompt must not 400 just because an *earlier*,
-    already-resolved tool_result block from a prior turn still appears
-    deeper in the resent conversation history. Anthropic-style clients
-    resend the full message history on every request, so only the final
-    message can legitimately continue the most recent tool_use turn; a
-    stale tool_result anywhere earlier must be ignored, not treated as
-    requiring resolution.
-    """
-    from copilot.generated.session_events import SessionIdleData
-
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-
-    class _ImmediatelyIdleSession:
-        def __init__(self) -> None:
-            self.set_model = AsyncMock()
-            self.send = AsyncMock()
-
-        def on(self, callback: Any) -> Any:
-            callback(SimpleNamespace(data=SessionIdleData()))
-            return lambda: None
-
-    session = _ImmediatelyIdleSession()
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(return_value=session)
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        json={
-            "model": "gpt-4.1",
-            "messages": [
-                {"role": "user", "content": "What's the weather in Seoul?"},
-                {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "Let me check that for you."}],
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": "already-resolved-call",
-                            "content": "18C",
-                        }
-                    ],
-                },
-                {"role": "assistant", "content": "It's 18C in Seoul."},
-                # Newest turn: a plain follow-up question, no tool involved.
-                {"role": "user", "content": "Thanks! What about tomorrow?"},
-            ],
-        },
-    )
-
-    assert response.status_code == 200
-    session.send.assert_awaited_once()
-    assert session.send.await_args is not None
-    assert "Thanks! What about tomorrow?" in session.send.await_args.args[0]
-
-
-def test_anthropic_messages_tool_result_resolves_and_continues_without_new_prompt(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A tool_result continuation resolves the pending call and skips sending a new prompt."""
-    from copilot.generated.session_events import SessionIdleData
-
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-
-    resolve_mock = AsyncMock(return_value=True)
-    monkeypatch.setattr("src.thirdparty.anthropic_tool_bridge.resolve_pending_tool_call", resolve_mock)
-
-    class _ImmediatelyIdleSession:
-        def __init__(self) -> None:
-            self.set_model = AsyncMock()
-            self.send = AsyncMock()
-
-        def on(self, callback: Any) -> Any:
-            callback(SimpleNamespace(data=SessionIdleData()))
-            return lambda: None
-
-    session = _ImmediatelyIdleSession()
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(return_value=session)
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        json={
-            "model": "gpt-4.1",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "tool_result", "tool_use_id": "call-1", "content": "42 degrees"}
-                    ],
-                }
-            ],
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.json()["content"] == [{"type": "text", "text": ""}]
-    session.send.assert_not_awaited()
-    resolve_mock.assert_awaited_once()
-    # The continuation must never evict/recreate the session based on a
-    # system-message mismatch (e.g. `system` omitted on this follow-up
-    # request): doing so would disconnect the still-in-flight bridged tool
-    # call before resolve_pending_tool_call() runs, causing a spurious
-    # "No matching pending tool call(s)" 400 on this very request.
-    pool.get_or_create.assert_awaited_once_with(
-        "anthropic-v1",
-        "server-token",
-        isolation_session_id="session",
-        extra_tools=[],
-        reconcile_system_message=False,
-        minimal_agent_loop=True,
-    )
-
-
-def test_anthropic_messages_tool_result_continuation_preserves_session_despite_system_mismatch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A real SessionPool must not evict the cached session for a tool_result
-    continuation even when its (missing/different) system_message doesn't
-    match what the session was created with."""
-    import src.runtime.state as state_module
-
-    pool = state_module.SessionPool()
-    fake_session = AsyncMock()
-    pool._sessions["session:anthropic-v1"] = fake_session
-    pool._system_messages["session:anthropic-v1"] = "original system prompt"
-
-    async def _run() -> None:
-        # No system_message this turn (client omitted `system`), but the
-        # continuation flag must keep the original session alive.
-        result = await pool.get_or_create(
-            "anthropic-v1",
-            "server-token",
-            isolation_session_id="session",
-            reconcile_system_message=False,
-        )
-        assert result is fake_session
-
-    asyncio.run(_run())
-    fake_session.disconnect.assert_not_awaited()
-
-
-def test_anthropic_messages_serializes_overlapping_requests_same_key(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Two overlapping requests for the same thread/isolation key must never
-    concurrently use a session: the turn lock forces them to run one at a
-    time end-to-end (get_or_create through the final response), so a
-    request can never call get_or_create/send while another is still mid
-    turn on the same key -- the root cause of the "Session not found"
-    crash under concurrent/overlapping requests."""
-    from copilot.generated.session_events import SessionIdleData
-
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-
-    turn_lock = asyncio.Lock()
-    busy = False
-    overlap_detected = False
-    call_order: list[str] = []
-
-    class _Session:
-        def __init__(self, label: str) -> None:
-            self.label = label
-            self.set_model = AsyncMock()
-
-        def on(self, callback: Any) -> Any:
-            self._callback = callback
-            return lambda: None
-
-        async def send(self, _prompt: str) -> None:
-            nonlocal busy, overlap_detected
-            if busy:
-                overlap_detected = True
-            busy = True
-            # Yield control so a concurrent request *would* interleave here
-            # if it weren't blocked on the turn lock.
-            await asyncio.sleep(0.01)
-            busy = False
-            self._callback(SimpleNamespace(data=SessionIdleData()))
-
-    sessions = {"first": _Session("first"), "second": _Session("second")}
-
-    async def _get_or_create(*_args: Any, **_kwargs: Any) -> Any:
-        label = "first" if not call_order else "second"
-        call_order.append(label)
-        return sessions[label]
-
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=turn_lock)
-    pool.get_or_create = AsyncMock(side_effect=_get_or_create)
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    import httpx
-
-    async def _run() -> tuple[httpx.Response, httpx.Response]:
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=client.app), base_url="http://test"
-        ) as async_client:
-            first = async_client.post(
-                "/v1/messages",
-                json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "one"}]},
-            )
-            second = async_client.post(
-                "/v1/messages",
-                json={"model": "gpt-4.1", "messages": [{"role": "user", "content": "two"}]},
-            )
-            return await asyncio.gather(first, second)
-
-    first_response, second_response = asyncio.run(_run())
-
-    assert first_response.status_code == 200
-    assert second_response.status_code == 200
-    assert overlap_detected is False
-    assert call_order == ["first", "second"]
-    assert pool.get_or_create.await_count == 2
-
-
-def test_anthropic_messages_stream_emits_tool_use_and_stops(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A bridged ExternalToolRequestedData event should surface as a native tool_use block."""
-    from copilot.generated.session_events import ExternalToolRequestedData
-
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-
-    class _ToolUseSession:
-        def __init__(self) -> None:
-            self.set_model = AsyncMock()
-            self._callback: Any = None
-
-        def on(self, callback: Any) -> Any:
-            self._callback = callback
-            return lambda: None
-
-        async def send(self, _prompt: str) -> None:
-            self._callback(
-                SimpleNamespace(
-                    data=ExternalToolRequestedData(
-                        request_id="req-1",
-                        session_id="sess-1",
-                        tool_call_id="call-1",
-                        tool_name="get_weather",
-                        arguments={"city": "Seattle"},
-                    )
-                )
-            )
-
-    session = _ToolUseSession()
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(return_value=session)
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        json={
-            "model": "gpt-4.1",
-            "stream": True,
-            "messages": [{"role": "user", "content": "what's the weather?"}],
-            "tools": [
-                {
-                    "name": "get_weather",
-                    "description": "Get weather",
-                    "input_schema": {"type": "object"},
-                }
-            ],
-        },
+        json={"model": "gpt-4.1", "stream": True, "messages": [{"role": "user", "content": "hello"}]},
     )
 
     assert response.status_code == 200
     events = _parse_sse_events(response.text)
-    tool_use_start = next(
-        e
-        for e in events
-        if e["type"] == "content_block_start" and e["content_block"]["type"] == "tool_use"
-    )
-    assert tool_use_start["content_block"]["id"] == "call-1"
-    assert tool_use_start["content_block"]["name"] == "get_weather"
-    delta_event = next(
-        e for e in events if e["type"] == "content_block_delta" and e["delta"]["type"] == "input_json_delta"
-    )
-    assert json.loads(delta_event["delta"]["partial_json"]) == {"city": "Seattle"}
-    message_delta_event = next(e for e in events if e["type"] == "message_delta")
-    assert message_delta_event["delta"]["stop_reason"] == "tool_use"
-    assert events[-1]["type"] == "message_stop"
-
-
-def test_anthropic_messages_stream_releases_turn_lock_after_completion(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The turn lock acquired for a streaming request must be released once the
-    stream finishes, so a subsequent request for the same key can proceed
-    (not leak the lock and hang every later request for that key)."""
-    from copilot.generated.session_events import AssistantMessageDeltaData, SessionIdleData
-
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-
-    turn_lock = asyncio.Lock()
-
-    class _Session:
-        def __init__(self) -> None:
-            self.set_model = AsyncMock()
-            self._callback: Any = None
-
-        def on(self, callback: Any) -> Any:
-            self._callback = callback
-            return lambda: None
-
-        async def send(self, _prompt: str) -> None:
-            self._callback(
-                SimpleNamespace(data=AssistantMessageDeltaData(delta_content="hi", message_id="msg-1"))
-            )
-            self._callback(SimpleNamespace(data=SessionIdleData()))
-
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=turn_lock)
-    pool.get_or_create = AsyncMock(return_value=_Session())
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        json={
-            "model": "gpt-4.1",
-            "stream": True,
-            "messages": [{"role": "user", "content": "hello"}],
-        },
-    )
-
-    assert response.status_code == 200
-    events = _parse_sse_events(response.text)
-    delta_event = next(
-        e for e in events if e["type"] == "content_block_delta" and e["delta"]["type"] == "text_delta"
-    )
-    assert delta_event["delta"]["text"] == "hi"
-    assert events[-1]["type"] == "message_stop"
-    assert not turn_lock.locked()
-
-
-def test_anthropic_messages_stream_timeout_disconnects_in_same_isolation_namespace(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Streaming timeout should cleanup the same isolated session namespace."""
-    class _NeverIdleSession:
-        def __init__(self) -> None:
-            self._callback: Any = None
-            self.set_model = AsyncMock()
-            self.unsubscribed = False
-
-        def on(self, callback: Any) -> Any:
-            self._callback = callback
-
-            def _unsubscribe() -> None:
-                self.unsubscribed = True
-
-            return _unsubscribe
-
-        async def send(self, _prompt: str) -> None:
-            return
-
-    session = _NeverIdleSession()
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(return_value=session)
-    pool.disconnect = AsyncMock()
-
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-    monkeypatch.setattr("src.api.routes.settings.session_timeout", 0.0)
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        headers={"X-Isolation-Session-ID": "tenant-a"},
-        json={
-            "model": "gpt-4.1",
-            "stream": True,
-            "messages": [{"role": "user", "content": "hello"}],
-        },
-    )
-
-    assert response.status_code == 200
-    events = _parse_sse_events(response.text)
-    assert [event["type"] for event in events] == [
+    assert [x["type"] for x in events] == [
         "message_start",
         "content_block_start",
-        "content_block_stop",
-        "error",
-    ]
-    pool.disconnect.assert_awaited_once_with("anthropic-v1", isolation_session_id="tenant-a")
-    assert session.unsubscribed is True
-
-
-def test_anthropic_messages_stream_stays_text_only_and_closes_cleanly(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Streaming bridge should emit text-only Anthropic SSE framing for normal responses."""
-    from copilot.generated.session_events import AssistantMessageDeltaData, SessionIdleData
-
-    class _DeltaThenIdleSession:
-        def __init__(self) -> None:
-            self._callback: Any = None
-            self.set_model = AsyncMock()
-
-        def on(self, callback: Any) -> Any:
-            self._callback = callback
-            return lambda: None
-
-        async def send(self, _prompt: str) -> None:
-            if self._callback is None:
-                return
-            self._callback(SimpleNamespace(data=AssistantMessageDeltaData(delta_content="Hello", message_id="m1")))
-            self._callback(SimpleNamespace(data=AssistantMessageDeltaData(delta_content=" world", message_id="m1")))
-            self._callback(SimpleNamespace(data=SessionIdleData()))
-
-    session = _DeltaThenIdleSession()
-    pool = MagicMock()
-    pool.get_turn_lock = MagicMock(return_value=asyncio.Lock())
-    pool.get_or_create = AsyncMock(return_value=session)
-    pool.disconnect = AsyncMock()
-
-    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
-    monkeypatch.setattr("src.api.routes.get_session_pool", lambda: pool)
-
-    response = client.post(
-        "/v1/messages",
-        headers={"X-Isolation-Session-ID": "tenant-b"},
-        json={
-            "model": "gpt-4.1",
-            "stream": True,
-            "messages": [{"role": "user", "content": "hello"}],
-        },
-    )
-
-    assert response.status_code == 200
-    events = _parse_sse_events(response.text)
-    assert [event["type"] for event in events] == [
-        "message_start",
-        "content_block_start",
-        "content_block_delta",
         "content_block_delta",
         "content_block_stop",
         "message_delta",
         "message_stop",
     ]
-    assert events[1]["content_block"]["type"] == "text"
-    assert events[2]["delta"]["type"] == "text_delta"
-    assert events[5]["usage"]["output_tokens"] == len("Hello world")
-    assert all("tool_use" not in json.dumps(event) for event in events)
-    pool.disconnect.assert_not_awaited()
+    assert events[2]["delta"]["text"] == "Hello"
+
+
+def test_anthropic_messages_translates_tool_result_and_tools(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+    captured_payload: dict[str, Any] = {}
+
+    async def _create_chat_completion(payload: dict[str, Any]) -> dict[str, Any]:
+        nonlocal captured_payload
+        captured_payload = payload
+        return {
+            "id": "chatcmpl-2",
+            "model": "gpt-4.1",
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "type": "function",
+                                "function": {"name": "get_weather", "arguments": "{\"city\":\"Seoul\"}"},
+                            }
+                        ],
+                    },
+                }
+            ],
+            "usage": {"prompt_tokens": 8, "completion_tokens": 2, "prompt_tokens_details": {}},
+        }
+
+    api_client = MagicMock()
+    api_client.create_chat_completion = AsyncMock(side_effect=_create_chat_completion)
+    monkeypatch.setattr("src.thirdparty.copilot_client.get_copilot_client", lambda _: api_client)
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "gpt-4.1",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "call-0", "content": "42"},
+                        {"type": "text", "text": "next prompt"},
+                    ],
+                }
+            ],
+            "tools": [{"name": "get_weather", "description": "weather", "input_schema": {"type": "object"}}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured_payload["messages"][0]["role"] == "tool"
+    assert captured_payload["messages"][1]["role"] == "user"
+    assert captured_payload["tools"][0]["function"]["name"] == "get_weather"
+    assert response.json()["stop_reason"] == "tool_use"

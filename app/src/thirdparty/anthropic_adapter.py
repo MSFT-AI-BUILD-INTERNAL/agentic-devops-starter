@@ -1,43 +1,62 @@
-﻿"""Adapt Anthropic Messages API requests to Copilot SDK session input.
+﻿"""Translate between the Anthropic Messages API and GitHub Copilot's OpenAI-shaped API.
 
-The adapter supports text-only requests and parses tool-use bridge requests;
-images, documents, and thinking blocks remain unsupported.
-Unsupported features return explicit ValueError rather than silent loss.
-
-Tool-use bridge support (parsing/validation of ``tools`` and ``tool_result``
-content blocks) lives alongside the Phase 1 helpers below; it is additive and
-does not change the behavior of ``validate_request``/``extract_last_user_prompt``,
-which still reject tool content so existing text-only callers are unaffected.
-See :mod:`src.thirdparty.anthropic_tool_bridge` for the pending-call state and
-SDK tool adapters that make use of these parsed values.
+This adapter is stateless: it has no notion of a server-side session or
+conversation history. Each request is translated independently and the
+caller's full ``messages`` history is forwarded to the Copilot API on every
+call, exactly as Claude Code (or any other Anthropic Messages API client)
+resends it. This mirrors the reverse-engineered ``copilot-api`` project
+(https://github.com/ericc-ch/copilot-api), which this module's translation
+logic is based on.
 """
 
+import json
 from typing import Any
 
-from src.thirdparty.anthropic_models import (
-    AnthropicCountTokensRequest,
-    AnthropicMessage,
-    AnthropicMessagesRequest,
-    AnthropicToolDefinition,
-    AnthropicToolResultBlock,
-)
+from src.thirdparty.anthropic_models import AnthropicCountTokensRequest, AnthropicMessagesRequest
 
 # Rough characters-per-token ratio used for the ``count_tokens`` approximation
 # below. The adapter has no access to Anthropic's real tokenizer, so this is
 # a best-effort estimate rather than an exact count.
 _APPROX_CHARS_PER_TOKEN = 4
 
-# Block types that are not supported in Phase 1.
-_UNSUPPORTED_BLOCK_TYPES = frozenset({"tool_use", "tool_result", "image", "document", "thinking"})
-
-# Bounds for tool-use bridge parsing, to reject pathological requests outright
-# rather than building an unbounded number of SDK tool registrations.
+# Bounds for tool-definition parsing, to reject pathological requests outright.
 MAX_TOOL_DEFINITIONS = 128
 MAX_TOOL_NAME_LENGTH = 200
 
+_OPENAI_TO_ANTHROPIC_STOP_REASON = {
+    "stop": "end_turn",
+    "length": "max_tokens",
+    "tool_calls": "tool_use",
+    "content_filter": "end_turn",
+}
+
+
+def map_openai_stop_reason(finish_reason: str | None) -> str | None:
+    """Map an OpenAI ``finish_reason`` to its Anthropic ``stop_reason`` equivalent."""
+    if finish_reason is None:
+        return None
+    return _OPENAI_TO_ANTHROPIC_STOP_REASON.get(finish_reason, "end_turn")
+
+
+def _normalize_model_name(model: str) -> str:
+    """Strip Claude Code's dated sub-agent model suffixes Copilot doesn't recognize.
+
+    e.g. ``claude-sonnet-4-20250514`` -> ``claude-sonnet-4``.
+    """
+    if model.startswith("claude-sonnet-4-"):
+        return "claude-sonnet-4"
+    if model.startswith("claude-opus-4-"):
+        return "claude-opus-4"
+    return model
+
 
 def _extract_text(content: str | list[dict[str, Any]]) -> str:
-    """Return plain text from an Anthropic content field (string or block list)."""
+    """Return plain text from an Anthropic content field (string or block list).
+
+    Raises ValueError for unsupported block types so unsupported content
+    (e.g. ``document``) isn't silently dropped. ``tool_use``/``tool_result``
+    blocks are ignored here since they're translated elsewhere.
+    """
     if isinstance(content, str):
         return content
     parts: list[str] = []
@@ -45,94 +64,303 @@ def _extract_text(content: str | list[dict[str, Any]]) -> str:
         if not isinstance(block, dict):
             raise ValueError("Content blocks must be JSON objects.")
         block_type = block.get("type", "text")
-        if block_type in _UNSUPPORTED_BLOCK_TYPES:
-            raise ValueError(
-                f"Unsupported content block type '{block_type}'. "
-                "Only plain text content is supported in Phase 1."
-            )
         if block_type == "text":
             text = block.get("text", "")
             if not isinstance(text, str):
                 raise ValueError("Text content blocks must contain a string 'text' field.")
             parts.append(text)
+        elif block_type == "thinking":
+            parts.append(str(block.get("thinking", "")))
+        elif block_type in ("tool_use", "tool_result"):
+            continue
+        else:
+            raise ValueError(f"Unsupported content block type: '{block_type}'.")
     return "\n".join(parts)
 
 
-def validate_request(request: AnthropicMessagesRequest) -> None:
-    """Raise ValueError for unsupported request features (Phase 1).
+def _map_content_for_openai(
+    content: str | list[dict[str, Any]] | None,
+) -> str | list[dict[str, Any]] | None:
+    """Map an Anthropic content field to an OpenAI message ``content`` value.
 
-    Returns without raising for supported requests.
+    Text and thinking blocks are merged into plain text (OpenAI has no
+    separate thinking block). When an image block is present, the content is
+    instead returned as a list of OpenAI ``text``/``image_url`` parts so the
+    image survives the translation.
     """
-    if request.tools:
-        raise ValueError(
-            "Tool use is not supported by this adapter (Phase 1). "
-            "Remove the 'tools' field from the request."
+    if content is None:
+        return None
+    if isinstance(content, str):
+        return content
+    has_image = any(isinstance(block, dict) and block.get("type") == "image" for block in content)
+    if not has_image:
+        return _extract_text(content)
+
+    parts: list[dict[str, Any]] = []
+    for block in content:
+        if not isinstance(block, dict):
+            raise ValueError("Content blocks must be JSON objects.")
+        block_type = block.get("type")
+        if block_type == "text":
+            parts.append({"type": "text", "text": block.get("text", "")})
+        elif block_type == "thinking":
+            parts.append({"type": "text", "text": block.get("thinking", "")})
+        elif block_type == "image":
+            source = block.get("source") or {}
+            media_type = source.get("media_type", "image/png")
+            data = source.get("data", "")
+            parts.append(
+                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}"}}
+            )
+        elif block_type in ("tool_use", "tool_result"):
+            continue
+        else:
+            raise ValueError(f"Unsupported content block type: '{block_type}'.")
+    return parts
+
+
+def _handle_user_message(content: str | list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate one Anthropic user message into one or more OpenAI messages.
+
+    ``tool_result`` blocks become standalone OpenAI ``tool`` messages (which
+    must precede the remaining user content to preserve the
+    tool_use -> tool_result -> user ordering OpenAI expects); any other
+    content becomes a single ``user`` message.
+    """
+    if not isinstance(content, list):
+        return [{"role": "user", "content": _map_content_for_openai(content)}]
+
+    tool_results = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_result"]
+    other_blocks = [b for b in content if not (isinstance(b, dict) and b.get("type") == "tool_result")]
+
+    messages: list[dict[str, Any]] = []
+    for block in tool_results:
+        result_content = block.get("content", "")
+        messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": block.get("tool_use_id", ""),
+                "content": _map_content_for_openai(result_content),
+            }
         )
-    for msg in request.messages:
-        if isinstance(msg.content, list):
-            for block in msg.content:
-                btype = block.get("type")
-                if btype in _UNSUPPORTED_BLOCK_TYPES:
-                    raise ValueError(
-                        f"Unsupported content block type '{btype}' in messages. "
-                        "Only plain text content is supported in Phase 1."
-                    )
+    if other_blocks:
+        messages.append({"role": "user", "content": _map_content_for_openai(other_blocks)})
+    return messages
 
 
-def extract_last_user_prompt(request: AnthropicMessagesRequest) -> str:
-    """Return the text of the most recent user message.
+def _validate_tool_use_block(block: dict[str, Any]) -> dict[str, Any]:
+    """Validate a ``tool_use`` block's required fields, raising ValueError if malformed."""
+    tool_id = block.get("id")
+    if not isinstance(tool_id, str) or not tool_id.strip():
+        raise ValueError("tool_use blocks must have a non-empty 'id'.")
+    name = block.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("tool_use blocks must have a non-empty 'name'.")
+    tool_input = block.get("input", {})
+    if not isinstance(tool_input, dict):
+        raise ValueError("tool_use blocks must have an 'input' that is a JSON object.")
+    return {
+        "id": tool_id,
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": json.dumps(tool_input),
+        },
+    }
 
-    The Copilot SDK session maintains conversation history internally, so
-    only the newest user message is sent per turn.
+
+def _handle_assistant_message(content: str | list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate one Anthropic assistant message into one OpenAI message.
+
+    ``tool_use`` blocks become OpenAI ``tool_calls``; text/thinking blocks are
+    merged into the message's ``content``.
     """
-    user_messages = [m for m in request.messages if m.role == "user"]
-    if not user_messages:
-        raise ValueError("Request contains no user messages.")
-    return _extract_text(user_messages[-1].content)
+    if not isinstance(content, list):
+        return [{"role": "assistant", "content": _map_content_for_openai(content)}]
+
+    tool_use_blocks = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
+    text_content = _map_content_for_openai(content)
+
+    if not tool_use_blocks:
+        return [{"role": "assistant", "content": text_content}]
+
+    return [
+        {
+            "role": "assistant",
+            "content": text_content or None,
+            "tool_calls": [_validate_tool_use_block(block) for block in tool_use_blocks],
+        }
+    ]
+
+
+def _translate_tools(tools: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+    """Validate and translate Anthropic ``tools`` into OpenAI ``tools``.
+
+    Raises ValueError for malformed tool declarations -- missing/blank name,
+    a duplicate name, or too many declared tools -- so callers can return an
+    explicit 400 instead of silently forwarding a broken tool list.
+    """
+    if not tools:
+        return None
+    if len(tools) > MAX_TOOL_DEFINITIONS:
+        raise ValueError(f"Too many tools declared ({len(tools)}); the limit is {MAX_TOOL_DEFINITIONS}.")
+
+    translated: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for raw in tools:
+        if not isinstance(raw, dict):
+            raise ValueError("Each tool definition must be a JSON object.")
+        name = str(raw.get("name", "")).strip()
+        if not name:
+            raise ValueError("Tool definitions must have a non-empty 'name'.")
+        if len(name) > MAX_TOOL_NAME_LENGTH:
+            raise ValueError(f"Tool name '{name[:40]}...' exceeds {MAX_TOOL_NAME_LENGTH} characters.")
+        if name in seen_names:
+            raise ValueError(f"Duplicate tool name '{name}'.")
+        seen_names.add(name)
+        translated.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": raw.get("description", ""),
+                    "parameters": raw.get("input_schema") or {},
+                },
+            }
+        )
+    return translated
+
+
+def _translate_tool_choice(tool_choice: dict[str, Any] | None) -> Any:
+    """Translate an Anthropic ``tool_choice`` into its OpenAI equivalent."""
+    if not tool_choice:
+        return None
+    choice_type = tool_choice.get("type")
+    if choice_type == "auto":
+        return "auto"
+    if choice_type == "any":
+        return "required"
+    if choice_type == "none":
+        return "none"
+    if choice_type == "tool":
+        name = tool_choice.get("name")
+        if name:
+            return {"type": "function", "function": {"name": name}}
+    return None
+
+
+def translate_to_openai(request: AnthropicMessagesRequest) -> dict[str, Any]:
+    """Translate a validated Anthropic Messages request into a Copilot chat-completions payload."""
+    messages: list[dict[str, Any]] = []
+
+    system_prompt = extract_system_prompt(request)
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+
+    for message in request.messages:
+        if message.role == "user":
+            messages.extend(_handle_user_message(message.content))
+        else:
+            messages.extend(_handle_assistant_message(message.content))
+
+    payload: dict[str, Any] = {
+        "model": _normalize_model_name(request.model),
+        "messages": messages,
+        "max_tokens": request.max_tokens,
+        "stream": request.stream,
+    }
+    if request.stop_sequences:
+        payload["stop"] = request.stop_sequences
+    if request.temperature is not None:
+        payload["temperature"] = request.temperature
+    if request.top_p is not None:
+        payload["top_p"] = request.top_p
+    user_id = (request.metadata or {}).get("user_id")
+    if user_id:
+        payload["user"] = user_id
+
+    tools = _translate_tools(request.tools)
+    if tools:
+        payload["tools"] = tools
+    tool_choice = _translate_tool_choice(request.tool_choice)
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
+
+    return payload
+
+
+def translate_to_anthropic(response: dict[str, Any]) -> dict[str, Any]:
+    """Translate a non-streaming Copilot chat-completions response into an Anthropic response body."""
+    text_blocks: list[dict[str, Any]] = []
+    tool_use_blocks: list[dict[str, Any]] = []
+    stop_reason: str | None = None
+
+    for choice in response.get("choices", []):
+        message = choice.get("message") or {}
+        content = message.get("content")
+        if isinstance(content, str) and content:
+            text_blocks.append({"type": "text", "text": content})
+
+        for tool_call in message.get("tool_calls") or []:
+            function = tool_call.get("function") or {}
+            try:
+                arguments = json.loads(function.get("arguments") or "{}")
+            except (TypeError, ValueError):
+                arguments = {}
+            tool_use_blocks.append(
+                {
+                    "type": "tool_use",
+                    "id": tool_call.get("id", ""),
+                    "name": function.get("name", ""),
+                    "input": arguments,
+                }
+            )
+
+        finish_reason = choice.get("finish_reason")
+        if finish_reason == "tool_calls" or stop_reason in (None, "stop"):
+            stop_reason = finish_reason
+
+    usage = response.get("usage") or {}
+    cached_tokens = (usage.get("prompt_tokens_details") or {}).get("cached_tokens")
+    usage_out: dict[str, Any] = {
+        "input_tokens": usage.get("prompt_tokens", 0) - (cached_tokens or 0),
+        "output_tokens": usage.get("completion_tokens", 0),
+    }
+    if cached_tokens is not None:
+        usage_out["cache_read_input_tokens"] = cached_tokens
+
+    return {
+        "id": response.get("id", ""),
+        "type": "message",
+        "role": "assistant",
+        "model": response.get("model", ""),
+        "content": [*text_blocks, *tool_use_blocks],
+        "stop_reason": map_openai_stop_reason(stop_reason),
+        "stop_sequence": None,
+        "usage": usage_out,
+    }
 
 
 def extract_system_prompt(request: AnthropicMessagesRequest) -> str | None:
-    """Return all system prompts in their request order as one plain string."""
-    prompts: list[str] = []
-    if request.system is not None:
-        prompts.append(
-            request.system
-            if isinstance(request.system, str)
-            else _extract_text(request.system)
-        )
-    prompts.extend(
-        _extract_text(message.content)
-        for message in request.messages
-        if message.role == "system"
-    )
-    combined = "\n\n".join(prompt for prompt in prompts if prompt)
-    return combined or None
-
-
-def remove_system_messages(request: AnthropicMessagesRequest) -> list[AnthropicMessage]:
-    """Return conversation messages after removing inline system messages.
-
-    Anthropic's current contract carries system instructions at the top level.
-    Some clients still place them in ``messages`` while translating requests;
-    normalize those instructions before handing the conversation to a
-    provider-specific adapter.
-    """
-    return [message for message in request.messages if message.role != "system"]
+    """Return the request's system prompt as plain text, if any."""
+    if request.system is None:
+        return None
+    text = request.system if isinstance(request.system, str) else _extract_text(request.system)
+    return text or None
 
 
 def _approximate_content_length(content: str | list[dict[str, Any]]) -> int:
     """Return a best-effort character count for a content field.
 
-    Unlike :func:`_extract_text`, this never raises for content block types
-    the adapter doesn't otherwise support (tool use, images, ...); it falls
-    back to the block's raw JSON size so ``count_tokens`` still returns a
-    reasonable estimate instead of a hard failure.
+    Unlike :func:`_extract_text`, this never raises for unsupported block
+    types; it falls back to the block's raw JSON size so ``count_tokens``
+    still returns a reasonable estimate instead of a hard failure.
     """
     if isinstance(content, str):
         return len(content)
     total = 0
     for block in content:
-        block_type = block.get("type", "text")
+        block_type = block.get("type", "text") if isinstance(block, dict) else "text"
         if block_type == "text":
             total += len(block.get("text", ""))
         else:
@@ -156,78 +384,3 @@ def estimate_input_tokens(request: AnthropicCountTokensRequest) -> int:
     if request.tools:
         total_chars += len(str(request.tools))
     return max(1, total_chars // _APPROX_CHARS_PER_TOKEN)
-
-
-def parse_tool_definitions(request: AnthropicMessagesRequest) -> list[AnthropicToolDefinition]:
-    """Validate and parse ``request.tools`` into typed tool definitions.
-
-    This is separate from :func:`validate_request`, which still rejects any
-    request carrying ``tools`` so existing text-only callers keep their
-    current behavior; callers that opt into the tool-use bridge should call
-    this instead of (or before enabling) ``validate_request``.
-
-    Raises ValueError for malformed tool declarations -- missing/blank name,
-    a duplicate name, a non-object ``input_schema``, or too many declared
-    tools -- so callers can return an explicit 400 instead of silently
-    dropping or mis-registering a tool.
-    """
-    if not request.tools:
-        return []
-    if len(request.tools) > MAX_TOOL_DEFINITIONS:
-        raise ValueError(
-            f"Too many tools declared ({len(request.tools)}); "
-            f"the limit is {MAX_TOOL_DEFINITIONS}."
-        )
-    definitions: list[AnthropicToolDefinition] = []
-    seen_names: set[str] = set()
-    for raw in request.tools:
-        try:
-            definition = AnthropicToolDefinition.model_validate(raw)
-        except Exception as exc:
-            raise ValueError(f"Invalid tool definition: {exc}") from exc
-        name = definition.name.strip()
-        if not name:
-            raise ValueError("Tool definitions must have a non-empty 'name'.")
-        if len(name) > MAX_TOOL_NAME_LENGTH:
-            raise ValueError(
-                f"Tool name '{name[:40]}...' exceeds {MAX_TOOL_NAME_LENGTH} characters."
-            )
-        if name in seen_names:
-            raise ValueError(f"Duplicate tool name '{name}'.")
-        schema_type = definition.input_schema.get("type") if definition.input_schema else None
-        if schema_type not in (None, "object"):
-            raise ValueError(f"Tool '{name}' input_schema must describe a JSON object.")
-        seen_names.add(name)
-        definitions.append(definition)
-    return definitions
-
-
-def extract_tool_result_blocks(request: AnthropicMessagesRequest) -> list[AnthropicToolResultBlock]:
-    """Return ``tool_result`` content blocks from the most recent message only.
-
-    Anthropic-style clients resend the *entire* conversation history on every
-    request, so ``tool_result`` blocks from turns that were already resolved
-    (and released from the pending-call registry) keep reappearing in later
-    requests. Only the final message can legitimately reply to the most
-    recent ``tool_use`` turn -- mirroring how ``_extract_prompt_text`` in
-    routes.py scopes the outgoing prompt to the last user message -- so
-    scanning the rest of the history would otherwise misclassify a later,
-    unrelated turn as a stale/failed tool-result continuation and reject it
-    with a spurious 400 even though none of its blocks were ever pending.
-    Batched/parallel tool calls are still supported, since all blocks within
-    that single last message are collected.
-    """
-    if not request.messages:
-        return []
-    last_message = request.messages[-1]
-    if not isinstance(last_message.content, list):
-        return []
-    blocks: list[AnthropicToolResultBlock] = []
-    for raw_block in last_message.content:
-        if not isinstance(raw_block, dict) or raw_block.get("type") != "tool_result":
-            continue
-        try:
-            blocks.append(AnthropicToolResultBlock.model_validate(raw_block))
-        except Exception as exc:
-            raise ValueError(f"Invalid tool_result block: {exc}") from exc
-    return blocks
