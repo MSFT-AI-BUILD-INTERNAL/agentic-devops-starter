@@ -124,7 +124,12 @@ class CopilotClient:
                 f"Failed to list Copilot models (HTTP {response.status_code}): {response.text}"
             )
         data = response.json()
-        return data.get("data", [])
+        if not isinstance(data, dict):
+            raise CopilotAPIError("Unexpected response shape from Copilot /models endpoint.")
+        models = data.get("data", [])
+        if not isinstance(models, list) or not all(isinstance(model, dict) for model in models):
+            raise CopilotAPIError("Unexpected response shape from Copilot /models endpoint.")
+        return models
 
     async def create_chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Perform a non-streaming chat completion call and return the parsed JSON body."""

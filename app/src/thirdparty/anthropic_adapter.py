@@ -51,7 +51,12 @@ def _normalize_model_name(model: str) -> str:
 
 
 def _extract_text(content: str | list[dict[str, Any]]) -> str:
-    """Return plain text from an Anthropic content field (string or block list)."""
+    """Return plain text from an Anthropic content field (string or block list).
+
+    Raises ValueError for unsupported block types so unsupported content
+    (e.g. ``document``) isn't silently dropped. ``tool_use``/``tool_result``
+    blocks are ignored here since they're translated elsewhere.
+    """
     if isinstance(content, str):
         return content
     parts: list[str] = []
@@ -66,6 +71,10 @@ def _extract_text(content: str | list[dict[str, Any]]) -> str:
             parts.append(text)
         elif block_type == "thinking":
             parts.append(str(block.get("thinking", "")))
+        elif block_type in ("tool_use", "tool_result"):
+            continue
+        else:
+            raise ValueError(f"Unsupported content block type: '{block_type}'.")
     return "\n".join(parts)
 
 
@@ -90,7 +99,7 @@ def _map_content_for_openai(
     parts: list[dict[str, Any]] = []
     for block in content:
         if not isinstance(block, dict):
-            continue
+            raise ValueError("Content blocks must be JSON objects.")
         block_type = block.get("type")
         if block_type == "text":
             parts.append({"type": "text", "text": block.get("text", "")})
@@ -103,6 +112,10 @@ def _map_content_for_openai(
             parts.append(
                 {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}"}}
             )
+        elif block_type in ("tool_use", "tool_result"):
+            continue
+        else:
+            raise ValueError(f"Unsupported content block type: '{block_type}'.")
     return parts
 
 
@@ -135,6 +148,27 @@ def _handle_user_message(content: str | list[dict[str, Any]]) -> list[dict[str, 
     return messages
 
 
+def _validate_tool_use_block(block: dict[str, Any]) -> dict[str, Any]:
+    """Validate a ``tool_use`` block's required fields, raising ValueError if malformed."""
+    tool_id = block.get("id")
+    if not isinstance(tool_id, str) or not tool_id.strip():
+        raise ValueError("tool_use blocks must have a non-empty 'id'.")
+    name = block.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("tool_use blocks must have a non-empty 'name'.")
+    tool_input = block.get("input", {})
+    if not isinstance(tool_input, dict):
+        raise ValueError("tool_use blocks must have an 'input' that is a JSON object.")
+    return {
+        "id": tool_id,
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": json.dumps(tool_input),
+        },
+    }
+
+
 def _handle_assistant_message(content: str | list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Translate one Anthropic assistant message into one OpenAI message.
 
@@ -154,17 +188,7 @@ def _handle_assistant_message(content: str | list[dict[str, Any]]) -> list[dict[
         {
             "role": "assistant",
             "content": text_content or None,
-            "tool_calls": [
-                {
-                    "id": block.get("id", ""),
-                    "type": "function",
-                    "function": {
-                        "name": block.get("name", ""),
-                        "arguments": json.dumps(block.get("input", {})),
-                    },
-                }
-                for block in tool_use_blocks
-            ],
+            "tool_calls": [_validate_tool_use_block(block) for block in tool_use_blocks],
         }
     ]
 

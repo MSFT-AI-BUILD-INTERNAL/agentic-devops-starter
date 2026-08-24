@@ -157,7 +157,15 @@ def translate_chunk(chunk: dict[str, Any], state: AnthropicStreamState) -> list[
 
         if function.get("arguments"):
             tool_state = state.tool_calls.get(tc_index)
-            if tool_state is not None:
+            # Only emit a delta if its block is still the currently open one; a
+            # stray delta targeting an already-closed block (e.g. because a
+            # later tool call's content_block_start closed it first) would
+            # otherwise produce an invalid Anthropic SSE sequence.
+            if (
+                tool_state is not None
+                and state.content_block_open
+                and tool_state.anthropic_block_index == state.content_block_index
+            ):
                 events.append(
                     {
                         "type": "content_block_delta",
