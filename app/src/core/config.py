@@ -33,9 +33,9 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("COPILOT_APP_REDIRECT_URI", "GITHUB_OAUTH_REDIRECT_URI"),
     )
     # Third-party API 클라이언트(예: Claude Code)가 Anthropic 호환 엔드포인트
-    # (/v1/models, /v1/messages)를 호출할 때는 GitHub Apps OAuth 세션 쿠키가
-    # 없다. 이 경우 Copilot SDK 세션 인증에 사용할 PAT(GitHub Apps OAuth와 무관한
-    # 서버 전용 자격증명).
+    # (/v1/models, /v1/messages)를 호출할 때 사용할 서버 전용 GitHub PAT.
+    # 이 PAT는 GitHub API의 /copilot_internal/v2/token 교환 후
+    # api.githubcopilot.com 직접 호출에 사용된다.
     thirdparty_github_pat: str = Field(
         default="",
         validation_alias=AliasChoices("THIRDPARTY_GITHUB_PAT", "COPILOT_API_THIRDPARTY_GITHUB_PAT"),
@@ -109,9 +109,7 @@ class Settings(BaseSettings):
 
     # Anthropic Messages API compatibility layer.
     # When enabled, the server exposes POST /v1/messages and GET /v1/models so
-    # Claude Code (ANTHROPIC_BASE_URL) can route requests to the Copilot SDK.
-    # Phase 1 supports text-only, streaming and non-streaming; tools/images/
-    # thinking return explicit 400 errors rather than silently dropping content.
+    # Claude Code (ANTHROPIC_BASE_URL) can route requests to GitHub Copilot API.
     anthropic_route_enabled: bool = True
 
     model_config = {

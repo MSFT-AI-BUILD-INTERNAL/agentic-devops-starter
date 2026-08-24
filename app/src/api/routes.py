@@ -1,7 +1,6 @@
 """API route handlers for the AG-UI server."""
 
 import asyncio
-import json
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -64,7 +63,6 @@ from src.storage.file_validation import (
 )
 from src.teams.orchestrator import run_teams
 from src.teams.patterns import PATTERNS
-from src.thirdparty.anthropic_tool_bridge import PendingToolCallRegistry
 
 logger = setup_logging(settings.log_level)
 sse_utils.set_logger(logger)
@@ -168,32 +166,6 @@ def _require_thirdparty_github_pat() -> str:
     if not token:
         raise HTTPException(status_code=503, detail="THIRDPARTY_GITHUB_PAT is not configured")
     return token
-
-
-# Grace window used after the first bridged tool_use request in a turn to
-# catch further tool_use requests the Copilot SDK emits for the same turn
-# (e.g. parallel tool calls). The SDK has no explicit "all tool calls for
-# this turn were issued" signal, so a brief post-first-call quiescence
-# window is used as a pragmatic heuristic instead.
-_ANTHROPIC_TOOL_USE_GRACE_SECONDS = 0.15
-
-# Content block types the Anthropic bridge still cannot handle even with
-# the tool-use bridge enabled; tool_use/tool_result are now handled by it.
-_ANTHROPIC_UNSUPPORTED_BLOCK_TYPES = frozenset({"image", "document", "thinking"})
-
-# Process-wide registry of in-flight Anthropic tool calls awaiting a
-# client-supplied tool_result, shared across every /v1/messages request for
-# the lifetime of the server (see src.thirdparty.anthropic_tool_bridge).
-_anthropic_tool_bridge_registry: PendingToolCallRegistry | None = None
-
-
-def _get_anthropic_tool_bridge_registry() -> PendingToolCallRegistry:
-    """Return the process-wide registry, creating it on first use."""
-    global _anthropic_tool_bridge_registry
-    if _anthropic_tool_bridge_registry is None:
-        _anthropic_tool_bridge_registry = PendingToolCallRegistry()
-    return _anthropic_tool_bridge_registry
-
 
 
 @router.get("/health")
@@ -562,24 +534,20 @@ async def job_status_endpoint(job_id: str) -> JobStatusResponse:
 
 @router.get("/v1/models")
 async def list_anthropic_models() -> JSONResponse:
-    """List models supported by the Anthropic Messages API adapter.
-
-    Returns a list compatible with the Anthropic client's model-listing format
-    so Claude Code can confirm the adapter is reachable before sending real
-    requests.
-    """
+    """List models for the Anthropic-compatible third-party endpoint."""
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
-    from src.runtime.state import get_client
     from src.thirdparty.anthropic_models import AnthropicModelInfo, AnthropicModelListResponse
+    from src.thirdparty.copilot_client import CopilotAPIError, get_copilot_client
 
+    github_pat = _require_thirdparty_github_pat()
     try:
-        sdk_models = await get_client().list_models()
-    except Exception as exc:
-        logger.exception("Failed to list models from Copilot SDK")
-        raise HTTPException(status_code=502, detail="Could not retrieve model list from Copilot SDK") from exc
+        models = await get_copilot_client(github_pat).list_models()
+    except CopilotAPIError as exc:
+        logger.warning("Failed to list Copilot models: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    data = [AnthropicModelInfo(id=m.id) for m in sdk_models]
+    data = [AnthropicModelInfo(id=str(model.get("id", ""))) for model in models]
     return JSONResponse(AnthropicModelListResponse(data=data).model_dump())
 
 
@@ -617,107 +585,19 @@ async def anthropic_count_tokens_endpoint(request: Request) -> JSONResponse:
 @router.post("/v1/messages", response_model=None)
 @router.post("/v1/messages/", response_model=None, include_in_schema=False)
 async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | JSONResponse:
-    """Anthropic Messages API adapter backed by the Copilot SDK.
-
-    Accepts the Anthropic ``POST /v1/messages`` request format and converts it
-    to a Copilot SDK session request.  Streaming (SSE) and non-streaming JSON
-    responses are both supported.
-
-    Since callers do not hold a GitHub Apps OAuth session cookie, the Copilot
-    SDK session is authenticated with ``THIRDPARTY_GITHUB_PAT`` instead.
-
-    Tool-use bridge: top-level ``tools`` are registered as Copilot SDK tools
-    whose handlers block until a matching client-supplied ``tool_result``
-    arrives (see src.thirdparty.anthropic_tool_bridge). When the model
-    requests one, the turn ends early with a native ``tool_use`` content
-    block and ``stop_reason="tool_use"``; the client is expected to reply
-    with a new request whose messages include the corresponding
-    ``tool_result`` block(s), which resumes the same underlying Copilot SDK
-    session/turn rather than starting a new one.
-
-    Minimal agent loop: sessions for this route are created with
-    ``minimal_agent_loop=True`` (see ``SessionPool.get_or_create``), so the
-    Copilot CLI does not autonomously run its own built-in code-based tools,
-    Agent Skills, or repo/user-level config discovery. Only the tools an
-    Anthropic client explicitly declares (via the bridge above) are
-    available, keeping this route as close to a pure model proxy as the SDK
-    allows.
-
-    Remaining Phase 1 limitation (returns explicit 400 rather than silent
-    loss): image, document, and thinking content blocks.
-    """
+    """Anthropic Messages API adapter backed by direct Copilot API calls."""
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
     from src.thirdparty.anthropic_adapter import (
-        extract_system_prompt,
-        extract_tool_result_blocks,
-        parse_tool_definitions,
-        remove_system_messages,
+        translate_to_anthropic,
+        translate_to_openai,
     )
-    from src.thirdparty.anthropic_models import (
-        AnthropicMessagesRequest,
-        AnthropicMessagesResponse,
-        AnthropicTextContentBlock,
-        AnthropicUsage,
-    )
-    from src.thirdparty.anthropic_stream import (
-        sse_content_block_delta,
-        sse_content_block_delta_input_json,
-        sse_content_block_start,
-        sse_content_block_start_tool_use,
-        sse_content_block_stop,
-        sse_error,
-        sse_message_delta,
-        sse_message_start,
-        sse_message_stop,
-    )
-    from src.thirdparty.anthropic_tool_bridge import (
-        bridge_key,
-        build_bridge_tools,
-        resolve_pending_tool_call,
-        tool_use_content_block,
-    )
+    from src.thirdparty.anthropic_models import AnthropicMessagesRequest
+    from src.thirdparty.anthropic_stream import AnthropicStreamState, sse_error, translate_chunk
+    from src.thirdparty.copilot_client import CopilotAPIError, get_copilot_client
 
-    def _validate_tool_aware_messages(parsed_req: AnthropicMessagesRequest) -> None:
-        """Reject only the content block types the tool-use bridge still can't handle.
-
-        Unlike the earlier text-only adapter validation, ``tool_use`` and
-        ``tool_result`` blocks are supported here by the tool-use bridge.
-        """
-        for msg in parsed_req.messages:
-            if not isinstance(msg.content, list):
-                continue
-            for block in msg.content:
-                btype = block.get("type") if isinstance(block, dict) else None
-                if btype in _ANTHROPIC_UNSUPPORTED_BLOCK_TYPES:
-                    raise ValueError(
-                        f"Unsupported content block type '{btype}' in messages. "
-                        "Image, document, and thinking content blocks are not supported."
-                    )
-                if btype == "text" and not isinstance(block.get("text"), str):
-                    raise ValueError("Text content blocks must contain a string 'text' field.")
-
-    def _extract_prompt_text(messages: list[Any]) -> str:
-        """Return the text of the most recent user message.
-
-        Non-text blocks (``tool_use``, ``tool_result``) are skipped here;
-        ``tool_result`` content is handled separately by resolving pending
-        bridged tool calls rather than being folded into the outgoing
-        prompt text.
-        """
-        user_messages = [m for m in messages if m.role == "user"]
-        if not user_messages:
-            raise ValueError("Request contains no user messages.")
-        content = user_messages[-1].content
-        if isinstance(content, str):
-            return content
-        return "\n".join(
-            block.get("text", "")
-            for block in content
-            if isinstance(block, dict) and block.get("type", "text") == "text"
-        )
-
-    github_token = _require_thirdparty_github_pat()
+    github_pat = _require_thirdparty_github_pat()
+    copilot_client = get_copilot_client(github_pat)
 
     try:
         body = await request.json()
@@ -730,266 +610,24 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
-        _validate_tool_aware_messages(req)
-        tool_definitions = parse_tool_definitions(req)
-        tool_result_blocks = extract_tool_result_blocks(req)
-        normalized_messages = remove_system_messages(req)
-        prompt = _extract_prompt_text(normalized_messages)
-        system_prompt = extract_system_prompt(req)
+        openai_payload = translate_to_openai(req)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    # Use a stable thread key so the SDK session maintains history across
-    # interactive Claude Code turns. Isolation is scoped by the optional
-    # client-supplied X-Isolation-Session-ID header, falling back to a
-    # shared default namespace when the caller omits it.
-    thread_id = "anthropic-v1"
-    isolation_session_id = _resolve_isolation_session_id(request, "session")
-    bridge_registry_key = bridge_key(isolation_session_id, thread_id)
-
-    message_id = f"msg_{uuid.uuid4().hex[:24]}"
-
-    # Bridge tools are only actually registered with the SDK when this call
-    # creates/resumes the underlying session (see SessionPool.get_or_create);
-    # an already-cached in-memory session keeps whatever tools it was
-    # created with.
-    bridge_tools = (
-        build_bridge_tools(
-            tool_definitions,
-            _get_anthropic_tool_bridge_registry(),
-            bridge_registry_key,
-        )
-        if tool_definitions
-        else []
-    )
-
-    # Acquire and configure the session before branching so that failures
-    # (unknown model, auth error, SDK init error) return a proper HTTP error
-    # instead of being swallowed inside the SSE stream. Everything through
-    # the final response happens while holding the per-thread/isolation
-    # turn lock acquired below, so two overlapping requests for the same key
-    # can never concurrently use (or disconnect out from under) the same
-    # underlying SDK session -- see SessionPool.get_turn_lock().
-    pool = get_session_pool()
-    turn_lock = pool.get_turn_lock(thread_id, isolation_session_id=isolation_session_id)
-    await turn_lock.acquire()
-    lock_active = True
-
-    def _release_turn_lock() -> None:
-        nonlocal lock_active
-        if lock_active:
-            lock_active = False
-            turn_lock.release()
-
-    # A request carrying tool_result blocks continues a prior tool_use turn
-    # on the *same* underlying SDK session. It must never be evicted based
-    # on a system-message mismatch (e.g. the client omitting `system` on the
-    # follow-up, or resending a slightly different value): doing so would
-    # disconnect the session out from under the still-in-flight bridged
-    # tool call, cancelling it before it can be resolved below.
-    is_tool_result_continuation = bool(tool_result_blocks)
-
-    try:
-        try:
-            if system_prompt:
-                session = await pool.get_or_create(
-                    thread_id,
-                    github_token,
-                    isolation_session_id=isolation_session_id,
-                    extra_tools=bridge_tools,
-                    system_message=system_prompt,
-                    reconcile_system_message=not is_tool_result_continuation,
-                    minimal_agent_loop=True,
-                )
-            else:
-                session = await pool.get_or_create(
-                    thread_id,
-                    github_token,
-                    isolation_session_id=isolation_session_id,
-                    extra_tools=bridge_tools,
-                    reconcile_system_message=not is_tool_result_continuation,
-                    minimal_agent_loop=True,
-                )
-            await session.set_model(req.model)
-        except RuntimeError as exc:
-            raise HTTPException(
-                status_code=503, detail=f"Session initialization failed: {exc}"
-            ) from exc
-
-        # A request carrying tool_result blocks is a continuation of a prior
-        # tool_use turn: resolve the matching pending bridged tool call(s) so
-        # the still-awaiting Tool handler(s) can return, instead of sending a
-        # new prompt. Fail fast (before starting either response type) if
-        # none of the supplied tool_result blocks matched a pending call for
-        # this isolation scope/thread.
-        send_new_prompt = True
-        if tool_result_blocks:
-            send_new_prompt = False
-            resolved_any = False
-            registry = _get_anthropic_tool_bridge_registry()
-            for tool_result_block in tool_result_blocks:
-                if await resolve_pending_tool_call(
-                    registry, bridge_registry_key, tool_result_block
-                ):
-                    resolved_any = True
-            if not resolved_any:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "No matching pending tool call(s) found for the "
-                        "supplied tool_result block(s)."
-                    ),
-                )
-    except Exception:
-        _release_turn_lock()
-        raise
 
     if req.stream:
 
         async def stream_generator() -> AsyncGenerator[str, None]:
-            yield sse_message_start(message_id, req.model)
-            yield sse_content_block_start(0)
-
-            output_tokens = 0
-            content_block_open = True
-            idle_event = asyncio.Event()
-            tool_use_event = asyncio.Event()
-            tool_use_blocks: list[dict[str, Any]] = []
-            send_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + settings.session_timeout
-
-            def on_event(event: Any) -> None:
-                from copilot.generated.session_events import (
-                    AssistantMessageDeltaData,
-                    ExternalToolRequestedData,
-                    SessionErrorData,
-                    SessionIdleData,
-                )
-
-                match event.data:
-                    case AssistantMessageDeltaData() as delta:
-                        loop.call_soon_threadsafe(
-                            send_queue.put_nowait,
-                            {"type": "delta", "content": delta.delta_content},
-                        )
-                    case ExternalToolRequestedData() as tool_req:
-                        loop.call_soon_threadsafe(
-                            send_queue.put_nowait,
-                            {
-                                "type": "tool_use",
-                                "tool_call_id": tool_req.tool_call_id,
-                                "tool_name": tool_req.tool_name,
-                                "arguments": tool_req.arguments,
-                            },
-                        )
-                        loop.call_soon_threadsafe(tool_use_event.set)
-                    case SessionErrorData() as err:
-                        loop.call_soon_threadsafe(
-                            send_queue.put_nowait,
-                            {"type": "error", "content": err.message or "Unknown SDK error"},
-                        )
-                        loop.call_soon_threadsafe(idle_event.set)
-                    case SessionIdleData():
-                        loop.call_soon_threadsafe(idle_event.set)
-
-            unsubscribe = None
-            error_sent = False
             try:
-                unsubscribe = session.on(on_event)
-                if send_new_prompt:
-                    await session.send(prompt)
-
-                while not idle_event.is_set() and not tool_use_event.is_set():
-                    if loop.time() >= deadline:
-                        if content_block_open:
-                            yield sse_content_block_stop(0)
-                            content_block_open = False
-                        yield sse_error("server_error", "Session timed out")
-                        error_sent = True
-                        await pool.disconnect(thread_id, isolation_session_id=isolation_session_id)
-                        break
-                    try:
-                        msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
-                    except TimeoutError:
-                        continue
-                    if msg["type"] == "error":
-                        if content_block_open:
-                            yield sse_content_block_stop(0)
-                            content_block_open = False
-                        yield sse_error("server_error", msg["content"])
-                        error_sent = True
-                        break
-                    if msg["type"] == "delta":
-                        text = msg["content"]
-                        output_tokens += len(text)
-                        yield sse_content_block_delta(text, 0)
-                    elif msg["type"] == "tool_use":
-                        tool_use_blocks.append(msg)
-
-                if not error_sent:
-                    # Drain anything already queued before idle/tool_use fired.
-                    while not send_queue.empty():
-                        msg = send_queue.get_nowait()
-                        if msg["type"] == "delta":
-                            text = msg["content"]
-                            output_tokens += len(text)
-                            yield sse_content_block_delta(text, 0)
-                        elif msg["type"] == "tool_use":
-                            tool_use_blocks.append(msg)
-
-                    if tool_use_event.is_set():
-                        # A single assistant turn may request several tools
-                        # in parallel; briefly wait for any further
-                        # tool_use events before finalizing (see
-                        # _ANTHROPIC_TOOL_USE_GRACE_SECONDS).
-                        grace_deadline = loop.time() + _ANTHROPIC_TOOL_USE_GRACE_SECONDS
-                        while True:
-                            remaining = grace_deadline - loop.time()
-                            if remaining <= 0:
-                                break
-                            try:
-                                msg = await asyncio.wait_for(send_queue.get(), timeout=remaining)
-                            except TimeoutError:
-                                break
-                            if msg["type"] == "delta":
-                                text = msg["content"]
-                                output_tokens += len(text)
-                                yield sse_content_block_delta(text, 0)
-                            elif msg["type"] == "tool_use":
-                                tool_use_blocks.append(msg)
-
+                stream_state = AnthropicStreamState()
+                async for chunk in copilot_client.stream_chat_completion(openai_payload):
+                    for event in translate_chunk(chunk, stream_state):
+                        yield event
+            except CopilotAPIError as exc:
+                logger.warning("Copilot stream request failed: %s", exc)
+                yield sse_error(str(exc))
             except Exception:
                 logger.exception("Anthropic adapter stream error")
-                if content_block_open:
-                    yield sse_content_block_stop(0)
-                    content_block_open = False
-                yield sse_error("server_error", "An internal error occurred")
-                await pool.disconnect(
-                    thread_id, isolation_session_id=isolation_session_id
-                )
-                error_sent = True
-            finally:
-                if unsubscribe:
-                    unsubscribe()
-                _release_turn_lock()
-
-            if not error_sent:
-                if content_block_open:
-                    yield sse_content_block_stop(0)
-                    content_block_open = False
-                if tool_use_blocks:
-                    for index, block in enumerate(tool_use_blocks, start=1):
-                        yield sse_content_block_start_tool_use(
-                            block["tool_call_id"], block["tool_name"], index=index
-                        )
-                        arguments = block["arguments"] if isinstance(block["arguments"], dict) else {}
-                        yield sse_content_block_delta_input_json(json.dumps(arguments), index=index)
-                        yield sse_content_block_stop(index)
-                    yield sse_message_delta(output_tokens, stop_reason="tool_use")
-                else:
-                    yield sse_message_delta(output_tokens)
-                yield sse_message_stop()
+                yield sse_error("An internal error occurred")
 
         return StreamingResponse(
             stream_generator(),
@@ -1001,124 +639,16 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
             },
         )
 
-    # Non-streaming: buffer full response then return JSON
-    collected: list[str] = []
-    tool_use_blocks = []
-    idle_event = asyncio.Event()
-    tool_use_event = asyncio.Event()
-    send_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + settings.session_timeout
-
-    def on_event_blocking(event: Any) -> None:
-        from copilot.generated.session_events import (
-            AssistantMessageDeltaData,
-            ExternalToolRequestedData,
-            SessionErrorData,
-            SessionIdleData,
-        )
-
-        match event.data:
-            case AssistantMessageDeltaData() as delta:
-                loop.call_soon_threadsafe(
-                    send_queue.put_nowait,
-                    {"type": "delta", "content": delta.delta_content},
-                )
-            case ExternalToolRequestedData() as tool_req:
-                loop.call_soon_threadsafe(
-                    send_queue.put_nowait,
-                    {
-                        "type": "tool_use",
-                        "tool_call_id": tool_req.tool_call_id,
-                        "tool_name": tool_req.tool_name,
-                        "arguments": tool_req.arguments,
-                    },
-                )
-                loop.call_soon_threadsafe(tool_use_event.set)
-            case SessionErrorData() as err:
-                loop.call_soon_threadsafe(
-                    send_queue.put_nowait,
-                    {"type": "error", "content": err.message or "Unknown SDK error"},
-                )
-                loop.call_soon_threadsafe(idle_event.set)
-            case SessionIdleData():
-                loop.call_soon_threadsafe(idle_event.set)
-
-    unsubscribe = None
     try:
-        unsubscribe = session.on(on_event_blocking)
-        if send_new_prompt:
-            await session.send(prompt)
-        while not idle_event.is_set() and not tool_use_event.is_set():
-            if loop.time() >= deadline:
-                await get_session_pool().disconnect(
-                    thread_id, isolation_session_id=isolation_session_id
-                )
-                raise HTTPException(status_code=504, detail="Session timed out")
-            try:
-                msg = await asyncio.wait_for(send_queue.get(), timeout=0.1)
-            except TimeoutError:
-                continue
-            if msg["type"] == "error":
-                raise HTTPException(status_code=502, detail=msg["content"])
-            if msg["type"] == "delta":
-                collected.append(msg["content"])
-            elif msg["type"] == "tool_use":
-                tool_use_blocks.append(msg)
-
-        while not send_queue.empty():
-            msg = send_queue.get_nowait()
-            if msg["type"] == "delta":
-                collected.append(msg["content"])
-            elif msg["type"] == "tool_use":
-                tool_use_blocks.append(msg)
-
-        if tool_use_event.is_set():
-            # See the streaming branch: briefly wait for any further
-            # parallel tool_use requests belonging to the same turn.
-            grace_deadline = loop.time() + _ANTHROPIC_TOOL_USE_GRACE_SECONDS
-            while True:
-                remaining = grace_deadline - loop.time()
-                if remaining <= 0:
-                    break
-                try:
-                    msg = await asyncio.wait_for(send_queue.get(), timeout=remaining)
-                except TimeoutError:
-                    break
-                if msg["type"] == "delta":
-                    collected.append(msg["content"])
-                elif msg["type"] == "tool_use":
-                    tool_use_blocks.append(msg)
-
-    except HTTPException:
-        raise
+        response = await copilot_client.create_chat_completion(openai_payload)
+    except CopilotAPIError as exc:
+        logger.warning("Copilot non-streaming request failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Anthropic adapter non-streaming error")
-        await pool.disconnect(thread_id, isolation_session_id=isolation_session_id)
         raise HTTPException(status_code=500, detail="An internal error occurred") from exc
-    finally:
-        if unsubscribe is not None:
-            unsubscribe()
-        _release_turn_lock()
 
-    full_text = "".join(collected)
-    content_blocks: list[Any] = []
-    if full_text or not tool_use_blocks:
-        content_blocks.append(AnthropicTextContentBlock(text=full_text))
-    for tool_use_block in tool_use_blocks:
-        content_blocks.append(
-            tool_use_content_block(
-                tool_use_block["tool_call_id"], tool_use_block["tool_name"], tool_use_block["arguments"]
-            )
-        )
-    response_obj = AnthropicMessagesResponse(
-        id=message_id,
-        model=req.model,
-        content=content_blocks,
-        stop_reason="tool_use" if tool_use_blocks else "end_turn",
-        usage=AnthropicUsage(output_tokens=len(full_text)),
-    )
-    return JSONResponse(response_obj.model_dump())
+    return JSONResponse(translate_to_anthropic(response))
 
 
 @router.get("/v1/mcp/tools")
