@@ -161,6 +161,7 @@ class SessionPool:
         self._locks: dict[str, asyncio.Lock] = {}
         self._pool_lock = asyncio.Lock()
         self._idle_timeout = idle_timeout
+        self._system_messages: dict[str, str | None] = {}
 
     async def get_or_create(
         self,
@@ -192,8 +193,17 @@ class SessionPool:
         async with lock:
             session = self._sessions.get(pool_key)
             if session is not None:
-                self._last_active[pool_key] = time.monotonic()
-                return session
+                if system_message == self._system_messages.get(pool_key):
+                    self._last_active[pool_key] = time.monotonic()
+                    return session
+                # The caller supplied a different system prompt than the one
+                # this session was created/resumed with. Reconfiguring the
+                # system message on an existing SDK session isn't supported,
+                # so disconnect it and fall through to recreate/resume below
+                # with the new prompt rather than silently keeping the old one.
+                await session.disconnect()
+                self._sessions.pop(pool_key, None)
+                self._last_active.pop(pool_key, None)
 
             client = get_client()
             skill_directories = get_skill_directories()
@@ -229,6 +239,7 @@ class SessionPool:
                 )
 
             self._sessions[pool_key] = session
+            self._system_messages[pool_key] = system_message
             self._last_active[pool_key] = time.monotonic()
             return session
 
@@ -284,6 +295,7 @@ class SessionPool:
         async with lock:
             session = self._sessions.pop(pool_key, None)
             self._last_active.pop(pool_key, None)
+            self._system_messages.pop(pool_key, None)
             if session is not None:
                 await session.disconnect()
 
