@@ -188,7 +188,12 @@ def apply_app_configuration(s: Settings) -> None:
 
             try:
                 setattr(s, field_name, value)
-                logger.debug("App Config applied: %s = %r", field_name, value)
+                logged_value = (
+                    "***"
+                    if any(t in field_name.lower() for t in ("token", "secret"))
+                    else value
+                )
+                logger.debug("App Config applied: %s = %r", field_name, logged_value)
             except Exception:
                 logger.debug("App Config: could not set %r", field_name, exc_info=True)
 
