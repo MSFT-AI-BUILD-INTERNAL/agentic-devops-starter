@@ -121,6 +121,7 @@ class AISessionPool(Protocol):
         *,
         isolation_session_id: str | None = None,
         extra_tools: list[Tool] | None = None,
+        system_message: str | None = None,
     ) -> CopilotSession: ...
 
     async def disconnect(
@@ -168,6 +169,7 @@ class SessionPool:
         isolation_session_id: str | None = None,
         *,
         extra_tools: list[Tool] | None = None,
+        system_message: str | None = None,
     ) -> CopilotSession:
         """Return an active session for *thread_id*, resuming or creating as needed.
 
@@ -198,7 +200,14 @@ class SessionPool:
             disabled_skills = get_disabled_skills()
             session_kwargs: dict[str, Any] = {
                 "on_permission_request": PermissionHandler.approve_all,
-                "system_message": {"mode": "replace", "content": _SYSTEM_MESSAGE},
+                "system_message": {
+                    "mode": "replace",
+                    "content": (
+                        f"{_SYSTEM_MESSAGE}\n\n{system_message}"
+                        if system_message
+                        else _SYSTEM_MESSAGE
+                    ),
+                },
                 "streaming": True,
                 "skill_directories": skill_directories,
                 "disabled_skills": disabled_skills,

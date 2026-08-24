@@ -16,6 +16,7 @@ from typing import Any
 
 from src.thirdparty.anthropic_models import (
     AnthropicCountTokensRequest,
+    AnthropicMessage,
     AnthropicMessagesRequest,
     AnthropicToolDefinition,
     AnthropicToolResultBlock,
@@ -41,6 +42,8 @@ def _extract_text(content: str | list[dict[str, Any]]) -> str:
         return content
     parts: list[str] = []
     for block in content:
+        if not isinstance(block, dict):
+            raise ValueError("Content blocks must be JSON objects.")
         block_type = block.get("type", "text")
         if block_type in _UNSUPPORTED_BLOCK_TYPES:
             raise ValueError(
@@ -48,7 +51,10 @@ def _extract_text(content: str | list[dict[str, Any]]) -> str:
                 "Only plain text content is supported in Phase 1."
             )
         if block_type == "text":
-            parts.append(block.get("text", ""))
+            text = block.get("text", "")
+            if not isinstance(text, str):
+                raise ValueError("Text content blocks must contain a string 'text' field.")
+            parts.append(text)
     return "\n".join(parts)
 
 
@@ -86,12 +92,32 @@ def extract_last_user_prompt(request: AnthropicMessagesRequest) -> str:
 
 
 def extract_system_prompt(request: AnthropicMessagesRequest) -> str | None:
-    """Return the system prompt as a plain string, or None if absent."""
-    if request.system is None:
-        return None
-    if isinstance(request.system, str):
-        return request.system or None
-    return _extract_text(request.system) or None
+    """Return all system prompts in their request order as one plain string."""
+    prompts: list[str] = []
+    if request.system is not None:
+        prompts.append(
+            request.system
+            if isinstance(request.system, str)
+            else _extract_text(request.system)
+        )
+    prompts.extend(
+        _extract_text(message.content)
+        for message in request.messages
+        if message.role == "system"
+    )
+    combined = "\n\n".join(prompt for prompt in prompts if prompt)
+    return combined or None
+
+
+def remove_system_messages(request: AnthropicMessagesRequest) -> list[AnthropicMessage]:
+    """Return conversation messages after removing inline system messages.
+
+    Anthropic's current contract carries system instructions at the top level.
+    Some clients still place them in ``messages`` while translating requests;
+    normalize those instructions before handing the conversation to a
+    provider-specific adapter.
+    """
+    return [message for message in request.messages if message.role != "system"]
 
 
 def _approximate_content_length(content: str | list[dict[str, Any]]) -> int:

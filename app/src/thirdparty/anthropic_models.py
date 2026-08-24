@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class AnthropicMessage(BaseModel):
-    role: Literal["user", "assistant"]
+    role: Literal["system", "user", "assistant"]
     content: str | list[dict[str, Any]]
 
 

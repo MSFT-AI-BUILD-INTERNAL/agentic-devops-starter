@@ -644,6 +644,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         extract_system_prompt,
         extract_tool_result_blocks,
         parse_tool_definitions,
+        remove_system_messages,
     )
     from src.thirdparty.anthropic_models import (
         AnthropicMessagesRequest,
@@ -685,8 +686,10 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
                         f"Unsupported content block type '{btype}' in messages. "
                         "Image, document, and thinking content blocks are not supported."
                     )
+                if btype == "text" and not isinstance(block.get("text"), str):
+                    raise ValueError("Text content blocks must contain a string 'text' field.")
 
-    def _extract_prompt_text(parsed_req: AnthropicMessagesRequest) -> str:
+    def _extract_prompt_text(messages: list[Any]) -> str:
         """Return the text of the most recent user message.
 
         Non-text blocks (``tool_use``, ``tool_result``) are skipped here;
@@ -694,7 +697,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         bridged tool calls rather than being folded into the outgoing
         prompt text.
         """
-        user_messages = [m for m in parsed_req.messages if m.role == "user"]
+        user_messages = [m for m in messages if m.role == "user"]
         if not user_messages:
             raise ValueError("Request contains no user messages.")
         content = user_messages[-1].content
@@ -722,16 +725,11 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
         _validate_tool_aware_messages(req)
         tool_definitions = parse_tool_definitions(req)
         tool_result_blocks = extract_tool_result_blocks(req)
-        prompt = _extract_prompt_text(req)
+        normalized_messages = remove_system_messages(req)
+        prompt = _extract_prompt_text(normalized_messages)
         system_prompt = extract_system_prompt(req)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    # The pooled Copilot SDK session does not expose a per-turn system-message
-    # override, so the caller-supplied system prompt is folded into the
-    # outgoing turn instead of being rejected outright.
-    if system_prompt:
-        prompt = f"{system_prompt}\n\n{prompt}"
 
     # Use a stable thread key so the SDK session maintains history across
     # interactive Claude Code turns. Isolation is scoped by the optional
@@ -762,12 +760,21 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     # instead of being swallowed inside the SSE stream.
     pool = get_session_pool()
     try:
-        session = await pool.get_or_create(
-            thread_id,
-            github_token,
-            isolation_session_id=isolation_session_id,
-            extra_tools=bridge_tools,
-        )
+        if system_prompt:
+            session = await pool.get_or_create(
+                thread_id,
+                github_token,
+                isolation_session_id=isolation_session_id,
+                extra_tools=bridge_tools,
+                system_message=system_prompt,
+            )
+        else:
+            session = await pool.get_or_create(
+                thread_id,
+                github_token,
+                isolation_session_id=isolation_session_id,
+                extra_tools=bridge_tools,
+            )
         await session.set_model(req.model)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=f"Session initialization failed: {exc}") from exc
