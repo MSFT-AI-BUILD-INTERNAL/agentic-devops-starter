@@ -10,6 +10,7 @@ from azure.core.exceptions import ClientAuthenticationError
 from azure.identity import CredentialUnavailableError, DefaultAzureCredential
 from copilot import CopilotClient
 from copilot.session import CopilotSession, PermissionHandler
+from copilot.tools import Tool
 
 from src.core.config import settings
 from src.core.logging_utils import setup_logging
@@ -119,6 +120,7 @@ class AISessionPool(Protocol):
         github_token: str | None = None,
         *,
         isolation_session_id: str | None = None,
+        extra_tools: list[Tool] | None = None,
     ) -> CopilotSession: ...
 
     async def disconnect(
@@ -164,8 +166,19 @@ class SessionPool:
         thread_id: str,
         github_token: str | None = None,
         isolation_session_id: str | None = None,
+        *,
+        extra_tools: list[Tool] | None = None,
     ) -> CopilotSession:
-        """Return an active session for *thread_id*, resuming or creating as needed."""
+        """Return an active session for *thread_id*, resuming or creating as needed.
+
+        ``extra_tools`` are only registered when a new SDK session is
+        actually created/resumed here; they have no effect when an
+        already-cached in-memory session for *thread_id* is returned, since
+        the SDK does not support registering additional tools on an existing
+        session. Callers that need per-request tools (e.g. the Anthropic
+        tool-use bridge) should treat this as best-effort within the
+        lifetime of a given session.
+        """
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
         pool_key = build_pool_key(isolated_id, thread_id)
         sdk_session_id = build_copilot_session_id("chat", isolated_id, thread_id)
@@ -189,7 +202,7 @@ class SessionPool:
                 "streaming": True,
                 "skill_directories": skill_directories,
                 "disabled_skills": disabled_skills,
-                "tools": get_registered_tools(),
+                "tools": [*get_registered_tools(), *(extra_tools or [])],
                 "github_token": github_token,
                 "config_dir": build_config_dir(settings.session_config_root_dir, isolated_id),
             }
@@ -341,13 +354,20 @@ class FoundrySessionPool:
         self._idle_timeout = idle_timeout
 
     async def get_or_create(
-        self, thread_id: str, github_token: str | None = None, isolation_session_id: str | None = None
+        self,
+        thread_id: str,
+        github_token: str | None = None,
+        isolation_session_id: str | None = None,
+        *,
+        extra_tools: list[Tool] | None = None,
     ) -> CopilotSession:
         """Return an active Foundry BYOK session for *thread_id*.
 
         ``github_token`` is accepted for interface compatibility with
         :class:`AISessionPool` but is unused; Foundry BYOK authenticates
-        via Azure credentials configured on the server.
+        via Azure credentials configured on the server. ``extra_tools`` is
+        only registered when this call actually creates the session (see
+        :meth:`SessionPool.get_or_create`).
         """
         _validate_foundry_settings()
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
@@ -378,7 +398,7 @@ class FoundrySessionPool:
                 "streaming": True,
                 "skill_directories": get_skill_directories(),
                 "disabled_skills": get_disabled_skills(),
-                "tools": get_registered_tools(),
+                "tools": [*get_registered_tools(), *(extra_tools or [])],
                 "model": settings.azure_ai_model_deployment_name,
                 "provider": provider,
                 "config_dir": build_config_dir(settings.session_config_root_dir, isolated_id),

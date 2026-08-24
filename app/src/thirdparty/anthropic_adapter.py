@@ -1,12 +1,25 @@
-"""Adapt Anthropic Messages API requests to Copilot SDK session input.
+﻿"""Adapt Anthropic Messages API requests to Copilot SDK session input.
 
-Phase 1 scope: text-only, single-user, no tools/images/thinking.
+The adapter supports text-only requests and parses tool-use bridge requests;
+images, documents, and thinking blocks remain unsupported.
 Unsupported features return explicit ValueError rather than silent loss.
+
+Tool-use bridge support (parsing/validation of ``tools`` and ``tool_result``
+content blocks) lives alongside the Phase 1 helpers below; it is additive and
+does not change the behavior of ``validate_request``/``extract_last_user_prompt``,
+which still reject tool content so existing text-only callers are unaffected.
+See :mod:`src.thirdparty.anthropic_tool_bridge` for the pending-call state and
+SDK tool adapters that make use of these parsed values.
 """
 
 from typing import Any
 
-from src.thirdparty.anthropic_models import AnthropicCountTokensRequest, AnthropicMessagesRequest
+from src.thirdparty.anthropic_models import (
+    AnthropicCountTokensRequest,
+    AnthropicMessagesRequest,
+    AnthropicToolDefinition,
+    AnthropicToolResultBlock,
+)
 
 # Rough characters-per-token ratio used for the ``count_tokens`` approximation
 # below. The adapter has no access to Anthropic's real tokenizer, so this is
@@ -15,6 +28,11 @@ _APPROX_CHARS_PER_TOKEN = 4
 
 # Block types that are not supported in Phase 1.
 _UNSUPPORTED_BLOCK_TYPES = frozenset({"tool_use", "tool_result", "image", "document", "thinking"})
+
+# Bounds for tool-use bridge parsing, to reject pathological requests outright
+# rather than building an unbounded number of SDK tool registrations.
+MAX_TOOL_DEFINITIONS = 128
+MAX_TOOL_NAME_LENGTH = 200
 
 
 def _extract_text(content: str | list[dict[str, Any]]) -> str:
@@ -112,3 +130,69 @@ def estimate_input_tokens(request: AnthropicCountTokensRequest) -> int:
     if request.tools:
         total_chars += len(str(request.tools))
     return max(1, total_chars // _APPROX_CHARS_PER_TOKEN)
+
+
+def parse_tool_definitions(request: AnthropicMessagesRequest) -> list[AnthropicToolDefinition]:
+    """Validate and parse ``request.tools`` into typed tool definitions.
+
+    This is separate from :func:`validate_request`, which still rejects any
+    request carrying ``tools`` so existing text-only callers keep their
+    current behavior; callers that opt into the tool-use bridge should call
+    this instead of (or before enabling) ``validate_request``.
+
+    Raises ValueError for malformed tool declarations -- missing/blank name,
+    a duplicate name, a non-object ``input_schema``, or too many declared
+    tools -- so callers can return an explicit 400 instead of silently
+    dropping or mis-registering a tool.
+    """
+    if not request.tools:
+        return []
+    if len(request.tools) > MAX_TOOL_DEFINITIONS:
+        raise ValueError(
+            f"Too many tools declared ({len(request.tools)}); "
+            f"the limit is {MAX_TOOL_DEFINITIONS}."
+        )
+    definitions: list[AnthropicToolDefinition] = []
+    seen_names: set[str] = set()
+    for raw in request.tools:
+        try:
+            definition = AnthropicToolDefinition.model_validate(raw)
+        except Exception as exc:
+            raise ValueError(f"Invalid tool definition: {exc}") from exc
+        name = definition.name.strip()
+        if not name:
+            raise ValueError("Tool definitions must have a non-empty 'name'.")
+        if len(name) > MAX_TOOL_NAME_LENGTH:
+            raise ValueError(
+                f"Tool name '{name[:40]}...' exceeds {MAX_TOOL_NAME_LENGTH} characters."
+            )
+        if name in seen_names:
+            raise ValueError(f"Duplicate tool name '{name}'.")
+        schema_type = definition.input_schema.get("type") if definition.input_schema else None
+        if schema_type not in (None, "object"):
+            raise ValueError(f"Tool '{name}' input_schema must describe a JSON object.")
+        seen_names.add(name)
+        definitions.append(definition)
+    return definitions
+
+
+def extract_tool_result_blocks(request: AnthropicMessagesRequest) -> list[AnthropicToolResultBlock]:
+    """Return every ``tool_result`` content block across all request messages.
+
+    Claude Code sends tool results as a new user message following a
+    ``tool_use`` turn. Results are collected across *all* messages (not just
+    the last one) so batched/parallel tool calls resolved out of order are
+    still found.
+    """
+    blocks: list[AnthropicToolResultBlock] = []
+    for msg in request.messages:
+        if not isinstance(msg.content, list):
+            continue
+        for raw_block in msg.content:
+            if not isinstance(raw_block, dict) or raw_block.get("type") != "tool_result":
+                continue
+            try:
+                blocks.append(AnthropicToolResultBlock.model_validate(raw_block))
+            except Exception as exc:
+                raise ValueError(f"Invalid tool_result block: {exc}") from exc
+    return blocks
