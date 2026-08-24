@@ -199,7 +199,7 @@ Auth is enforced by direct checks inside route handlers, not via FastAPI `Depend
 | `COPILOT_API_TOOL_TIMEOUT` | No | unset | Timeout in seconds for individual tool calls |
 | `COPILOT_API_ALLOWED_TOOLS` | No | unset | Comma-separated allowlist of tool names; overrides the denylist when set |
 | `COPILOT_API_EXCLUDED_TOOLS` | No | unset | Comma-separated denylist of tool names to disable |
-| `THIRDPARTY_GITHUB_PAT` | Third-party API | unset | PAT used to authenticate the Copilot SDK session for `POST /v1/messages` |
+| `THIRDPARTY_GITHUB_PAT` | Third-party API | unset | Token used to call the GitHub Copilot API directly for `GET /v1/models` / `POST /v1/messages`. Use a personal-account-owned fine-grained PAT (`github_pat_...`) with the **Copilot Requests** account permission; classic PATs (`ghp_...`) are unsupported |
 | `VITE_AGUI_ENDPOINT` | No | `/api` | Frontend API base URL |
 
 ## Development Commands
