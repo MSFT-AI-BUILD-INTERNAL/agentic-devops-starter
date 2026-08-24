@@ -1,6 +1,7 @@
 """API route handlers for the AG-UI server."""
 
 import asyncio
+import secrets
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -166,6 +167,23 @@ def _require_thirdparty_github_pat() -> str:
     if not token:
         raise HTTPException(status_code=503, detail="THIRDPARTY_GITHUB_PAT is not configured")
     return token
+
+
+def _check_anthropic_auth(request: Request) -> None:
+    """Verify that the caller presents the configured ANTHROPIC_AUTH_TOKEN.
+
+    Claude Code forwards ANTHROPIC_AUTH_TOKEN as ``Authorization: Bearer <value>``.
+    When ``anthropic_allowed_token`` is set, any request whose token does not
+    match exactly is rejected with 401.  An empty setting disables the check.
+    Uses a constant-time comparison to prevent timing attacks.
+    """
+    allowed = settings.anthropic_allowed_token.strip()
+    if not allowed:
+        return
+    auth_header = request.headers.get("Authorization", "")
+    bearer = auth_header[len("Bearer "):] if auth_header.startswith("Bearer ") else ""
+    if not bearer or not secrets.compare_digest(bearer, allowed):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 @router.get("/health")
@@ -533,10 +551,11 @@ async def job_status_endpoint(job_id: str) -> JobStatusResponse:
 
 
 @router.get("/v1/models")
-async def list_anthropic_models() -> JSONResponse:
+async def list_anthropic_models(request: Request) -> JSONResponse:
     """List models for the Anthropic-compatible third-party endpoint."""
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
+    _check_anthropic_auth(request)
     from src.thirdparty.anthropic_models import AnthropicModelInfo, AnthropicModelListResponse
     from src.thirdparty.copilot_client import CopilotAPIError, get_copilot_client
 
@@ -562,6 +581,7 @@ async def anthropic_count_tokens_endpoint(request: Request) -> JSONResponse:
     """
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
+    _check_anthropic_auth(request)
     from src.thirdparty.anthropic_adapter import estimate_input_tokens
     from src.thirdparty.anthropic_models import (
         AnthropicCountTokensRequest,
@@ -588,6 +608,7 @@ async def anthropic_messages_endpoint(request: Request) -> StreamingResponse | J
     """Anthropic Messages API adapter backed by direct Copilot API calls."""
     if not settings.anthropic_route_enabled:
         raise HTTPException(status_code=404, detail="Anthropic adapter is disabled")
+    _check_anthropic_auth(request)
     from src.thirdparty.anthropic_adapter import (
         translate_to_anthropic,
         translate_to_openai,
