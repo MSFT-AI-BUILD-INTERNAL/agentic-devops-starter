@@ -122,6 +122,7 @@ class AISessionPool(Protocol):
         isolation_session_id: str | None = None,
         extra_tools: list[Tool] | None = None,
         system_message: str | None = None,
+        reconcile_system_message: bool = True,
     ) -> CopilotSession: ...
 
     def get_turn_lock(
@@ -200,6 +201,7 @@ class SessionPool:
         *,
         extra_tools: list[Tool] | None = None,
         system_message: str | None = None,
+        reconcile_system_message: bool = True,
     ) -> CopilotSession:
         """Return an active session for *thread_id*, resuming or creating as needed.
 
@@ -210,6 +212,16 @@ class SessionPool:
         session. Callers that need per-request tools (e.g. the Anthropic
         tool-use bridge) should treat this as best-effort within the
         lifetime of a given session.
+
+        ``reconcile_system_message=False`` skips the system-message
+        mismatch check below entirely and always returns a cached session
+        as-is. This is required for requests that resume a pending
+        tool-use turn (an Anthropic ``tool_result`` continuation): such a
+        request may omit ``system`` or send a different value than the
+        turn that originally produced the tool_use, and evicting/recreating
+        the session in that case would disconnect the still-in-flight SDK
+        tool call, cancelling it out from under the caller before it can be
+        resolved.
         """
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
         pool_key = build_pool_key(isolated_id, thread_id)
@@ -222,7 +234,10 @@ class SessionPool:
         async with lock:
             session = self._sessions.get(pool_key)
             if session is not None:
-                if system_message == self._system_messages.get(pool_key):
+                if (
+                    not reconcile_system_message
+                    or system_message == self._system_messages.get(pool_key)
+                ):
                     self._last_active[pool_key] = time.monotonic()
                     return session
                 # The caller supplied a different system prompt than the one
@@ -444,6 +459,7 @@ class FoundrySessionPool:
         *,
         extra_tools: list[Tool] | None = None,
         system_message: str | None = None,
+        reconcile_system_message: bool = True,
     ) -> CopilotSession:
         """Return an active Foundry BYOK session for *thread_id*.
 
@@ -453,6 +469,10 @@ class FoundrySessionPool:
         only registered when this call actually creates the session. When
         provided, ``system_message`` is appended to the Foundry system
         context for interface compatibility with :class:`AISessionPool`.
+        ``reconcile_system_message`` is accepted for interface compatibility
+        with :class:`AISessionPool` but is unused here: this pool never
+        evicts a cached session on a system-message mismatch (only on token
+        expiry), so there is nothing to opt out of.
         """
         _validate_foundry_settings()
         isolated_id = normalize_isolation_session_id(isolation_session_id, thread_id)
