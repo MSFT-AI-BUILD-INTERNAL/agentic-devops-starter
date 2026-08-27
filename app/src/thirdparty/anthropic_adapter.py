@@ -258,6 +258,8 @@ def translate_to_openai(request: AnthropicMessagesRequest) -> dict[str, Any]:
         messages.append({"role": "system", "content": system_prompt})
 
     for message in request.messages:
+        if message.role == "system":
+            continue
         if message.role == "user":
             messages.extend(_handle_user_message(message.content))
         else:
@@ -342,11 +344,22 @@ def translate_to_anthropic(response: dict[str, Any]) -> dict[str, Any]:
 
 
 def extract_system_prompt(request: AnthropicMessagesRequest) -> str | None:
-    """Return the request's system prompt as plain text, if any."""
-    if request.system is None:
-        return None
-    text = request.system if isinstance(request.system, str) else _extract_text(request.system)
-    return text or None
+    """Return top-level and compatibility system prompts as plain text."""
+    prompts: list[str] = []
+    if request.system is not None:
+        prompts.append(
+            request.system
+            if isinstance(request.system, str)
+            else _extract_text(request.system)
+        )
+    prompts.extend(
+        message.content
+        if isinstance(message.content, str)
+        else _extract_text(message.content)
+        for message in request.messages
+        if message.role == "system"
+    )
+    return "\n\n".join(prompt for prompt in prompts if prompt) or None
 
 
 def _approximate_content_length(content: str | list[dict[str, Any]]) -> int:

@@ -404,6 +404,49 @@ def test_anthropic_messages_non_streaming_translates_and_returns_anthropic_shape
     assert response.json()["content"][0] == {"type": "text", "text": "hello from copilot"}
 
 
+def test_anthropic_messages_moves_embedded_system_message_to_openai_system(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("src.api.routes.settings.thirdparty_github_pat", "server-token")
+    captured_payload: dict[str, Any] = {}
+
+    async def _create_chat_completion(payload: dict[str, Any]) -> dict[str, Any]:
+        nonlocal captured_payload
+        captured_payload = payload
+        return {
+            "id": "chatcmpl-system",
+            "model": "gpt-4.1",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "ok"},
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        }
+
+    api_client = MagicMock()
+    api_client.create_chat_completion = AsyncMock(side_effect=_create_chat_completion)
+    monkeypatch.setattr("src.thirdparty.copilot_client.get_copilot_client", lambda _: api_client)
+
+    response = client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [
+                {"role": "user", "content": "hello"},
+                {"role": "system", "content": "Be concise."},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured_payload["messages"] == [
+        {"role": "system", "content": "Be concise."},
+        {"role": "user", "content": "hello"},
+    ]
+
+
 def _parse_sse_events(payload: str) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for line in payload.splitlines():

@@ -92,3 +92,7 @@ infra/.terraform.lock.hcl
 .specify/extensions/
 .specify/extensions.yml
 .specify/workflows/
+
+# Thirdparty
+.claude/
+.codex/
