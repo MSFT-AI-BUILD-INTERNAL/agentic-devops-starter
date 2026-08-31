@@ -216,3 +216,28 @@ variable "storage_allowed_ip_rules" {
   default     = []
 }
 
+# App Configuration variables
+variable "app_configuration_name" {
+  description = "Name of the Azure App Configuration store. Must be globally unique."
+  type        = string
+  default     = "appconfig-agentic-devops"
+}
+
+variable "app_configuration_sku" {
+  description = "SKU for the App Configuration store (free or standard)."
+  type        = string
+  default     = "standard"
+}
+
+variable "app_configuration_local_auth_enabled" {
+  description = "Enable local authentication (access keys) for App Configuration. Set to false to enforce Entra ID (RBAC) only."
+  type        = bool
+  default     = false
+}
+
+variable "app_configuration_public_network_access" {
+  description = "Public network access mode for App Configuration: \"Enabled\", \"Disabled\", or null to leave unmanaged. The Private Endpoint that fronts this store is managed outside this stack."
+  type        = string
+  default     = null
+}
+

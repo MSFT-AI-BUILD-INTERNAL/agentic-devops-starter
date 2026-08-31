@@ -178,6 +178,21 @@ module "storage" {
   depends_on = [azurerm_resource_group.main]
 }
 
+# App Configuration Module
+module "app_configuration" {
+  source = "./app-configuration"
+
+  app_configuration_name = var.app_configuration_name
+  resource_group_name    = azurerm_resource_group.main.name
+  location               = azurerm_resource_group.main.location
+  sku                    = var.app_configuration_sku
+  local_auth_enabled     = var.app_configuration_local_auth_enabled
+  public_network_access  = var.app_configuration_public_network_access
+  tags                   = var.tags
+
+  depends_on = [azurerm_resource_group.main]
+}
+
 # App Service Module
 module "app_service" {
   source = "./app-service"
