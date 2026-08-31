@@ -56,3 +56,13 @@ vnet_name                       = "vnet-agentic-devops"
 vnet_address_space              = "10.10.0.0/16"
 app_integration_subnet_prefix   = "10.10.1.0/24"
 private_endpoint_subnet_prefix  = "10.10.2.0/24"
+
+# Azure App Configuration
+# IMPORTANT: app_configuration_name must be globally unique.
+# NOTE: The Private Endpoint / Private DNS / NSGs fronting this store are managed
+#       outside this Terraform stack, so public network access is left unmanaged
+#       (null) here. Set to "Disabled" or "Enabled" only if this stack should own it.
+app_configuration_name               = "appconfig-agentic-devops"
+app_configuration_sku                = "standard"
+app_configuration_local_auth_enabled = false
+# app_configuration_public_network_access = "Disabled"

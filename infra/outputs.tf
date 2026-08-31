@@ -101,3 +101,19 @@ output "blob_private_endpoint_ip" {
   description = "Private IP address of the Blob Storage private endpoint"
   value       = azurerm_private_endpoint.blob.private_service_connection[0].private_ip_address
 }
+
+# App Configuration
+output "app_configuration_name" {
+  description = "Name of the App Configuration store"
+  value       = module.app_configuration.app_configuration_name
+}
+
+output "app_configuration_id" {
+  description = "ID of the App Configuration store"
+  value       = module.app_configuration.app_configuration_id
+}
+
+output "app_configuration_endpoint" {
+  description = "Endpoint URL of the App Configuration store"
+  value       = module.app_configuration.app_configuration_endpoint
+}
