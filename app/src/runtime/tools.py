@@ -13,7 +13,7 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from copilot.tools import Tool, ToolInvocation, ToolResult
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from src.core.config import settings
 from src.core.logging_utils import correlation_id, new_correlation_id, setup_logging
@@ -63,16 +63,6 @@ class FetchGitHubZenArgs(BaseModel):
         le=300,
         description="Maximum response length returned to the model.",
     )
-
-
-class MCPToolArgs(BaseModel):
-    """Generic pass-through arguments model for remote MCP tools.
-
-    Accepts any JSON object from the model and forwards it verbatim to the MCP
-    server.  The actual schema is provided via ``ToolDefinition.parameters_schema``.
-    """
-
-    model_config = ConfigDict(extra="allow")
 
 
 def _encode_result(payload: dict[str, Any]) -> str:
@@ -368,93 +358,20 @@ def build_tools(
     return [build_tool(definition, default_timeout) for definition in definitions]
 
 
-def build_mcp_tool_definitions(
-    mcp_tools: list[Any],
-) -> list[ToolDefinition]:
-    """Convert a list of :class:`~src.runtime.mcp_client.MCPToolInfo` objects into
-    :class:`ToolDefinition` instances that proxy calls to the remote MCP server.
-
-    Each generated handler opens a short-lived MCP session, calls the tool, and
-    returns the result.  The MCP server URL is read from ``settings.mcp_server_url``
-    at call time so that it can be overridden without restarting the process.
-    """
-    from src.runtime.mcp_client import MCPToolInfo, call_mcp_tool
-
-    definitions: list[ToolDefinition] = []
-    for tool_info in mcp_tools:
-        if not isinstance(tool_info, MCPToolInfo):
-            continue
-
-        # Capture the tool name in a closure so each handler refers to its own tool.
-        tool_name = tool_info.name
-
-        async def _mcp_handler(
-            params: BaseModel,
-            _invocation: ToolInvocation,
-            _tool_name: str = tool_name,
-        ) -> dict[str, Any]:
-            args = params.model_dump()
-            return await call_mcp_tool(settings.mcp_server_url, _tool_name, args)
-
-        definitions.append(
-            ToolDefinition(
-                name=tool_info.name,
-                description=tool_info.description,
-                params_model=MCPToolArgs,
-                handler=_mcp_handler,
-                parameters_schema=tool_info.input_schema or None,
-            )
-        )
-    return definitions
-
-
 _registered_tools: list[Tool] = []
 _registered_tool_names: list[str] = []
 
 
 def load_tools() -> list[Tool]:
-    """Build and cache the default runtime tool registry.
+    """Build and cache the default runtime tool registry of built-in code tools.
 
-    When ``settings.mcp_server_url`` is configured the function also fetches
-    tools from the remote MCP server (synchronously via :func:`asyncio.run`).
-    MCP tool loading failures are non-fatal: a warning is logged and the server
-    starts with only the built-in code-based tools.
+    Remote MCP servers are no longer discovered or proxied here: they are
+    registered natively with the Copilot SDK via ``mcp_servers=`` on session
+    creation (see :mod:`src.runtime.mcp_config`). The SDK owns MCP tool
+    discovery, refresh, and invocation for those servers.
     """
-    import asyncio
-    import concurrent.futures
-
     global _registered_tools, _registered_tool_names
     definitions: list[ToolDefinition] = list(_build_base_definitions())
-
-    if settings.mcp_server_url:
-        from src.runtime.mcp_client import list_mcp_tools
-
-        try:
-            running_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            running_loop = None
-
-        if running_loop is not None:
-            # Already inside an event loop (e.g. during async tests).  Run the
-            # coroutine in a dedicated thread so asyncio.run() gets its own loop.
-            logger.debug("MCP tool load: running inside event loop — using thread executor")
-            try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(
-                        asyncio.run, list_mcp_tools(settings.mcp_server_url)
-                    )
-                    mcp_tool_infos = future.result()
-            except Exception as exc:
-                logger.warning(
-                    "MCP tool load via thread executor failed",
-                    extra={"mcp_server_url": settings.mcp_server_url, "error": str(exc)},
-                )
-                mcp_tool_infos = []
-        else:
-            mcp_tool_infos = asyncio.run(list_mcp_tools(settings.mcp_server_url))
-
-        mcp_definitions = build_mcp_tool_definitions(mcp_tool_infos)
-        definitions.extend(mcp_definitions)
 
     built = build_tools(definitions, settings.tool_timeout)
     _registered_tools = built

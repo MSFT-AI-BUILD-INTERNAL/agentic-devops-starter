@@ -19,6 +19,7 @@ from copilot.session import PermissionHandler
 
 from src.api.models import JobStatusResponse
 from src.core.config import settings
+from src.runtime.mcp_config import build_mcp_servers_config
 from src.runtime.skills import get_disabled_skills, get_skill_directories
 from src.runtime.state import _apply_tool_policy, get_client
 from src.runtime.tools import get_registered_tools
@@ -51,6 +52,7 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
         "skill_directories": get_skill_directories(),
         "disabled_skills": get_disabled_skills(),
         "tools": get_registered_tools(),
+        "mcp_servers": build_mcp_servers_config(),
     }
     _apply_tool_policy(session_kwargs)
     session = await client.create_session(**session_kwargs)

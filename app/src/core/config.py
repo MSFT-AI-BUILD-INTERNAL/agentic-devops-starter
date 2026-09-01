@@ -98,7 +98,9 @@ class Settings(BaseSettings):
     cli_otel_capture_content: bool = True
 
     # Remote MCP (Model Context Protocol) server that exposes additional tools.
-    # When set, tools are fetched at startup and made available to all sessions.
+    # Registered natively with the Copilot SDK per session via `mcp_servers=`
+    # (see src.runtime.mcp_config.build_mcp_servers_config): the SDK handles
+    # tool discovery, refresh, and invocation for this server itself.
     mcp_server_url: str = Field(
         default="",
         validation_alias=AliasChoices(
