@@ -31,6 +31,12 @@ _foundry_credential: DefaultAzureCredential | None = None
 _FOUNDRY_TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"
 _FOUNDRY_TOKEN_REFRESH_SKEW_SECONDS = 300
 
+# Cache of tool names discovered from the remote MCP server (see
+# ``_get_remote_mcp_tool_names``). ``None`` means "not yet fetched"; an empty
+# list is a valid cached result (server unreachable or has no tools).
+_mcp_tool_names_cache: list[str] | None = None
+_mcp_tool_names_lock = asyncio.Lock()
+
 
 class FoundryConfigurationError(RuntimeError):
     """Raised when Azure AI Foundry BYOK settings are missing or invalid."""
@@ -83,7 +89,43 @@ def get_excluded_tools() -> list[str] | None:
     return names or None
 
 
-def _apply_tool_policy(session_kwargs: dict[str, Any]) -> dict[str, Any]:
+async def _get_remote_mcp_tool_names() -> list[str]:
+    """Return tool names exposed by the remote MCP server, cached for the process.
+
+    The Copilot SDK owns MCP tool discovery/invocation natively (registered via
+    ``mcp_servers=`` — see :mod:`src.runtime.mcp_config`), but it does not
+    currently expose an API to read back the tool names it discovered for a
+    session. To let an ``available_tools`` allowlist (``COPILOT_API_ALLOWED_TOOLS``)
+    still admit those SDK-native MCP tools, we independently query the remote
+    MCP server's standard ``tools/list`` (the same call already used by the
+    ``GET /v1/mcp/tools`` diagnostic endpoint) and cache the result.
+
+    Requires no changes to the remote MCP server. The cache is populated once
+    per process and is not refreshed if the remote tool set changes later;
+    restart the process (or clear ``_mcp_tool_names_cache``) to pick up
+    changes. Failures are non-fatal: an empty list is cached and a warning is
+    logged, matching the previous ``load_tools()`` behavior.
+    """
+    global _mcp_tool_names_cache
+
+    if not settings.mcp_server_url:
+        return []
+
+    if _mcp_tool_names_cache is not None:
+        return _mcp_tool_names_cache
+
+    async with _mcp_tool_names_lock:
+        if _mcp_tool_names_cache is not None:
+            return _mcp_tool_names_cache
+
+        from src.runtime.mcp_client import list_mcp_tools
+
+        tool_infos = await list_mcp_tools(settings.mcp_server_url)
+        _mcp_tool_names_cache = [info.name for info in tool_infos]
+        return _mcp_tool_names_cache
+
+
+async def _apply_tool_policy(session_kwargs: dict[str, Any]) -> dict[str, Any]:
     """Attach the SDK tool allow/deny policy to *session_kwargs* in place.
 
     An ``available_tools`` allowlist takes precedence: when configured, the
@@ -91,13 +133,22 @@ def _apply_tool_policy(session_kwargs: dict[str, Any]) -> dict[str, Any]:
     """
     allowed_tools = _get_allowed_tools()
     if allowed_tools is not None:
-        # Keep runtime-registered custom tools (including MCP-proxied tools)
-        # visible even when a built-in SDK allowlist is configured.
+        # Keep runtime-registered custom tools visible even when a built-in
+        # SDK allowlist is configured.
         available_tools = list(allowed_tools)
         for tool in session_kwargs.get("tools", []):
             tool_name = getattr(tool, "name", "")
             if isinstance(tool_name, str) and tool_name and tool_name not in available_tools:
                 available_tools.append(tool_name)
+
+        # Also admit tools from the remote MCP server registered natively via
+        # ``mcp_servers=``: the SDK discovers/invokes them itself and they
+        # never appear in session_kwargs["tools"], so without this they'd be
+        # silently filtered out by the allowlist.
+        for tool_name in await _get_remote_mcp_tool_names():
+            if tool_name not in available_tools:
+                available_tools.append(tool_name)
+
         session_kwargs["available_tools"] = available_tools
         return session_kwargs
 
@@ -273,7 +324,7 @@ class SessionPool:
                 "config_dir": build_config_dir(settings.session_config_root_dir, isolated_id),
                 "mcp_servers": build_mcp_servers_config(),
             }
-            _apply_tool_policy(session_kwargs)
+            await _apply_tool_policy(session_kwargs)
             try:
                 session = await client.resume_session(
                     sdk_session_id,
@@ -522,7 +573,7 @@ class FoundrySessionPool:
                 "config_dir": build_config_dir(settings.session_config_root_dir, isolated_id),
                 "mcp_servers": build_mcp_servers_config(),
             }
-            _apply_tool_policy(session_kwargs)
+            await _apply_tool_policy(session_kwargs)
             session = await client.create_session(**session_kwargs)
 
             self._sessions[pool_key] = session

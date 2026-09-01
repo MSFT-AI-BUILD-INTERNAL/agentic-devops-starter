@@ -59,7 +59,9 @@ def isolate_skills_and_client(monkeypatch: pytest.MonkeyPatch) -> Generator[None
     monkeypatch.setattr(skills_module, "_skill_directories", [])
     monkeypatch.setattr(skills_module, "_loaded_skill_names", [])
     monkeypatch.setattr(state_module, "_client", None)
+    monkeypatch.setattr(state_module, "_mcp_tool_names_cache", None)
     monkeypatch.setattr(state_module.settings, "foundry_auth_mode", "auto")
+    monkeypatch.setattr(state_module.settings, "mcp_server_url", "")
     monkeypatch.delenv("COPILOT_API_ALLOWED_TOOLS", raising=False)
     monkeypatch.delenv("COPILOT_API_EXCLUDED_TOOLS", raising=False)
     yield
@@ -332,6 +334,45 @@ async def test_session_pool_allowlist_keeps_custom_runtime_tools(
             "transform_text",
             "mcp_remote_tool",
         ]
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_session_pool_allowlist_keeps_sdk_native_mcp_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Allowlist mode must also admit tools discovered on the remote MCP server.
+
+    Regression test: since MCP tool discovery/invocation moved to the SDK
+    native ``mcp_servers=`` channel, those tools no longer appear in
+    session_kwargs["tools"], so an allowlist would otherwise silently exclude
+    them (see src.runtime.state._get_remote_mcp_tool_names).
+    """
+    from src.runtime.mcp_client import MCPToolInfo
+
+    client = _FakeClient()
+    monkeypatch.setenv("COPILOT_API_ALLOWED_TOOLS", "read_file")
+    monkeypatch.setattr(state_module.settings, "mcp_server_url", "https://example.com/mcp")
+    monkeypatch.setattr(state_module, "_mcp_tool_names_cache", None)
+
+    async def _fake_list_mcp_tools(url: str) -> list[MCPToolInfo]:
+        assert url == "https://example.com/mcp"
+        return [MCPToolInfo(name="remote_search", description="Search remotely")]
+
+    monkeypatch.setattr(
+        "src.runtime.mcp_client.list_mcp_tools", _fake_list_mcp_tools
+    )
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("thread-allowlist-mcp-tools")
+
+        assert client.create_kwargs is not None
+        available_tools = client.create_kwargs["available_tools"]
+        assert "remote_search" in available_tools
+        assert "read_file" in available_tools
     finally:
         await pool.shutdown()
 
