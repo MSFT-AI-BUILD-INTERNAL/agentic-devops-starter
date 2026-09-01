@@ -54,7 +54,7 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
         "tools": get_registered_tools(),
         "mcp_servers": build_mcp_servers_config(),
     }
-    _apply_tool_policy(session_kwargs)
+    await _apply_tool_policy(session_kwargs)
     session = await client.create_session(**session_kwargs)
     loop = asyncio.get_running_loop()
     idle_event = asyncio.Event()

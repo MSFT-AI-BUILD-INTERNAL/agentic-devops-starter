@@ -111,7 +111,7 @@ async def _create_agent_session(role: AgentRole, context: str) -> CopilotSession
         "config_dir": build_config_dir(settings.session_config_root_dir, isolation_session_id),
         "mcp_servers": build_mcp_servers_config(),
     }
-    _apply_tool_policy(session_kwargs)
+    await _apply_tool_policy(session_kwargs)
     return await client.create_session(**session_kwargs)
 
 
