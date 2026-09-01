@@ -18,20 +18,26 @@ from src.core.config import settings
 _MCP_SERVER_NAME = "remote"
 
 
-def build_mcp_servers_config() -> dict[str, MCPServerConfig] | None:
+def build_mcp_servers_config() -> dict[str, dict] | None:
     """Return the SDK ``mcp_servers`` mapping, or ``None`` when unconfigured.
 
     When ``settings.mcp_server_url`` is set, the SDK connects to it natively
     over Streamable HTTP, discovers its tools, keeps that list current across
     the session's lifetime, and proxies tool calls itself — none of that is
     reimplemented here.
+
+    Returns plain dicts (via ``MCPServerConfig.to_dict()``) rather than
+    ``MCPServerConfig`` instances: ``CopilotClient.create_session``/
+    ``resume_session`` forward this mapping directly into the outbound
+    JSON-RPC payload without converting dataclass values, so passing the
+    dataclass itself makes session creation fail with
+    ``TypeError: Object of type MCPServerConfig is not JSON serializable``.
     """
     if not settings.mcp_server_url:
         return None
 
-    return {
-        _MCP_SERVER_NAME: MCPServerConfig(
-            url=settings.mcp_server_url,
-            type=MCPServerConfigType.HTTP,
-        ),
-    }
+    server_config = MCPServerConfig(
+        url=settings.mcp_server_url,
+        type=MCPServerConfigType.HTTP,
+    )
+    return {_MCP_SERVER_NAME: server_config.to_dict()}
