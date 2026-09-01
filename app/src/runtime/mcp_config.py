@@ -39,5 +39,6 @@ def build_mcp_servers_config() -> dict[str, dict] | None:
     server_config = MCPServerConfig(
         url=settings.mcp_server_url,
         type=MCPServerConfigType.HTTP,
+        tools=["*"],
     )
     return {_MCP_SERVER_NAME: server_config.to_dict()}
