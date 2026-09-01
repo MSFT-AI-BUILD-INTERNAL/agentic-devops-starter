@@ -1,13 +1,18 @@
-"""Tests for the MCP remote server client and tool integration."""
+"""Tests for the MCP remote server client (diagnostic tool listing only).
+
+Note: MCP tool discovery/invocation for actual session use is no longer
+implemented in application code — it is handled natively by the Copilot SDK
+via ``mcp_servers=`` (see ``src.runtime.mcp_config``). This module's
+``list_mcp_tools``/``call_mcp_tool`` remain only to back the standalone
+``GET /v1/mcp/tools`` diagnostic endpoint.
+"""
 
 from __future__ import annotations
 
-import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from copilot.tools import ToolInvocation
 
 from src.runtime.mcp_client import (
     MCPToolInfo,
@@ -17,7 +22,6 @@ from src.runtime.mcp_client import (
     call_mcp_tool,
     list_mcp_tools,
 )
-from src.runtime.tools import MCPToolArgs, build_mcp_tool_definitions, build_tools
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -208,118 +212,4 @@ def test_content_to_dict_uses_model_dump_when_available() -> None:
 
 def test_content_to_dict_falls_back_to_str() -> None:
     assert _content_to_dict(42) == {"value": "42"}
-
-
-# ---------------------------------------------------------------------------
-# build_mcp_tool_definitions + isolation wrapper
-# ---------------------------------------------------------------------------
-
-
-def _make_mcp_tool_info(
-    name: str = "echo_tool",
-    description: str = "Echo the input",
-    input_schema: dict[str, Any] | None = None,
-) -> MCPToolInfo:
-    return MCPToolInfo(
-        name=name,
-        description=description,
-        input_schema=input_schema or {"type": "object", "properties": {"msg": {"type": "string"}}},
-    )
-
-
-def test_build_mcp_tool_definitions_produces_one_definition_per_tool() -> None:
-    infos = [_make_mcp_tool_info("tool_a"), _make_mcp_tool_info("tool_b")]
-    defs = build_mcp_tool_definitions(infos)
-    assert [d.name for d in defs] == ["tool_a", "tool_b"]
-
-
-def test_build_mcp_tool_definitions_sets_parameters_schema() -> None:
-    schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
-    info = _make_mcp_tool_info(input_schema=schema)
-    defs = build_mcp_tool_definitions([info])
-    assert defs[0].parameters_schema == schema
-
-
-def test_build_mcp_tool_definitions_uses_mcp_tool_args_model() -> None:
-    defs = build_mcp_tool_definitions([_make_mcp_tool_info()])
-    assert defs[0].params_model is MCPToolArgs
-
-
-@pytest.mark.asyncio
-async def test_mcp_tool_handler_proxies_call_to_mcp_server() -> None:
-    """The built MCP tool definition should call the MCP server when invoked."""
-    expected_result = {"content": [{"type": "text", "text": "ok"}]}
-    info = _make_mcp_tool_info(name="echo_tool")
-
-    # build_mcp_tool_definitions must be called INSIDE the patch so the closure
-    # captures the mock rather than the real call_mcp_tool.
-    with patch("src.runtime.mcp_client.call_mcp_tool", AsyncMock(return_value=expected_result)):
-        defs = build_mcp_tool_definitions([info])
-        handler = defs[0].handler
-
-        result = await handler(
-            MCPToolArgs.model_validate({"msg": "hello"}),
-            ToolInvocation(
-                session_id="s1",
-                tool_call_id="c1",
-                tool_name="echo_tool",
-                arguments={"msg": "hello"},
-            ),
-        )
-
-    assert result == expected_result
-
-
-@pytest.mark.asyncio
-async def test_mcp_tool_wrapped_contains_remote_exception() -> None:
-    """Isolation wrapper must contain exceptions raised by the MCP server call."""
-    import inspect
-    from collections.abc import Awaitable
-    from typing import cast
-
-    from copilot.tools import ToolResult
-
-    async def _boom(*_: Any, **__: Any) -> dict[str, Any]:
-        raise RuntimeError("remote failure")
-
-    # Build inside patch so the closure captures the mock that raises.
-    with patch("src.runtime.mcp_client.call_mcp_tool", side_effect=_boom):
-        info = _make_mcp_tool_info(name="fail_tool")
-        defs = build_mcp_tool_definitions([info])
-        tools = build_tools(defs, default_timeout_seconds=5.0)
-        tool = tools[0]
-
-        invocation = ToolInvocation(
-            session_id="s2",
-            tool_call_id="c2",
-            tool_name="fail_tool",
-            arguments={"msg": "x"},
-        )
-        raw = tool.handler(invocation)
-        result: ToolResult
-        if inspect.isawaitable(raw):
-            result = await cast(Awaitable[ToolResult], raw)
-        else:
-            result = cast(ToolResult, raw)
-
-    payload = json.loads(result.text_result_for_llm)
-    assert result.result_type == "failure"
-    assert payload["ok"] is False
-    assert payload["error"]["code"] == "TOOL_EXECUTION_ERROR"
-
-
-# ---------------------------------------------------------------------------
-# MCPToolArgs model
-# ---------------------------------------------------------------------------
-
-
-def test_mcp_tool_args_accepts_any_extra_fields() -> None:
-    args = MCPToolArgs.model_validate({"repo": "acme/app", "branch": "main", "dry_run": True})
-    dumped = args.model_dump()
-    assert dumped == {"repo": "acme/app", "branch": "main", "dry_run": True}
-
-
-def test_mcp_tool_args_accepts_empty_dict() -> None:
-    args = MCPToolArgs.model_validate({})
-    assert args.model_dump() == {}
 

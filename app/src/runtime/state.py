@@ -20,6 +20,7 @@ from src.runtime.isolation import (
     build_pool_key,
     normalize_isolation_session_id,
 )
+from src.runtime.mcp_config import build_mcp_servers_config
 from src.runtime.skills import get_disabled_skills, get_skill_directories
 from src.runtime.tools import get_registered_tools
 
@@ -270,6 +271,7 @@ class SessionPool:
                 "tools": [*registered_tools, *(extra_tools or [])],
                 "github_token": github_token,
                 "config_dir": build_config_dir(settings.session_config_root_dir, isolated_id),
+                "mcp_servers": build_mcp_servers_config(),
             }
             _apply_tool_policy(session_kwargs)
             try:
@@ -518,6 +520,7 @@ class FoundrySessionPool:
                 "model": settings.azure_ai_model_deployment_name,
                 "provider": provider,
                 "config_dir": build_config_dir(settings.session_config_root_dir, isolated_id),
+                "mcp_servers": build_mcp_servers_config(),
             }
             _apply_tool_policy(session_kwargs)
             session = await client.create_session(**session_kwargs)

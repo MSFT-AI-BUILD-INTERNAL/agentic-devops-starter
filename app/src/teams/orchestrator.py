@@ -28,6 +28,7 @@ from src.runtime.isolation import (
     build_copilot_session_id,
     normalize_isolation_session_id,
 )
+from src.runtime.mcp_config import build_mcp_servers_config
 from src.runtime.skills import get_disabled_skills, get_skill_directories
 from src.runtime.state import _apply_tool_policy, get_client, get_session_pool
 from src.runtime.tools import get_registered_tools
@@ -108,6 +109,7 @@ async def _create_agent_session(role: AgentRole, context: str) -> CopilotSession
         "disabled_skills": get_disabled_skills(),
         "tools": get_registered_tools(),
         "config_dir": build_config_dir(settings.session_config_root_dir, isolation_session_id),
+        "mcp_servers": build_mcp_servers_config(),
     }
     _apply_tool_policy(session_kwargs)
     return await client.create_session(**session_kwargs)
