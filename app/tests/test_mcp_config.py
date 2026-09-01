@@ -25,7 +25,17 @@ def test_build_mcp_servers_config_returns_http_server_when_configured(monkeypatc
     # without dataclass conversion, so passing the dataclass itself makes
     # every session creation fail with a JSON serialization TypeError.
     assert isinstance(server, dict)
-    assert server == {"type": "http", "url": "https://example.com/mcp"}
+    # ``tools`` must be present explicitly: the CLI's wire schema
+    # (MCPHTTPServerConfig) treats it as a required key, not optional as the
+    # MCPServerConfig dataclass docstring suggests — omitting it causes the
+    # CLI to report the server as "not_configured" without attempting a
+    # connection at all (observed in production via the
+    # SessionMcpServersLoadedData event).
+    assert server == {
+        "type": "http",
+        "url": "https://example.com/mcp",
+        "tools": ["*"],
+    }
 
     import json
 
