@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.runtime.mcp_client import (
-    MCPToolInfo,
     _content_to_dict,
     _get_input_schema,
     _is_error,
