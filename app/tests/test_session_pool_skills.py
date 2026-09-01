@@ -11,6 +11,7 @@ from azure.core.credentials import AccessToken
 
 import src.runtime.skills as skills_module
 import src.runtime.state as state_module
+import src.runtime.tool_policy as tool_policy_module
 from src.runtime.skills import load_skills
 from src.runtime.state import FoundrySessionPool, SessionPool, set_client
 
@@ -59,7 +60,7 @@ def isolate_skills_and_client(monkeypatch: pytest.MonkeyPatch) -> Generator[None
     monkeypatch.setattr(skills_module, "_skill_directories", [])
     monkeypatch.setattr(skills_module, "_loaded_skill_names", [])
     monkeypatch.setattr(state_module, "_client", None)
-    monkeypatch.setattr(state_module, "_mcp_tool_names_cache", None)
+    monkeypatch.setattr(tool_policy_module, "_mcp_tool_names_cache", None)
     monkeypatch.setattr(state_module.settings, "foundry_auth_mode", "auto")
     monkeypatch.setattr(state_module.settings, "mcp_server_url", "")
     monkeypatch.delenv("COPILOT_API_ALLOWED_TOOLS", raising=False)
@@ -241,7 +242,7 @@ async def test_session_pool_excludes_unsafe_tools_by_default(
         await pool.get_or_create("thread-default-denylist")
 
         assert client.create_kwargs is not None
-        assert client.create_kwargs["excluded_tools"] == list(state_module._WEB_UNSAFE_TOOLS)
+        assert client.create_kwargs["excluded_tools"] == list(tool_policy_module._WEB_UNSAFE_TOOLS)
         assert "available_tools" not in client.create_kwargs
     finally:
         await pool.shutdown()
@@ -347,14 +348,14 @@ async def test_session_pool_allowlist_keeps_sdk_native_mcp_tools(
     Regression test: since MCP tool discovery/invocation moved to the SDK
     native ``mcp_servers=`` channel, those tools no longer appear in
     session_kwargs["tools"], so an allowlist would otherwise silently exclude
-    them (see src.runtime.state._get_remote_mcp_tool_names).
+    them (see src.runtime.tool_policy._get_remote_mcp_tool_names).
     """
     from src.runtime.mcp_client import MCPToolInfo
 
     client = _FakeClient()
     monkeypatch.setenv("COPILOT_API_ALLOWED_TOOLS", "read_file")
     monkeypatch.setattr(state_module.settings, "mcp_server_url", "https://example.com/mcp")
-    monkeypatch.setattr(state_module, "_mcp_tool_names_cache", None)
+    monkeypatch.setattr(tool_policy_module, "_mcp_tool_names_cache", None)
 
     async def _fake_list_mcp_tools(url: str) -> list[MCPToolInfo]:
         assert url == "https://example.com/mcp"
