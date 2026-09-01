@@ -79,19 +79,19 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
             case SessionIdleData():
                 loop.call_soon_threadsafe(idle_event.set)
             case SessionMcpServersLoadedData() as mcp_data:
+                servers_info = [
+                    {
+                        "name": server.name,
+                        "status": server.status.value,
+                        "error": server.error,
+                        "source": server.source,
+                    }
+                    for server in mcp_data.servers
+                ]
                 logger.info(
-                    "MCP servers loaded",
-                    extra={
-                        "mcp_servers": [
-                            {
-                                "name": server.name,
-                                "status": server.status.value,
-                                "error": server.error,
-                                "source": server.source,
-                            }
-                            for server in mcp_data.servers
-                        ],
-                    },
+                    "MCP servers loaded servers=%s",
+                    servers_info,
+                    extra={"mcp_servers": servers_info},
                 )
 
     session.on(on_event)

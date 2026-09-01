@@ -299,20 +299,20 @@ def _chat_streaming_response(
                 case SessionIdleData():
                     loop.call_soon_threadsafe(idle_event.set)
                 case SessionMcpServersLoadedData() as mcp_data:
+                    servers_info = [
+                        {
+                            "name": server.name,
+                            "status": server.status.value,
+                            "error": server.error,
+                            "source": server.source,
+                        }
+                        for server in mcp_data.servers
+                    ]
                     logger.info(
-                        "MCP servers loaded",
-                        extra={
-                            "thread_id": thread_id,
-                            "mcp_servers": [
-                                {
-                                    "name": server.name,
-                                    "status": server.status.value,
-                                    "error": server.error,
-                                    "source": server.source,
-                                }
-                                for server in mcp_data.servers
-                            ],
-                        },
+                        "MCP servers loaded thread_id=%s servers=%s",
+                        thread_id,
+                        servers_info,
+                        extra={"thread_id": thread_id, "mcp_servers": servers_info},
                     )
 
         unsubscribe = None
