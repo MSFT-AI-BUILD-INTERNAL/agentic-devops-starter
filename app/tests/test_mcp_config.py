@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from copilot.generated.rpc import MCPServerConfig, MCPServerConfigType
-
 from src.core.config import settings
 from src.runtime.mcp_config import build_mcp_servers_config
 
@@ -21,6 +19,14 @@ def test_build_mcp_servers_config_returns_http_server_when_configured(monkeypatc
     assert result is not None
     assert list(result.keys()) == ["remote"]
     server = result["remote"]
-    assert isinstance(server, MCPServerConfig)
-    assert server.url == "https://example.com/mcp"
-    assert server.type == MCPServerConfigType.HTTP
+    # Must be a plain JSON-serializable dict (via MCPServerConfig.to_dict()),
+    # not an MCPServerConfig dataclass instance: CopilotClient.create_session
+    # forwards this mapping verbatim into the outbound JSON-RPC payload
+    # without dataclass conversion, so passing the dataclass itself makes
+    # every session creation fail with a JSON serialization TypeError.
+    assert isinstance(server, dict)
+    assert server == {"type": "http", "url": "https://example.com/mcp"}
+
+    import json
+
+    json.dumps(result)  # must not raise
