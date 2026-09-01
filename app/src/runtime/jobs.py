@@ -14,16 +14,20 @@ from copilot.generated.session_events import (
     SessionErrorData,
     SessionEvent,
     SessionIdleData,
+    SessionMcpServersLoadedData,
 )
 from copilot.session import PermissionHandler
 
 from src.api.models import JobStatusResponse
 from src.core.config import settings
+from src.core.logging_utils import setup_logging
 from src.runtime.mcp_config import build_mcp_servers_config
 from src.runtime.skills import get_disabled_skills, get_skill_directories
 from src.runtime.state import get_client
 from src.runtime.tool_policy import apply_tool_policy
 from src.runtime.tools import get_registered_tools
+
+logger = setup_logging(settings.log_level)
 
 _jobs: dict[str, JobStatusResponse] = {}
 
@@ -74,6 +78,21 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
                 loop.call_soon_threadsafe(idle_event.set)
             case SessionIdleData():
                 loop.call_soon_threadsafe(idle_event.set)
+            case SessionMcpServersLoadedData() as mcp_data:
+                logger.info(
+                    "MCP servers loaded",
+                    extra={
+                        "mcp_servers": [
+                            {
+                                "name": server.name,
+                                "status": server.status.value,
+                                "error": server.error,
+                                "source": server.source,
+                            }
+                            for server in mcp_data.servers
+                        ],
+                    },
+                )
 
     session.on(on_event)
     await session.send(prompt)
