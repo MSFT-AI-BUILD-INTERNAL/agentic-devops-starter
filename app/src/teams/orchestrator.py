@@ -18,6 +18,7 @@ from copilot.generated.session_events import (
     SessionErrorData,
     SessionEvent,
     SessionIdleData,
+    SessionMcpServersLoadedData,
 )
 from copilot.session import CopilotSession, PermissionHandler
 
@@ -141,6 +142,22 @@ async def _collect_agent(role: AgentRole, prompt: str, context: str) -> tuple[st
                 loop.call_soon_threadsafe(idle_event.set)
             case SessionIdleData():
                 loop.call_soon_threadsafe(idle_event.set)
+            case SessionMcpServersLoadedData() as mcp_data:
+                logger.info(
+                    "MCP servers loaded",
+                    extra={
+                        "thread_id": thread_id,
+                        "mcp_servers": [
+                            {
+                                "name": server.name,
+                                "status": server.status.value,
+                                "error": server.error,
+                                "source": server.source,
+                            }
+                            for server in mcp_data.servers
+                        ],
+                    },
+                )
 
     session.on(on_event)
     try:
@@ -186,6 +203,22 @@ async def _stream_agent(
                 loop.call_soon_threadsafe(idle_event.set)
             case SessionIdleData():
                 loop.call_soon_threadsafe(idle_event.set)
+            case SessionMcpServersLoadedData() as mcp_data:
+                logger.info(
+                    "MCP servers loaded",
+                    extra={
+                        "thread_id": thread_id,
+                        "mcp_servers": [
+                            {
+                                "name": server.name,
+                                "status": server.status.value,
+                                "error": server.error,
+                                "source": server.source,
+                            }
+                            for server in mcp_data.servers
+                        ],
+                    },
+                )
 
     session.on(on_event)
     await session.send(prompt)

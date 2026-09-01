@@ -12,6 +12,7 @@ from copilot.generated.session_events import (
     SessionErrorData,
     SessionEvent,
     SessionIdleData,
+    SessionMcpServersLoadedData,
 )
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
@@ -297,6 +298,22 @@ def _chat_streaming_response(
                     loop.call_soon_threadsafe(idle_event.set)
                 case SessionIdleData():
                     loop.call_soon_threadsafe(idle_event.set)
+                case SessionMcpServersLoadedData() as mcp_data:
+                    logger.info(
+                        "MCP servers loaded",
+                        extra={
+                            "thread_id": thread_id,
+                            "mcp_servers": [
+                                {
+                                    "name": server.name,
+                                    "status": server.status.value,
+                                    "error": server.error,
+                                    "source": server.source,
+                                }
+                                for server in mcp_data.servers
+                            ],
+                        },
+                    )
 
         unsubscribe = None
         error_sent = False
