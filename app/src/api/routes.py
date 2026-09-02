@@ -406,6 +406,27 @@ async def upload_file(request: Request, file: UploadFile) -> JSONResponse:
         )
 
     content_type = resolve_content_type(content_type, filename)
+
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared_size = int(content_length)
+        except ValueError:
+            declared_size = None
+        # The multipart request body includes boundary/header overhead on top of
+        # the raw file bytes, so a generous margin avoids false rejections while
+        # still blocking clearly oversized uploads before they are buffered.
+        if declared_size is not None and declared_size > MAX_FILE_SIZE_BYTES + 8192:
+            return log_and_respond(
+                logger,
+                413,
+                "FILE_TOO_LARGE",
+                "File exceeds the maximum allowed size.",
+                "Rejected file upload due to Content-Length exceeding limit",
+                extra={"upload_filename": filename, "content_length": declared_size},
+                extra_fields={"max_size_bytes": MAX_FILE_SIZE_BYTES},
+            )
+
     content = await file.read()
 
     try:
