@@ -6,7 +6,6 @@ post-read size validation still guards requests where the header is absent,
 unparsable, or understated relative to the actual body.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
