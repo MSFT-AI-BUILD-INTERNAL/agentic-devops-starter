@@ -12,12 +12,12 @@
 
 ### Tests
 
-- [ ] T001 [US1] Add a focused assertion that a successfully resumed standard `SessionPool` passes `model="auto"` to `resume_session` in `app/tests/test_session_pool_skills.py`
-- [ ] T002 [US1] Add a focused assertion that a fresh standard session created by the `resume_session` fallback passes `model="auto"` to `create_session` in `app/tests/test_session_pool_skills.py`
+- [x] T001 [US1] Add a focused assertion that a successfully resumed standard `SessionPool` passes `model="auto"` to `resume_session` in `app/tests/test_session_pool_skills.py`
+- [x] T002 [US1] Add a focused assertion that a fresh standard session created by the `resume_session` fallback passes `model="auto"` to `create_session` in `app/tests/test_session_pool_skills.py`
 
 ### Implementation
 
-- [ ] T003 [US1] Add `"model": "auto"` to the shared standard `SessionPool` session kwargs in `app/src/runtime/state.py`, preserving the existing resume and fallback behavior and all other kwargs
+- [x] T003 [US1] Add `"model": "auto"` to the shared standard `SessionPool` session kwargs in `app/src/runtime/state.py`, preserving the existing resume and fallback behavior and all other kwargs
 
 ---
 
@@ -29,13 +29,13 @@
 
 ### Tests
 
-- [ ] T004 [P] [US2] Add a focused assertion that team-agent `create_session` receives `model="auto"` in `app/tests/test_teams.py`
-- [ ] T005 [P] [US2] Add a focused assertion that fleet/infinite-job `create_session` receives `model="auto"` in `app/tests/test_fleet_infinite.py`
+- [x] T004 [P] [US2] Add a focused assertion that team-agent `create_session` receives `model="auto"` in `app/tests/test_teams.py`
+- [x] T005 [P] [US2] Add a focused assertion that fleet/infinite-job `create_session` receives `model="auto"` in `app/tests/test_fleet_infinite.py`
 
 ### Implementation
 
-- [ ] T006 [P] [US2] Add `"model": "auto"` to `_create_agent_session` kwargs in `app/src/teams/orchestrator.py`, preserving all other session behavior
-- [ ] T007 [P] [US2] Add `"model": "auto"` to `_call_session` kwargs in `app/src/runtime/jobs.py`, preserving all other session behavior
+- [x] T006 [P] [US2] Add `"model": "auto"` to `_create_agent_session` kwargs in `app/src/teams/orchestrator.py`, preserving all other session behavior
+- [x] T007 [P] [US2] Add `"model": "auto"` to `_call_session` kwargs in `app/src/runtime/jobs.py`, preserving all other session behavior
 
 ---
 
@@ -45,7 +45,7 @@
 
 **Independent Test**: Verify a `FoundrySessionPool` session passes its configured deployment model unchanged and not `auto`.
 
-- [ ] T008 [US3] Retain the existing regression assertion that `FoundrySessionPool` passes its configured deployment model unchanged and not `"auto"` in `app/tests/test_session_pool_skills.py`; do not change Foundry model-selection code
+- [x] T008 [US3] Retain the existing regression assertion that `FoundrySessionPool` passes its configured deployment model unchanged and not `"auto"` in `app/tests/test_session_pool_skills.py`; do not change Foundry model-selection code
 
 ---
 
@@ -53,8 +53,10 @@
 
 **Purpose**: Run focused session-pool, team, and fleet/infinite-session tests plus the repository's backend Ruff and mypy quality gates.
 
-- [ ] T009 Run the three focused pytest modules from `app/`: `uv run pytest tests/test_session_pool_skills.py -v`, `uv run pytest tests/test_teams.py -v`, and `uv run pytest tests/test_fleet_infinite.py -v`
-- [ ] T010 Run backend Ruff and mypy from `app/`: `uv run ruff check .` and `uv run mypy .`
+- [x] T009 Run the three focused pytest modules from `app/`: `uv run pytest tests/test_session_pool_skills.py -v`, `uv run pytest tests/test_teams.py -v`, and `uv run pytest tests/test_fleet_infinite.py -v`
+- [x] T010 Run backend Ruff and mypy from `app/`: `uv run ruff check .` and `uv run mypy .`
+
+Validation note: Ruff passed and all 46 focused tests passed. `mypy .` reports five pre-existing errors in `src/thirdparty/copilot_client.py:74`, `src/api/auth.py:202`, `tests/test_mcp_config.py:9,14`, and `src/runtime/mcp_client.py:113`; none are in changed Python files.
 
 ## Dependencies & Execution Order
 

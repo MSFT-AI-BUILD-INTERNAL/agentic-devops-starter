@@ -51,6 +51,7 @@ async def _call_session(prompt: str, system_message: str | None) -> str:
     client = get_client()
     sys_content = system_message or "You are a helpful assistant."
     session_kwargs: dict[str, Any] = {
+        "model": "auto",
         "on_permission_request": PermissionHandler.approve_all,
         "system_message": {"mode": "replace", "content": sys_content},
         "streaming": True,
