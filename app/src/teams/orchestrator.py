@@ -103,6 +103,7 @@ async def _create_agent_session(role: AgentRole, context: str) -> CopilotSession
     )
     session_id = build_copilot_session_id("teams", isolation_session_id, f"{thread_id}:{role.name}")
     session_kwargs: dict[str, Any] = {
+        "model": "auto",
         "session_id": session_id,
         "on_permission_request": PermissionHandler.approve_all,
         "system_message": {"mode": "replace", "content": _agent_system_context(role, context)},

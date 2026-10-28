@@ -185,6 +185,7 @@ class SessionPool:
             disabled_skills = get_disabled_skills()
             registered_tools = get_registered_tools()
             session_kwargs: dict[str, Any] = {
+                "model": "auto",
                 "on_permission_request": PermissionHandler.approve_all,
                 "system_message": {
                     "mode": "replace",

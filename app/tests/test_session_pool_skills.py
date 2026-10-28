@@ -55,6 +55,16 @@ class _FakeClient:
         return _FakeSession()
 
 
+class _ResumingFakeClient(_FakeClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.resume_kwargs: dict[str, Any] | None = None
+
+    async def resume_session(self, session_id: str, **kwargs: Any) -> _FakeSession:
+        self.resume_kwargs = {"session_id": session_id, **kwargs}
+        return _FakeSession()
+
+
 @pytest.fixture(autouse=True)
 def isolate_skills_and_client(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     monkeypatch.setattr(skills_module, "_skill_directories", [])
@@ -94,10 +104,10 @@ async def test_session_pool_enables_sdk_skills_when_directories_loaded(
 
 
 @pytest.mark.asyncio
-async def test_standard_session_pool_does_not_use_byok_provider(
+async def test_standard_session_pool_uses_auto_model_without_byok_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Default GitHub Copilot sessions must not receive BYOK provider config."""
+    """Fresh GitHub Copilot sessions use Auto routing and no BYOK provider."""
     client = _FakeClient()
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     set_client(cast(Any, client))
@@ -109,7 +119,24 @@ async def test_standard_session_pool_does_not_use_byok_provider(
         assert client.create_kwargs is not None
         assert client.create_kwargs["session_id"].startswith("chat-standard-thread-")
         assert "provider" not in client.create_kwargs
-        assert "model" not in client.create_kwargs
+        assert client.create_kwargs["model"] == "auto"
+    finally:
+        await pool.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_standard_session_pool_uses_auto_model_when_resuming() -> None:
+    """Resumed GitHub Copilot sessions use the same Auto routing as fresh sessions."""
+    client = _ResumingFakeClient()
+    set_client(cast(Any, client))
+
+    pool = SessionPool()
+    try:
+        await pool.get_or_create("standard-resume-thread")
+
+        assert client.resume_kwargs is not None
+        assert client.resume_kwargs["model"] == "auto"
+        assert client.create_kwargs is None
     finally:
         await pool.shutdown()
 
@@ -153,6 +180,7 @@ async def test_foundry_session_pool_uses_isolated_byok_provider(
         assert client.create_kwargs is not None
         assert client.create_kwargs["session_id"].startswith("foundry-shared-thread-")
         assert client.create_kwargs["model"] == "gpt-5.2-codex"
+        assert client.create_kwargs["model"] != "auto"
         assert client.create_kwargs["system_message"] == {
             "mode": "replace",
             "content": f"{state_module._FOUNDRY_SYSTEM_MESSAGE}\n\nUse concise answers.",
