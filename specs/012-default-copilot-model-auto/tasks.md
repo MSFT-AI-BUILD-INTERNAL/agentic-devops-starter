@@ -12,8 +12,8 @@
 
 ### Tests
 
-- [ ] T001 [US1] Add a focused assertion that standard `SessionPool` passes `model="auto"` to `resume_session` in `app/tests/test_session_pool_skills.py`
-- [ ] T002 [US1] Add a focused assertion that standard `SessionPool` fallback `create_session` passes `model="auto"` in `app/tests/test_session_pool_skills.py`
+- [ ] T001 [US1] Add a focused assertion that a successfully resumed standard `SessionPool` passes `model="auto"` to `resume_session` in `app/tests/test_session_pool_skills.py`
+- [ ] T002 [US1] Add a focused assertion that a fresh standard session created by the `resume_session` fallback passes `model="auto"` to `create_session` in `app/tests/test_session_pool_skills.py`
 
 ### Implementation
 
@@ -45,15 +45,16 @@
 
 **Independent Test**: Verify a `FoundrySessionPool` session passes its configured deployment model unchanged and not `auto`.
 
-- [ ] T008 [US3] Add or retain a regression assertion that `FoundrySessionPool` passes its configured deployment model unchanged and not `"auto"` in `app/tests/test_session_pool_skills.py`; do not change Foundry model-selection code
+- [ ] T008 [US3] Retain the existing regression assertion that `FoundrySessionPool` passes its configured deployment model unchanged and not `"auto"` in `app/tests/test_session_pool_skills.py`; do not change Foundry model-selection code
 
 ---
 
 ## Final Phase: Targeted Validation
 
-**Purpose**: Validate only the focused session-pool, team, and fleet/infinite-session tests after implementation; do not broaden validation to lint, build, or the full test suite.
+**Purpose**: Run focused session-pool, team, and fleet/infinite-session tests plus the repository's backend Ruff and mypy quality gates.
 
 - [ ] T009 Run the three focused pytest modules from `app/`: `uv run pytest tests/test_session_pool_skills.py -v`, `uv run pytest tests/test_teams.py -v`, and `uv run pytest tests/test_fleet_infinite.py -v`
+- [ ] T010 Run backend Ruff and mypy from `app/`: `uv run ruff check .` and `uv run mypy .`
 
 ## Dependencies & Execution Order
 
@@ -62,7 +63,7 @@
 - **User Story 1**: No setup or foundational prerequisites. Complete T001 and T002 before T003.
 - **User Story 2**: Independent of User Story 1. Complete T004 and T005 before their corresponding implementation tasks T006 and T007.
 - **User Story 3**: Independent behavior boundary; T008 only asserts the existing Foundry BYOK model selection and must not introduce a model change.
-- **Targeted Validation**: T009 follows the focused tests and all three implementations.
+- **Targeted Validation**: T009 and T010 follow the focused tests and all three implementations.
 
 ### User Story Completion Order
 
@@ -85,7 +86,7 @@ All stories are P1 and can be implemented independently after their focused test
 1. Add the regular-session resume and fallback assertions, then update the shared `SessionPool` kwargs.
 2. Add the team and fleet/infinite focused assertions; implement those two independent creation paths in parallel.
 3. Keep the Foundry BYOK configured-model regression assertion and make no Foundry model-selection changes.
-4. Run only the three targeted pytest commands in T009 after implementation. This task-generation step does not run tests, lint, or builds.
+4. Run the three focused pytest commands in T009 and backend Ruff/mypy in T010 after implementation. This task-generation step does not run tests, lint, or builds.
 
 ## Task Format Check
 

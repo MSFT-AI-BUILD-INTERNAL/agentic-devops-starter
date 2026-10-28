@@ -76,10 +76,12 @@ app/
 
 ## Implementation and Test Design
 
-1. Add `"model": "auto"` to the standard `SessionPool` kwargs in `app/src/runtime/state.py`. Since the same kwargs are passed to `resume_session` and then to fallback `create_session`, independently assert `auto` in each call's captured kwargs.
+1. Add `"model": "auto"` to the standard `SessionPool` kwargs in `app/src/runtime/state.py`. Since the same kwargs are passed to `resume_session` and then to fallback `create_session`, independently assert `auto` in both the successful-resume and fallback-create captured kwargs. The fallback-create case is the fresh-session path.
 2. Add `"model": "auto"` to `app/src/teams/orchestrator.py`'s `_create_agent_session` kwargs. Test the captured `create_session` kwargs in `app/tests/test_teams.py`.
 3. Add `"model": "auto"` to `app/src/runtime/jobs.py`'s `_call_session` kwargs. Test the captured `create_session` kwargs in `app/tests/test_fleet_infinite.py`.
-4. Preserve a Foundry regression assertion in `app/tests/test_session_pool_skills.py`: a `FoundrySessionPool` session continues to pass its configured deployment model (currently `gpt-5.2-codex` in the test fixture), not the Copilot virtual model `auto`.
+4. Preserve the existing Foundry regression assertion in `app/tests/test_session_pool_skills.py`: a `FoundrySessionPool` session continues to pass its configured deployment model (currently `gpt-5.2-codex` in the test fixture), not the Copilot virtual model `auto`.
+
+Run the three focused pytest modules, then the backend Ruff and mypy checks required by repository quality gates.
 
 The tests should remain separate so each session-creation route and the Foundry exclusion is independently guarded. Keep all other kwargs and session behavior unchanged.
 

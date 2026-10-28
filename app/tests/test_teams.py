@@ -1,6 +1,7 @@
 """Tests for agent team platform endpoints (patterns + teams)."""
 
 from typing import cast
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from copilot.session import CopilotSession
@@ -40,6 +41,21 @@ def test_pattern_has_roles(pattern_id: str) -> None:
 
 def test_get_pattern_unknown_returns_none() -> None:
     assert get_pattern("nonexistent") is None
+
+
+@pytest.mark.asyncio
+async def test_team_agent_session_uses_auto_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Team-agent sessions use the SDK's automatic model routing."""
+    client = MagicMock()
+    client.create_session = AsyncMock(return_value=MagicMock())
+    monkeypatch.setattr(orchestrator, "get_client", lambda: client)
+    monkeypatch.setattr(orchestrator, "apply_tool_policy", AsyncMock())
+
+    pattern = get_pattern("debate-critic")
+    assert pattern is not None
+    await orchestrator._create_agent_session(pattern.roles[0], "context")
+
+    assert client.create_session.await_args.kwargs["model"] == "auto"
 
 
 class FakeTeamSession:

@@ -20,8 +20,8 @@ As a user of a regular GitHub Copilot session, I want the session to use automat
 
 **Acceptance Scenarios**:
 
-1. **Given** a new regular GitHub Copilot SDK session, **When** it is created, **Then** it explicitly uses the virtual model id `auto`.
-2. **Given** a regular session that is resumed or created through a fallback path, **When** it becomes active, **Then** it explicitly uses `auto`.
+1. **Given** a new regular GitHub Copilot SDK session whose resume attempt falls back to creation, **When** it is created, **Then** it explicitly uses the virtual model id `auto`.
+2. **Given** a regular session that is resumed successfully, **When** it becomes active, **Then** it explicitly uses `auto`.
 
 ---
 
@@ -62,7 +62,7 @@ As a user of an Azure AI Foundry BYOK session, I want my configured deployment m
 
 ### Functional Requirements
 
-- **FR-001**: Every regular GitHub Copilot SDK session MUST explicitly use the SDK virtual model id `auto`.
+- **FR-001**: Every regular GitHub Copilot SDK session MUST explicitly use the SDK virtual model id `auto`, including sessions newly created after a resume attempt fails.
 - **FR-002**: The `auto` model requirement MUST apply to new, resumed, and fallback-created regular sessions.
 - **FR-003**: Every GitHub Copilot SDK session created for a team-agent workflow MUST explicitly use `auto`.
 - **FR-004**: Every GitHub Copilot SDK session created for a fleet/infinite-session job MUST explicitly use `auto`.

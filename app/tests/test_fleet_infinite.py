@@ -11,6 +11,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from src.runtime import jobs
+
 
 @pytest.fixture
 def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
@@ -104,3 +106,21 @@ def test_job_status_found(client: TestClient) -> None:
     data = response.json()
     assert data["job_id"] == job_id
     assert data["status"] in ("pending", "running", "completed", "failed")
+
+
+@pytest.mark.asyncio
+async def test_background_job_session_uses_auto_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fleet and infinite-session jobs use the SDK's automatic model routing."""
+    copilot_client = MagicMock()
+    copilot_client.create_session = AsyncMock(side_effect=RuntimeError("captured session kwargs"))
+    monkeypatch.setattr(jobs, "get_client", lambda: copilot_client)
+    monkeypatch.setattr(jobs, "apply_tool_policy", AsyncMock())
+    monkeypatch.setattr(jobs, "get_skill_directories", lambda: [])
+    monkeypatch.setattr(jobs, "get_disabled_skills", lambda: [])
+    monkeypatch.setattr(jobs, "get_registered_tools", lambda: [])
+    monkeypatch.setattr(jobs, "build_mcp_servers_config", lambda: {})
+
+    with pytest.raises(RuntimeError, match="captured session kwargs"):
+        await jobs._call_session("test prompt", None)
+
+    assert copilot_client.create_session.await_args.kwargs["model"] == "auto"
