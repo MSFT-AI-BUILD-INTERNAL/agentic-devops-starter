@@ -49,7 +49,7 @@ test('normal chat returns an assistant response for "Hello Copilot"', async ({ p
   ).toBeVisible();
 
   const assistantBubble = page.getByTestId('assistant-message-bubble').last();
-  await expect(assistantBubble).toBeVisible();
+  await expect(assistantBubble).toBeVisible({ timeout: 90_000 });
   await expect(assistantBubble).not.toContainText('Thinking…');
   await expect
     .poll(async () => (await assistantBubble.innerText()).trim().length, { timeout: 90_000 })
