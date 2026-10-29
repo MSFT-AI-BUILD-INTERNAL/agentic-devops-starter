@@ -157,7 +157,7 @@ jobs:
             --only-show-errors || echo "Could not fetch logs"
 
   playwright-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: deploy
     environment: production
     env:
