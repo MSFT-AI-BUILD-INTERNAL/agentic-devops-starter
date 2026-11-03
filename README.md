@@ -36,7 +36,7 @@ Azure deployment:
 GitHub Actions -> ACR -> Azure App Service container (:8080)
                              |-> nginx serves frontend and proxies /api/*
                              |-> FastAPI backend runs on :5100
-                             |-> OTel Collector sidecar runs on :4318 (Copilot CLI telemetry)
+                             |-> OTLP forwarder sidecar runs on :4318 (Copilot CLI telemetry)
                              |-> supervisor manages all three processes
 ```
 
@@ -83,7 +83,7 @@ agentic-devops-starter/
 - **File attachments**: Frontend uploads supported files to Azure Blob Storage and sends blob references with prompts.
 - **Agent teams**: Predefined collaboration patterns such as Debate & Critic, Generator & Evaluator, Leadership Discussion, Planner & Executor, and Research & Report.
 - **Batch/loop workflows**: Fleet runs up to 20 prompts in parallel; Infinite Session chains outputs across iterations.
-- **Production container**: Multi-stage Docker build serves frontend with nginx, runs FastAPI behind `/api/*`, and forwards GitHub Copilot CLI telemetry through an OTel Collector sidecar.
+- **Production container**: Multi-stage Docker build serves frontend with nginx, runs FastAPI behind `/api/*`, and forwards GitHub Copilot CLI telemetry through an OTLP forwarder sidecar.
 - **Azure IaC**: Terraform provisions App Service, ACR, Storage, private networking, and monitoring resources.
 - **Secure deployment**: GitHub Actions uses Azure OIDC; App Service uses managed identity for ACR pull and Azure resource access.
 
@@ -287,7 +287,7 @@ Required GitHub Actions secrets:
 | `APP_CONFIG_ENDPOINT` | Azure App Configuration endpoint; injected as `COPILOT_API_APP_CONFIG_ENDPOINT` |
 | `APP_CONFIG_LABEL` | Azure App Configuration label filter; injected as `COPILOT_API_APP_CONFIG_LABEL` |
 | `MCP_SERVER_URL` | Remote MCP server URL; injected as `MCP_SERVER_URL` |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables Azure Monitor telemetry and starts the OTel Collector sidecar |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables Azure Monitor telemetry and starts the OTLP forwarder sidecar |
 | `PLAYWRIGHT_GITHUB_TOKEN` | GitHub PAT used by E2E global-setup to forge a valid Fernet session cookie for smoke tests |
 | `PLAYWRIGHT_GITHUB_CLIENT_SECRET` | Same value as `COPILOT_APP_CLIENT_SECRET`; used by E2E global-setup to replicate the PBKDF2+Fernet cookie cipher in Node.js |
 
