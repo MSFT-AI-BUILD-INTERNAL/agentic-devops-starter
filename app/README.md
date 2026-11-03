@@ -180,6 +180,8 @@ Set `COPILOT_API_CLI_OTEL_ENDPOINT` to the collector's OTLP/HTTP endpoint. Conte
 
 In the App Service container, supervisor also starts `otlp_forwarder.py` (stdlib-only OTLP/HTTP forwarder). It receives OTLP on `127.0.0.1:4318` and forwards traces/logs/metrics to the hardcoded Azure Monitor OTLP endpoints, authenticating with the App Service managed identity (`AZURE_CLIENT_ID` selects a user-assigned identity; the identity needs the *Monitoring Metrics Publisher* role on the data collection rule). When `APPLICATIONINSIGHTS_CONNECTION_STRING` is set and `COPILOT_API_CLI_OTEL_ENDPOINT` is not explicitly set, `start-backend.sh` defaults the Copilot CLI endpoint to `http://127.0.0.1:4318`.
 
+External clients can send OTLP/HTTP through nginx at `https://<app>.azurewebsites.net/otlp` (e.g. `OTEL_EXPORTER_OTLP_ENDPOINT=https://<app>.azurewebsites.net/otlp`); App Service only exposes 80/443, so port 4318 itself is not reachable. The forwarder has no authentication of its own.
+
 ## Development Commands
 
 All commands run from `app/`:
