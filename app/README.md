@@ -178,17 +178,7 @@ FastAPI app → github-copilot-sdk → GitHub Copilot CLI subprocess
 
 Set `COPILOT_API_CLI_OTEL_ENDPOINT` to the collector's OTLP/HTTP endpoint. Content capture is disabled by default; enable `COPILOT_API_CLI_OTEL_CAPTURE_CONTENT=true` only after reviewing prompt and response retention policies.
 
-In the App Service container, supervisor also starts `otelcol-contrib` with `otel-collector-config.yaml`. When `APPLICATIONINSIGHTS_CONNECTION_STRING` is set and `COPILOT_API_CLI_OTEL_ENDPOINT` is not explicitly set, `start-backend.sh` defaults the Copilot CLI endpoint to `http://127.0.0.1:4318`.
-
-For local testing, run the OpenTelemetry Collector with the included config:
-
-```bash
-cd app
-docker run --rm -p 4318:4318 \
-  -e APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=...;IngestionEndpoint=..." \
-  -v "$PWD/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml" \
-  otel/opentelemetry-collector-contrib:latest
-```
+In the App Service container, supervisor also starts `otlp_forwarder.py` (stdlib-only OTLP/HTTP forwarder). It receives OTLP on `127.0.0.1:4318` and forwards traces/logs/metrics to the hardcoded Azure Monitor OTLP endpoints, authenticating with the App Service managed identity (`AZURE_CLIENT_ID` selects a user-assigned identity; the identity needs the *Monitoring Metrics Publisher* role on the data collection rule). When `APPLICATIONINSIGHTS_CONNECTION_STRING` is set and `COPILOT_API_CLI_OTEL_ENDPOINT` is not explicitly set, `start-backend.sh` defaults the Copilot CLI endpoint to `http://127.0.0.1:4318`.
 
 ## Development Commands
 
@@ -233,9 +223,8 @@ The app deploys to **Azure App Service** as a single container built from `Docke
 | Stage | Base | Output |
 |-------|------|--------|
 | `frontend-build` | `node:20-alpine` | Vite production build at `/dist` |
-| `otel-collector` | `otel/opentelemetry-collector-contrib` | `otelcol-contrib` binary |
 | `backend-base` | `python:3.12-slim` | uv, nginx, supervisor, Python deps |
-| `final` | `backend-base` | Combined image: frontend dist + OTel Collector binary + backend |
+| `final` | `backend-base` | Combined image: frontend dist + backend + OTLP forwarder |
 
 At runtime **supervisor** manages three processes:
 
@@ -243,7 +232,7 @@ At runtime **supervisor** manages three processes:
 |---------|------|------|
 | nginx | 8080 | Serves frontend SPA; proxies `/api/*` → FastAPI, `/health` → FastAPI |
 | uvicorn (FastAPI) | 5100 | API backend |
-| otelcol-contrib | 4318 | Forwards GitHub Copilot CLI OTLP telemetry to Application Insights |
+| otlp_forwarder.py | 4318 | Forwards GitHub Copilot CLI OTLP telemetry to Application Insights |
 
 ### nginx routing
 
@@ -275,7 +264,7 @@ At runtime **supervisor** manages three processes:
 | `APP_CONFIG_ENDPOINT` | Azure App Configuration endpoint |
 | `APP_CONFIG_LABEL` | Azure App Configuration label filter |
 | `MCP_SERVER_URL` | Remote MCP server URL |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables Azure Monitor telemetry and OTel Collector |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables Azure Monitor telemetry and the OTLP forwarder sidecar |
 | `PLAYWRIGHT_GITHUB_TOKEN` | GitHub PAT for E2E test Fernet cookie generation |
 | `PLAYWRIGHT_GITHUB_CLIENT_SECRET` | Same as `COPILOT_APP_CLIENT_SECRET`; used by E2E setup to replicate the cookie cipher |
 
