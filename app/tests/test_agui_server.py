@@ -54,6 +54,13 @@ def test_health_check_endpoint(client: TestClient) -> None:
     assert response.json() == {"status": "healthy"}
 
 
+def test_foundry_byok_endpoint_is_not_registered(client: TestClient) -> None:
+    """The unauthenticated Foundry endpoint must not be available."""
+    response = client.post("/v1/byok/foundry", json={"messages": []})
+
+    assert response.status_code == 404
+
+
 def test_lifespan_starts_client_without_permanent_token(monkeypatch: pytest.MonkeyPatch) -> None:
     """Startup must not pass a permanent GitHub token to the CopilotClient constructor."""
     import agui_server

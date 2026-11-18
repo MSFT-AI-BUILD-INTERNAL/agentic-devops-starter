@@ -1,7 +1,6 @@
 // useChat hook for message management
 import { useCallback } from 'react';
 import { useChatStore } from '../stores/chatStore';
-import { useModelProviderStore } from '../stores/modelProviderStore';
 import { aguiClient } from '../services/aguiClient';
 import { logger } from '../utils/logger';
 import { getIsolationSessionId } from '../utils/isolationSession';
@@ -17,7 +16,6 @@ export function useChat() {
   const currentThread = useChatStore((state) => state.currentThread);
   const isInputDisabled = useChatStore((state) => state.isInputDisabled);
   const streamingState = useChatStore((state) => state.streamingState);
-  const selectedProvider = useModelProviderStore((state) => state.selectedProvider);
   const addMessage = useChatStore((state) => state.addMessage);
   const createThread = useChatStore((state) => state.createThread);
   const clearThread = useChatStore((state) => state.clearThread);
@@ -155,7 +153,6 @@ export function useChat() {
             }
           },
           clientAttachments,
-          selectedProvider,
           getIsolationSessionId()
         );
 
@@ -165,7 +162,7 @@ export function useChat() {
         throw error;
       }
     },
-    [currentThread?.id, createThread, addMessage, updateStreamingState, selectedProvider]
+    [currentThread?.id, createThread, addMessage, updateStreamingState]
   );
 
   /**

@@ -13,8 +13,8 @@ and **GitHub Actions** CI/CD.
 
 | Area | Current implementation |
 |------|------------------------|
-| AI runtime | GitHub Copilot SDK sessions (default) or Azure AI Foundry BYOK sessions, managed by a FastAPI backend |
-| UI protocol | AG-UI-style Server-Sent Events (SSE) stream from `POST /` or `POST /v1/byok/foundry` |
+| AI runtime | GitHub Copilot SDK sessions, managed by a FastAPI backend |
+| UI protocol | AG-UI-style Server-Sent Events (SSE) stream from `POST /` |
 | Frontend | React 18, TypeScript, Vite, Zustand, Tailwind CSS |
 | Agent patterns | Single chat, multi-turn conversation, Fleet, Infinite Session, and multi-agent teams |
 | Tool calling | Built-in tools (`tools.py`) and optional remote MCP server (`mcp_client.py`) via `MCP_SERVER_URL` |
@@ -78,7 +78,6 @@ agentic-devops-starter/
 - **GitHub App OAuth authentication**: On page load the frontend probes `GET /auth/session`; a 401 triggers a redirect to `GET /auth/login`, which starts the GitHub App OAuth flow. The returned user access token is encrypted with a Fernet cipher (PBKDF2-derived from the App client secret) and stored as an `httponly; secure; samesite=lax` session cookie valid for 8 hours.
 - **Per-user session namespacing**: The decrypted GitHub token is hashed with AES-CMAC (second PBKDF2-derived key) to produce a stable, opaque user namespace. Combined with the optional `X-Isolation-Session-ID` header, this scopes Copilot SDK sessions per user.
 - **Multi-turn sessions**: Backend keeps Copilot SDK sessions alive per thread and cleans up idle sessions.
-- **Azure AI Foundry BYOK**: Alternative model routing via `POST /v1/byok/foundry` to Azure AI Foundry model deployments; select in the frontend model picker.
 - **Tool calling**: Backend exposes built-in tools (`tools.py`) and optional remote MCP server integration (`mcp_client.py`); configure `MCP_SERVER_URL` to add external tools. Allowlist/denylist via `COPILOT_API_ALLOWED_TOOLS` and `COPILOT_API_EXCLUDED_TOOLS`.
 - **File attachments**: Frontend uploads supported files to Azure Blob Storage and sends blob references with prompts.
 - **Agent teams**: Predefined collaboration patterns such as Debate & Critic, Generator & Evaluator, Leadership Discussion, Planner & Executor, and Research & Report.
@@ -151,7 +150,6 @@ by frontend/proxy layers.
 | Method | Path | Auth required | Description |
 |--------|------|:---:|-------------|
 | `POST` | `/` | ✓ | Chat SSE stream (GitHub Copilot) |
-| `POST` | `/v1/byok/foundry` | — | Chat SSE stream (Azure AI Foundry BYOK); bypasses OAuth |
 | `GET` | `/v1/models` | — | List Copilot models via the Anthropic-compatible adapter |
 | `POST` | `/v1/messages` | — | Anthropic-compatible Messages API adapter backed by Copilot SDK |
 | `GET` | `/auth/login` | — | Start GitHub App OAuth sign-in; redirects to GitHub |
