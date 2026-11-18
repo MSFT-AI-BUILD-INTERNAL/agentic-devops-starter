@@ -101,6 +101,12 @@ class Settings(BaseSettings):
     # Registered natively with the Copilot SDK per session via `mcp_servers=`
     # (see src.runtime.mcp_config.build_mcp_servers_config): the SDK handles
     # tool discovery, refresh, and invocation for this server itself.
+    # Integration is a no-op unless explicitly enabled (disabled pending
+    # incident 31000000807844: remote Storage tools lack session-prefix scoping).
+    mcp_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("MCP_ENABLED", "COPILOT_API_MCP_ENABLED"),
+    )
     mcp_server_url: str = Field(
         default="",
         validation_alias=AliasChoices(

@@ -140,7 +140,8 @@ Auth is enforced by direct checks inside route handlers. `POST /` requires the s
 | `THIRDPARTY_GITHUB_PAT` | Third-party API | — | Token used to call the GitHub Copilot API directly for `GET /v1/models` and `POST /v1/messages`. For non-interactive servers, use a personal-account-owned fine-grained PAT (`github_pat_...`) with the **Copilot Requests** account permission. Classic PATs (`ghp_...`) are unsupported |
 | `COPILOT_API_EXCLUDED_TOOLS` | No | filesystem/shell/database tools | Comma-separated SDK built-in tools to disable. Unset applies a secure-by-default denylist (`bash`, `write_bash`, `read_bash`, `stop_bash`, `list_bash`, `view`, `create`, `edit`, `grep`, `glob`, `sql`). Ignored when `COPILOT_API_ALLOWED_TOOLS` is set |
 | `COPILOT_API_ALLOWED_TOOLS` | No | — | Comma-separated tool allowlist. When set, only listed tools are enabled and the denylist is ignored |
-| `MCP_SERVER_URL` | No | — | Remote MCP server URL (e.g. `https://<name>.azurecontainerapps.io`). Enables `/v1/mcp/tools` and registers MCP tools in Copilot sessions. Omit to run with built-in tools only |
+| `MCP_ENABLED` | No | `false` | Master switch for remote MCP integration; keep `false` (no-op) until the Storage session-prefix scoping fix lands (incident 31000000807844) |
+| `MCP_SERVER_URL` | No | — | Remote MCP server URL (e.g. `https://<name>.azurecontainerapps.io`). Requires `MCP_ENABLED=true`. Enables `/v1/mcp/tools` and registers MCP tools in Copilot sessions. Omit to run with built-in tools only |
 | `COPILOT_API_SKILL_DIRECTORIES` | No | — | Extra directories (colon- or comma-separated) scanned for `SKILL.md` agent-skill files |
 | `COPILOT_API_DISABLED_SKILLS` | No | — | Comma-separated skill names to disable |
 | `COPILOT_API_APP_CONFIG_ENDPOINT` | No | — | Azure App Configuration endpoint (e.g. `https://<store>.azconfig.io`). Loaded at startup; env vars take precedence |
