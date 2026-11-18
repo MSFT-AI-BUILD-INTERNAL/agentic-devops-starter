@@ -4,7 +4,6 @@ import { getApiBaseUrl } from '../config/api';
 import { processSSEStream } from '../utils/sseProcessor';
 import { generateUUID } from '../utils/uuid';
 import { getIsolationSessionId } from '../utils/isolationSession';
-import type { ModelProvider } from '../types/modelProvider';
 
 // Simple event interface for streaming events
 export interface StreamEvent {
@@ -66,7 +65,6 @@ class AGUIClient {
       contentType: string;
       sizeBytes: number;
     }>,
-    modelProvider: ModelProvider = 'github-copilot',
     isolationSessionId?: string
   ): Promise<ChatResponse> {
     const correlationId = logger.generateCorrelationId();
@@ -75,7 +73,6 @@ class AGUIClient {
     logger.info('Sending chat message', {
       messageCount: messages.length,
       threadId: threadId || 'new',
-      modelProvider,
     });
 
     const request: ChatRequest & { attachments?: Array<Record<string, unknown>> } = {
@@ -94,8 +91,7 @@ class AGUIClient {
     }
 
     try {
-      const endpoint = modelProvider === 'foundry' ? '/v1/byok/foundry' : '/';
-      const response = await fetch(this.buildUrl(endpoint), {
+      const response = await fetch(this.buildUrl('/'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

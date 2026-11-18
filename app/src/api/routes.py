@@ -224,32 +224,6 @@ async def agent_endpoint(request: Request) -> StreamingResponse:
     )
 
 
-@router.post("/v1/byok/foundry")
-async def foundry_byok_endpoint(request: Request) -> StreamingResponse:
-    """Handle AG-UI agent requests with an isolated Azure AI Foundry BYOK session."""
-    input_data = await request.json()
-    thread_id: str = input_data.get("thread_id") or uuid.uuid4().hex[:12]
-    run_id: str = input_data.get("run_id") or uuid.uuid4().hex[:12]
-    isolation_session_id = _resolve_isolation_session_id(request, thread_id)
-    messages: list[dict[str, str]] = input_data.get("messages", [])
-    attachments: list[dict[str, Any]] | None = input_data.get("attachments")
-
-    try:
-        prompt = build_prompt(messages, attachments, isolation_session_id)
-    except PermissionError as error:
-        raise HTTPException(status_code=403, detail=str(error)) from error
-
-    return _chat_streaming_response(
-        get_foundry_session_pool(),
-        isolation_session_id,
-        None,
-        thread_id,
-        run_id,
-        prompt,
-        "Foundry BYOK session pool not initialized",
-    )
-
-
 def _chat_streaming_response(
     pool: AISessionPool,
     isolation_session_id: str,

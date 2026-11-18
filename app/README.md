@@ -105,7 +105,6 @@ Auth is enforced by direct checks inside route handlers. `POST /` requires the s
 | Method | Path | Auth | Description |
 |--------|------|:----:|-------------|
 | `POST` | `/` | ✓ | AG-UI SSE stream — GitHub Copilot |
-| `POST` | `/v1/byok/foundry` | — | AG-UI SSE stream — Azure AI Foundry BYOK (bypasses OAuth) |
 | `GET` | `/v1/models` | — | List Copilot models via the Anthropic-compatible adapter |
 | `POST` | `/v1/messages` | — | Anthropic-compatible Messages API adapter backed by Copilot SDK |
 | `GET` | `/auth/login` | — | Redirect to GitHub App OAuth consent page |
@@ -148,11 +147,6 @@ Auth is enforced by direct checks inside route handlers. `POST /` requires the s
 | `COPILOT_API_APP_CONFIG_LABEL` | No | — | Label filter for Azure App Configuration key-values |
 | `COPILOT_API_AZURE_STORAGE_BLOB_ENDPOINT` | File upload | — | Blob endpoint, e.g. `https://<account>.blob.core.windows.net` |
 | `COPILOT_API_AZURE_STORAGE_CONTAINER_NAME` | No | `uploads` | Upload container name |
-| `AZURE_AI_PROJECT_ENDPOINT` | BYOK | — | Azure AI Foundry endpoint for `POST /v1/byok/foundry` |
-| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | BYOK | — | Foundry model deployment name |
-| `FOUNDRY_AUTH_MODE` | BYOK | `auto` | `auto`, `api_key`, or `azure_identity` |
-| `FOUNDRY_API_KEY` | BYOK (api_key) | — | Foundry API key when `FOUNDRY_AUTH_MODE=api_key` |
-| `FOUNDRY_WIRE_API` | BYOK | — | Wire protocol: `responses` or `completions` |
 | `CORS_ORIGINS` | No | `localhost:5173` | Comma-separated CORS origins. `allow_credentials=True` is required for cookie auth |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | No | — | Enables Azure Monitor tracing |
 | `OTEL_SERVICE_NAME` | No | `agentic-devops-starter` | OpenTelemetry service name |
@@ -258,11 +252,6 @@ At runtime **supervisor** manages three processes:
 | `RESOURCE_GROUP` | Azure resource group |
 | `COPILOT_APP_CLIENT_ID` | GitHub App client ID (injected as `GITHUB_CLIENT_ID`) |
 | `COPILOT_APP_CLIENT_SECRET` | GitHub App client secret; also PBKDF2 passphrase for cookie encryption (injected as `GITHUB_CLIENT_SECRET`) |
-| `AZURE_AI_PROJECT_ENDPOINT` | Azure AI Foundry endpoint for BYOK |
-| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Foundry model deployment name |
-| `FOUNDRY_AUTH_MODE` | Foundry auth mode: `auto`, `api_key`, or `azure_identity` |
-| `FOUNDRY_API_KEY` | Foundry API key (only for `api_key` mode) |
-| `FOUNDRY_WIRE_API` | Foundry wire protocol: `responses` or `completions` |
 | `APP_CONFIG_ENDPOINT` | Azure App Configuration endpoint |
 | `APP_CONFIG_LABEL` | Azure App Configuration label filter |
 | `MCP_SERVER_URL` | Remote MCP server URL |
@@ -298,15 +287,6 @@ Browser → POST /api/ (with session cookie)
   → SessionPool.get_or_create(namespace, github_token=ghu_...)
       → CopilotClient.create_session(skill_directories, tools)
   ← SSE: RUN_STARTED → TEXT_MESSAGE_CONTENT* → RUN_FINISHED
-```
-
-### Chat Streaming (Azure AI Foundry BYOK)
-
-```
-Browser → POST /api/v1/byok/foundry (no auth required)
-  → FoundrySessionPool.get_or_create(thread_id, github_token=None)
-      → Foundry provider (AZURE_AI_PROJECT_ENDPOINT, FOUNDRY_WIRE_API)
-  ← SSE: same wire format as Copilot path
 ```
 
 ### Agent Teams

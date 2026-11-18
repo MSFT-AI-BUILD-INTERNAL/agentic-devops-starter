@@ -1,6 +1,6 @@
 # AG-UI Server API Reference
 
-HTTP/SSE API for the Agentic DevOps Starter backend. All chat endpoints stream responses using the [AG-UI SSE protocol](#sse-event-types). The underlying AI provider (GitHub Copilot SDK or Azure AI Foundry) is encapsulated behind the `AISessionPool` interface and is transparent to callers.
+HTTP/SSE API for the Agentic DevOps Starter backend. Chat requests stream responses using the [AG-UI SSE protocol](#sse-event-types).
 
 > **PowerShell note**: `curl` in PowerShell is an alias for `Invoke-WebRequest`. Use `curl.exe` instead to invoke the real curl binary (shipped with Windows 10/11).
 
@@ -21,20 +21,16 @@ https://app-agentic-devops.azurewebsites.net
 | Endpoint | Auth required |
 |---|---|
 | `POST /` | GitHub 인증 토큰 (`Authorization: Bearer <session_token>`) |
-| `POST /v1/byok/foundry` | 없음 — 서버 측 Azure 자격증명만 사용 |
 | All other endpoints | 없음 |
 
 ---
 
 ## Chat Endpoints
 
-두 엔드포인트는 동일한 요청 바디와 SSE 응답 형식을 공유합니다. 차이는 서버가 사용하는 AI 프로바이더뿐입니다.
+Chat requests use the GitHub Copilot SDK and require GitHub authentication.
 
 ### POST /
-GitHub Copilot SDK 백엔드. GitHub 인증 필요 (`Authorization` 헤더 또는 세션 쿠키).
-
-### POST /v1/byok/foundry
-Azure AI Foundry BYOK 백엔드. 클라이언트 인증 불필요.
+GitHub Copilot SDK backend. GitHub authentication is required (`Authorization` header or session cookie).
 
 #### Request body
 
@@ -93,51 +89,7 @@ data: {"type": "RUN_FINISHED", "thread_id": "...", "run_id": "..."}
 
 ## curl Examples
 
-### Single-turn (Foundry, 인증 불필요)
-
-```powershell
-# PowerShell
-curl.exe -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry `
-  -H "Content-Type: application/json" `
-  -d '{"messages": [{"role": "user", "content": "Hello, what can you do?"}], "thread_id": "test-thread-001", "run_id": "run-001"}'
-```
-
-```bash
-# Linux
-curl -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Hello, what can you do?"}], "thread_id": "test-thread-001", "run_id": "run-001"}'
-```
-
-### Multi-turn conversation
-
-같은 `thread_id`를 재사용하면 서버가 세션 히스토리를 유지합니다.
-
-```powershell
-# PowerShell — Turn 1
-curl.exe -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry `
-  -H "Content-Type: application/json" `
-  -d '{"messages": [{"role": "user", "content": "My name is Alice."}], "thread_id": "test-thread-001", "run_id": "run-001"}'
-
-# PowerShell — Turn 2 (서버가 이름을 기억)
-curl.exe -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry `
-  -H "Content-Type: application/json" `
-  -d '{"messages": [{"role": "user", "content": "What is my name?"}], "thread_id": "test-thread-001", "run_id": "run-002"}'
-```
-
-```bash
-# Linux — Turn 1
-curl -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "My name is Alice."}], "thread_id": "test-thread-001", "run_id": "run-001"}'
-
-# Linux — Turn 2 (서버가 이름을 기억)
-curl -N -X POST https://app-agentic-devops.azurewebsites.net/v1/byok/foundry \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "What is my name?"}], "thread_id": "test-thread-001", "run_id": "run-002"}'
-```
-
-### Copilot endpoint (Device Flow 또는 세션 토큰)
+### Chat (Device Flow 또는 세션 토큰)
 
 ```powershell
 # PowerShell
@@ -196,6 +148,5 @@ Chat 엔드포인트는 [`src/runtime/state.py`](../app/src/runtime/state.py)의
 | Pool | Endpoint | Provider |
 |---|---|---|
 | `SessionPool` | `POST /` | GitHub Copilot SDK |
-| `FoundrySessionPool` | `POST /v1/byok/foundry` | Azure AI Foundry BYOK |
 
 새 AI 프로바이더 추가 시 `AISessionPool` Protocol의 4개 메서드만 구현하면 routes나 lifecycle 코드 수정이 필요 없습니다.
