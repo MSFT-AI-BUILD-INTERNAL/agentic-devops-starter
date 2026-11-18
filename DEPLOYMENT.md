@@ -9,7 +9,7 @@ The workflow automates the following process:
 2. Pushes the image to Azure Container Registry (ACR)
 3. Deploys the container to Azure App Service
 4. Verifies the deployment health
-5. Runs Playwright E2E tests against the deployed URL
+5. Temporarily skips Playwright E2E tests pending redesign
 
 ## Workflow Files
 
@@ -37,11 +37,7 @@ A three-job workflow:
 
 **Job 3: playwright-test**
 - Depends on `deploy` job
-- Sets up Node 20 and installs Playwright Chromium browser
-- Pre-checks health endpoint (6 retries, 10s intervals)
-- Runs `npm run test:e2e` against `PLAYWRIGHT_BASE_URL`
-- Uses `PLAYWRIGHT_GITHUB_TOKEN` and `PLAYWRIGHT_GITHUB_CLIENT_SECRET` for auth flows
-- Uploads test artifacts on failure
+- Temporarily skips E2E testing pending redesign and completes successfully
 
 ### `.github/workflows/ci.yml`
 
@@ -106,8 +102,15 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 | `APP_CONFIG_LABEL` | Label filter for Azure App Configuration key-values (optional); injected as `COPILOT_API_APP_CONFIG_LABEL` |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables backend Azure Monitor telemetry and starts the local OpenTelemetry Collector for GitHub Copilot CLI telemetry |
 | `MCP_SERVER_URL` | URL of the remote MCP server (e.g. `https://<name>.azurecontainerapps.io`); injected as `MCP_SERVER_URL`. Omit to run with built-in tools only |
-| `PLAYWRIGHT_GITHUB_TOKEN` | GitHub PAT used by Playwright E2E global-setup (`e2e/global-setup.ts`) to forge a valid Fernet session cookie for smoke tests, bypassing the OAuth browser flow |
-| `PLAYWRIGHT_GITHUB_CLIENT_SECRET` | Same value as `COPILOT_APP_CLIENT_SECRET`; used by E2E global-setup to replicate the PBKDF2+Fernet cookie cipher in Node.js so the forged cookie is accepted by the backend |
+
+## Local Playwright E2E Credentials
+
+These environment variables are only used for local Playwright E2E runs. They are not required deployment secrets and do not need to be configured in GitHub Actions.
+
+| Environment variable | Description |
+|----------------------|-------------|
+| `PLAYWRIGHT_GITHUB_TOKEN` | GitHub PAT used by local Playwright E2E global-setup (`e2e/global-setup.ts`) to forge a valid Fernet session cookie for smoke tests |
+| `PLAYWRIGHT_GITHUB_CLIENT_SECRET` | Same value as `COPILOT_APP_CLIENT_SECRET`; used by local E2E global-setup to replicate the PBKDF2+Fernet cookie cipher in Node.js |
 
 ## Workflow Triggers
 
@@ -198,9 +201,7 @@ Before running the workflow:
          v
 ┌─────────────────────────┐
 │ Playwright E2E Tests    │
-│ - Health pre-check (×6) │
-│ - npm run test:e2e      │
-│ - Upload artifacts      │
+│ - Temporarily skipped   │
 └─────────────────────────┘
 ```
 
