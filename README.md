@@ -263,7 +263,7 @@ Deployment uses `.github/workflows/deploy.yml`:
 3. Set secret-based App Service settings.
 4. Deploy the image to Azure App Service.
 5. Verify `GET /health`.
-6. Run Playwright E2E tests against the deployed URL.
+6. Temporarily skip Playwright E2E tests pending redesign.
 
 Required GitHub Actions secrets:
 
@@ -286,9 +286,6 @@ Required GitHub Actions secrets:
 | `APP_CONFIG_LABEL` | Azure App Configuration label filter; injected as `COPILOT_API_APP_CONFIG_LABEL` |
 | `MCP_SERVER_URL` | Remote MCP server URL; injected as `MCP_SERVER_URL` |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables Azure Monitor telemetry and starts the OTLP forwarder sidecar |
-| `PLAYWRIGHT_GITHUB_TOKEN` | GitHub PAT used by E2E global-setup to forge a valid Fernet session cookie for smoke tests |
-| `PLAYWRIGHT_GITHUB_CLIENT_SECRET` | Same value as `COPILOT_APP_CLIENT_SECRET`; used by E2E global-setup to replicate the PBKDF2+Fernet cookie cipher in Node.js |
-
 See [DEPLOYMENT.md](./DEPLOYMENT.md) and [.github/AZURE_SETUP.md](./.github/AZURE_SETUP.md).
 
 ## CI
