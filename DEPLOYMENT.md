@@ -102,6 +102,13 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 | `APP_CONFIG_LABEL` | Label filter for Azure App Configuration key-values (optional); injected as `COPILOT_API_APP_CONFIG_LABEL` |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Enables backend Azure Monitor telemetry and starts the local OpenTelemetry Collector for GitHub Copilot CLI telemetry |
 | `MCP_SERVER_URL` | URL of the remote MCP server (e.g. `https://<name>.azurecontainerapps.io`); injected as `MCP_SERVER_URL`. Omit to run with built-in tools only |
+
+## Local Playwright E2E Credentials
+
+These environment variables are only used for local Playwright E2E runs. They are not required deployment secrets and do not need to be configured in GitHub Actions.
+
+| Environment variable | Description |
+|----------------------|-------------|
 | `PLAYWRIGHT_GITHUB_TOKEN` | GitHub PAT used by local Playwright E2E global-setup (`e2e/global-setup.ts`) to forge a valid Fernet session cookie for smoke tests |
 | `PLAYWRIGHT_GITHUB_CLIENT_SECRET` | Same value as `COPILOT_APP_CLIENT_SECRET`; used by local E2E global-setup to replicate the PBKDF2+Fernet cookie cipher in Node.js |
 
