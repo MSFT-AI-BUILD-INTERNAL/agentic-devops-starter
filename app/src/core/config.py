@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, TypeAdapter
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
@@ -195,6 +195,8 @@ def apply_app_configuration(s: Settings) -> None:
                 continue
 
             try:
+                if field_name == "mcp_enabled":
+                    value = TypeAdapter(bool).validate_python(value)
                 setattr(s, field_name, value)
                 logged_value = (
                     "***"

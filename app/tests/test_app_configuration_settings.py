@@ -36,6 +36,23 @@ class TestApplyAppConfigurationNoop:
 class TestApplyAppConfigurationAppliesValues:
     """App Configuration values are applied to the Settings object."""
 
+    @pytest.mark.parametrize("key", ["MCP_ENABLED", "COPILOT_API_MCP_ENABLED"])
+    def test_string_false_keeps_mcp_disabled(self, key: str) -> None:
+        """The string 'false' from App Config is parsed as a disabled MCP flag."""
+        s = Settings(
+            app_config_endpoint="https://example.azconfig.io",
+            mcp_server_url="https://example.com/mcp",
+        )
+        item = _make_item(key, "false")
+
+        with patch(
+            "azure.appconfiguration.AzureAppConfigurationClient"
+        ) as MockClient, patch("azure.identity.DefaultAzureCredential"):
+            MockClient.return_value.list_configuration_settings.return_value = [item]
+            apply_app_configuration(s)
+
+        assert s.mcp_enabled is False
+
     def test_applies_value_using_full_key(self) -> None:
         """An App Config key with full COPILOT_API_ prefix is applied correctly."""
         s = Settings(app_config_endpoint="https://example.azconfig.io")
