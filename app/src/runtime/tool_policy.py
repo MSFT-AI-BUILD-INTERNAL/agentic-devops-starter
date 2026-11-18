@@ -90,7 +90,7 @@ async def _get_remote_mcp_tool_names() -> list[str]:
     """
     global _mcp_tool_names_cache
 
-    if not settings.mcp_server_url:
+    if not (settings.mcp_enabled and settings.mcp_server_url):
         return []
 
     if _mcp_tool_names_cache is not None:

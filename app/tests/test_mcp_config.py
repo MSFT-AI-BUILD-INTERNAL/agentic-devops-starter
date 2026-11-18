@@ -11,7 +11,14 @@ def test_build_mcp_servers_config_returns_none_when_unconfigured(monkeypatch) ->
     assert build_mcp_servers_config() is None
 
 
+def test_build_mcp_servers_config_is_noop_when_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "mcp_enabled", False)
+    monkeypatch.setattr(settings, "mcp_server_url", "https://example.com/mcp")
+    assert build_mcp_servers_config() is None
+
+
 def test_build_mcp_servers_config_returns_http_server_when_configured(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "mcp_enabled", True)
     monkeypatch.setattr(settings, "mcp_server_url", "https://example.com/mcp")
 
     result = build_mcp_servers_config()

@@ -33,7 +33,7 @@ def build_mcp_servers_config() -> dict[str, dict] | None:
     dataclass itself makes session creation fail with
     ``TypeError: Object of type MCPServerConfig is not JSON serializable``.
     """
-    if not settings.mcp_server_url:
+    if not (settings.mcp_enabled and settings.mcp_server_url):
         return None
 
     server_config = MCPServerConfig(

@@ -382,6 +382,7 @@ async def test_session_pool_allowlist_keeps_sdk_native_mcp_tools(
 
     client = _FakeClient()
     monkeypatch.setenv("COPILOT_API_ALLOWED_TOOLS", "read_file")
+    monkeypatch.setattr(state_module.settings, "mcp_enabled", True)
     monkeypatch.setattr(state_module.settings, "mcp_server_url", "https://example.com/mcp")
     monkeypatch.setattr(tool_policy_module, "_mcp_tool_names_cache", None)
 

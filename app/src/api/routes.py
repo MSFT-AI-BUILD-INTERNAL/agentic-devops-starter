@@ -691,7 +691,7 @@ async def list_mcp_tools_endpoint() -> list[MCPToolResponse]:
     Returns an empty list when no MCP server URL is configured or when the
     server is unreachable.
     """
-    if not settings.mcp_server_url:
+    if not (settings.mcp_enabled and settings.mcp_server_url):
         return []
 
     from src.runtime.mcp_client import list_mcp_tools
